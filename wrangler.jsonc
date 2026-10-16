@@ -1,0 +1,38 @@
+{
+  "$schema": "./node_modules/wrangler/config-schema.json",
+  "name": "mercados",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-09-01",
+  "compatibility_flags": ["nodejs_compat"],
+
+  // El Worker se ejecuta antes que los assets en TODAS las rutas: así valida
+  // Cloudflare Access incluso para el HTML y añade cabeceras de seguridad.
+  "assets": {
+    "directory": "./public",
+    "binding": "ASSETS",
+    "run_worker_first": true,
+    "html_handling": "auto-trailing-slash",
+    "not_found_handling": "none"
+  },
+
+  // Sin URLs de preview: cada versión subida tendría su propia URL pública.
+  "workers_dev": true,
+  "preview_urls": false,
+
+  "kv_namespaces": [
+    {
+      // Caché de precios, historial, BCRP y FRED. Ojo: el plan gratis permite
+      // 1.000 escrituras/día (la Cache API no funciona detrás de Access).
+      "binding": "CACHE",
+      "id": "a0b5022db4cb4b4a81b78c45f4af0ea4"
+    }
+  ],
+
+  // Variables NO secretas. Claves y configuración de Access van como secretos
+  // (panel de Cloudflare → Variables and Secrets), nunca en el repo.
+  "vars": {
+    "TIMEZONE": "America/Lima"
+  },
+
+  "observability": { "enabled": true }
+}

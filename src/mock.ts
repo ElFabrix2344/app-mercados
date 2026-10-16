@@ -1,0 +1,112 @@
+// Datos ficticios para desarrollo local (MOCK_DATA=true y DEV_MODE=true en localhost).
+// Son caminatas aleatorias con semilla fija: sirven para ver el diseño, no son precios reales.
+
+import { usMarketOpen } from './lib/market-hours';
+import { addDays, isoDate } from './lib/num';
+import { seriesStats } from './lib/stats';
+import type { DailyPoint, Quote } from './lib/twelvedata';
+import type { Fresh, HistoryData, PeruData, QuotesData, UsaData } from './services/market';
+
+const BASE: Record<string, { name: string; exchange: string; currency: string; start: number; vol: number; crypto?: boolean }> = {
+  BAP: { name: 'Credicorp Ltd.', exchange: 'NYSE', currency: 'USD', start: 250, vol: 0.018 },
+  SCCO: { name: 'Southern Copper Corp.', exchange: 'NYSE', currency: 'USD', start: 100, vol: 0.022 },
+  BVN: { name: 'Buenaventura', exchange: 'NYSE', currency: 'USD', start: 15, vol: 0.028 },
+  SPY: { name: 'SPDR S&P 500 ETF', exchange: 'NYSE', currency: 'USD', start: 560, vol: 0.01 },
+  'USD/PEN': { name: 'Dólar / Sol', exchange: 'Forex', currency: 'PEN', start: 3.7, vol: 0.003 },
+  'BTC/USD': { name: 'Bitcoin / Dólar', exchange: 'Binance', currency: 'USD', start: 65000, vol: 0.03, crypto: true },
+};
+
+function seedOf(s: string): number {
+  let h = 2166136261;
+  for (const c of s) h = Math.imul(h ^ c.charCodeAt(0), 16777619);
+  return h >>> 0;
+}
+
+function rng(seed: number): () => number {
+  let a = seed;
+  return () => {
+    a = (a + 0x6d2b79f5) | 0;
+    let t = Math.imul(a ^ (a >>> 15), 1 | a);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
+function info(symbol: string) {
+  return BASE[symbol] ?? { name: symbol, exchange: 'NYSE', currency: 'USD', start: 50, vol: 0.02 };
+}
+
+function walk(symbol: string, now: Date): DailyPoint[] {
+  const meta = info(symbol);
+  const rand = rng(seedOf(symbol));
+  const today = isoDate(now);
+  const pts: DailyPoint[] = [];
+  let price = meta.start;
+  for (let d = addDays(today, -366); d < today; d = addDays(d, 1)) {
+    const dow = new Date(`${d}T12:00:00Z`).getUTCDay();
+    if (!meta.crypto && (dow === 0 || dow === 6)) continue;
+    const shock = (rand() + rand() + rand() - 1.5) * 2 * meta.vol + meta.vol * 0.06;
+    price = Math.max(price * (1 + shock), meta.start * 0.2);
+    pts.push({ date: d, close: Number(price.toPrecision(6)) });
+  }
+  return pts;
+}
+
+function fresh<T>(data: T, now: Date): Fresh<T> {
+  return { data, fetchedAt: now.toISOString(), stale: false, note: 'Datos de prueba' };
+}
+
+export function mockQuotes(symbols: string[], now: Date): Fresh<QuotesData> & { market: { open: boolean } } {
+  const quotes: Quote[] = symbols.map((symbol) => {
+    const pts = walk(symbol, now);
+    const meta = info(symbol);
+    const prev = pts.at(-1)!.close;
+    const price = Number((prev * (1 + (rng(seedOf(symbol + isoDate(now)))() - 0.5) * meta.vol * 2)).toPrecision(6));
+    const closes = pts.slice(-252).map((p) => p.close);
+    return {
+      symbol,
+      name: meta.name,
+      exchange: meta.exchange,
+      currency: meta.currency,
+      price,
+      prevClose: prev,
+      change: price - prev,
+      changePct: (price / prev - 1) * 100,
+      asOf: new Date(now.getTime() - 60_000).toISOString(),
+      isMarketOpen: true,
+      low52: Math.min(...closes),
+      high52: Math.max(...closes),
+    };
+  });
+  const fetched = Object.fromEntries(symbols.map((s) => [s, now.toISOString()]));
+  return { ...fresh({ quotes, errors: {}, symbols, fetched }, now), market: { open: usMarketOpen(now) } };
+}
+
+export function mockHistory(symbol: string, now: Date): Fresh<HistoryData> & { stats: ReturnType<typeof seriesStats> } {
+  const pts = walk(symbol, now);
+  return { ...fresh({ symbol, points: pts.map((p) => [p.date, p.close] as [string, number]) }, now), stats: seriesStats(pts) };
+}
+
+export function mockPeru(now: Date): Fresh<PeruData> {
+  const fx = walk('USD/PEN', now)
+    .slice(-30)
+    .map((p) => ({ date: p.date, buy: p.close, sell: Number((p.close + 0.002).toFixed(4)) }));
+  const today = isoDate(now);
+  const inflation = Array.from({ length: 13 }, (_, i) => ({
+    date: `${addDays(today, -31 * (13 - i)).slice(0, 7)}-01`,
+    value: Number((2 + Math.sin(i / 2)).toFixed(2)),
+  }));
+  return fresh({ fx, policyRate: { date: addDays(today, -1), value: 4.5 }, inflation }, now);
+}
+
+export function mockUsa(now: Date): Fresh<UsaData> {
+  const today = isoDate(now);
+  const treasury10y = walk('UST10', now)
+    .slice(-60)
+    .map((p) => ({ date: p.date, value: Number((3.5 + (p.close - 50) / 40).toFixed(2)) }));
+  const cpiYoY = Array.from({ length: 13 }, (_, i) => ({
+    date: `${addDays(today, -31 * (14 - i)).slice(0, 7)}-01`,
+    value: Number((2.5 + Math.cos(i / 3) * 0.5).toFixed(2)),
+  }));
+  return fresh({ treasury10y, fedFunds: { date: addDays(today, -1), value: 4 }, cpiYoY }, now);
+}

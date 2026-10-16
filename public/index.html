@@ -1,0 +1,93 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+  <title>Mercados</title>
+  <meta name="theme-color" content="#0A0A0A">
+  <meta name="color-scheme" content="dark">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black">
+  <meta name="apple-mobile-web-app-title" content="Mercados">
+  <meta name="robots" content="noindex,nofollow">
+  <link rel="manifest" href="/manifest.webmanifest" crossorigin="use-credentials">
+  <link rel="icon" href="/icon.svg" type="image/svg+xml">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&display=swap">
+  <link rel="stylesheet" href="/styles.css">
+  <script src="/app.js" defer></script>
+</head>
+<body>
+<div class="wrap">
+  <header class="bar">
+    <div class="brand">
+      <h1 class="logo">Mercados</h1>
+      <span class="clock" id="today">—</span>
+    </div>
+    <div class="hactions">
+      <span class="status" id="fresh" aria-live="polite">Cargando…</span>
+      <span class="pill" id="credits" title="Créditos de Twelve Data que usó la app hoy (freno: 600 de 800)">— / 600 créditos</span>
+      <button type="button" id="refresh-btn"><span class="ico" aria-hidden="true">↻</span> Actualizar</button>
+    </div>
+  </header>
+
+  <div class="banner" id="banner" role="status" hidden></div>
+
+  <section class="screen" aria-labelledby="wl-h">
+    <div class="screen-head">
+      <h2 id="wl-h">Lista de seguimiento</h2>
+      <span class="mkt" id="mkt"></span>
+      <button type="button" id="edit-btn">Editar</button>
+    </div>
+    <form id="wl-form" class="wl-form" hidden>
+      <label for="wl-input">Símbolos, separados por comas (máximo 8)</label>
+      <div class="wl-row">
+        <input id="wl-input" name="symbols" autocomplete="off" autocapitalize="characters" spellcheck="false">
+        <button type="submit">Guardar</button>
+        <button type="button" id="wl-cancel">Cancelar</button>
+      </div>
+      <p class="hint">Plan gratis: acciones y ETF de EE. UU. (BAP, SPY), divisas (USD/PEN) y cripto (BTC/USD).</p>
+      <p class="err" id="wl-err" hidden></p>
+    </form>
+    <div class="wl-cols" aria-hidden="true">
+      <span>Símbolo</span><span>Nombre</span><span>Último</span><span>Var. día</span><span>1 año</span><span>1A %</span><span>Hora</span>
+    </div>
+    <div class="rows" id="tiles"></div>
+    <p class="hint" id="hist-note" hidden></p>
+  </section>
+
+  <section class="screen detail" id="detail" aria-labelledby="d-title" hidden>
+    <div class="screen-head">
+      <div>
+        <span class="eyebrow" id="d-sub"></span>
+        <h2 id="d-title"></h2>
+      </div>
+      <button type="button" id="d-close">Cerrar</button>
+    </div>
+    <div class="chart" id="d-chart"></div>
+    <dl class="stats" id="d-stats"></dl>
+    <details class="table-view">
+      <summary>Ver tabla (cierre de cada mes)</summary>
+      <table id="d-table"><thead><tr><th scope="col">Mes</th><th scope="col">Cierre</th><th scope="col">Variación</th></tr></thead><tbody></tbody></table>
+    </details>
+  </section>
+
+  <div class="macro">
+    <section class="screen" aria-labelledby="pe-h">
+      <div class="screen-head"><h2 id="pe-h">Perú</h2><span class="src">BCRP</span></div>
+      <div id="peru" class="macro-body"><p class="muted">Cargando…</p></div>
+    </section>
+    <section class="screen" aria-labelledby="us-h">
+      <div class="screen-head"><h2 id="us-h">EE. UU.</h2><span class="src">FRED</span></div>
+      <div id="usa" class="macro-body"><p class="muted">Cargando…</p></div>
+    </section>
+  </div>
+
+  <footer class="foot">
+    Fuentes: Twelve Data (precios), BCRP (Perú) y FRED (EE. UU.). Datos informativos; no es asesoría de inversión.
+  </footer>
+</div>
+<div class="tooltip" id="tooltip" role="tooltip" hidden></div>
+</body>
+</html>
