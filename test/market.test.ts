@@ -48,6 +48,18 @@ describe('quotes (caché y freno)', () => {
     expect(await kv.get('budget', 'json')).toEqual({ day: '2026-10-16', used: 2 });
   });
 
+  it('con `only` renueva solo esos símbolos y guarda la lista completa', async () => {
+    const { kv } = memoryKV();
+    const { f, calls } = batchFetch();
+    const d = { kv, now: t0, fetch: f, twelveKey: 'k' };
+    await quotes(d, ['BAP', 'SPY'], false);
+    const later = { ...d, now: new Date(t0.getTime() + 10 * 60_000) };
+    const r = await quotes(later, ['BAP', 'SPY'], false, ['SPY']);
+    expect(calls.map((u) => u.searchParams.get('symbol'))).toEqual(['BAP,SPY', 'SPY']);
+    expect(r.data.quotes.map((q) => q.symbol).sort()).toEqual(['BAP', 'SPY']);
+    expect(r.data.fetched.BAP).toBe(t0.toISOString());
+  });
+
   it('con el freno alcanzado muestra el último dato sin llamar a la API', async () => {
     const { kv } = memoryKV({
       budget: { day: '2026-10-16', used: DAILY_CREDIT_CAP },

@@ -192,10 +192,19 @@ function latestFetch(data: QuotesData, now: Date): string {
   return times.length ? times.reduce((a, b) => (a > b ? a : b)) : now.toISOString();
 }
 
-export async function quotes(d: Deps, symbols: string[], force: boolean): Promise<Fresh<QuotesData> & { market: { open: boolean } }> {
+/**
+ * Precios de la lista con las reglas de renovación de arriba. `only` limita qué símbolos se pueden
+ * renovar (el conector de Claude pide algunos); el registro guardado sigue teniendo toda la lista.
+ */
+export async function quotes(
+  d: Deps,
+  symbols: string[],
+  force: boolean,
+  only: string[] = symbols,
+): Promise<Fresh<QuotesData> & { market: { open: boolean } }> {
   const market = { open: usMarketOpen(d.now) };
   const prev = readQuotes(await d.kv.get<Stored<QuotesData>>('quotes', 'json'));
-  const due = symbolsToRefresh(prev, symbols, d.now, force);
+  const due = symbolsToRefresh(prev, only.filter((s) => symbols.includes(s)), d.now, force);
   const view = (data: QuotesData, stale: boolean, note: string | null) => {
     const shown = onlySymbols(data, symbols);
     return { data: shown, fetchedAt: latestFetch(shown, d.now), stale, note, market };

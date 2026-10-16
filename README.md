@@ -3,8 +3,8 @@
 Panel personal y privado de mercados: precios de **Twelve Data**, datos de Perú del **BCRP** y de EE. UU. de **FRED**, en un **Cloudflare Worker** protegido con **Cloudflare Access**. Diseño «Terminal» (solo modo oscuro).
 
 ```
-Navegador ──► Cloudflare Access (login con tu correo) ──► Worker ──► Twelve Data / BCRP / FRED
-                                                            └──► KV (caché y freno de créditos)
+Navegador ─────────► Cloudflare Access (login con tu correo) ──► Worker ──► Twelve Data / BCRP / FRED
+Claude (conector) ─► Access con Managed OAuth (token de Claude) ──┘   └──► KV (caché y freno de créditos)
 ```
 
 ## Cómo funciona
@@ -32,12 +32,31 @@ Todas las rutas exigen sesión de Cloudflare Access.
 | GET | `/api/history?symbol=BAP` | Cierres diarios del último año y estadísticas |
 | GET | `/api/peru` | Dólar interbancario, tasa de referencia e inflación (BCRP) |
 | GET | `/api/usa` | Bono a 10 años, tasa de la Fed e inflación (FRED) |
+| POST | `/mcp` | Conector de Claude (MCP), ver abajo |
+
+## Conector de Claude (MCP)
+
+`/mcp` es un servidor MCP remoto (Streamable HTTP, sin estado; SDK `@modelcontextprotocol/server`) para usar Mercados desde cualquier chat de claude.ai. Herramientas, todas de solo lectura:
+
+| Herramienta | Qué devuelve |
+|---|---|
+| `precios` | Precios de la lista de seguimiento (todos o los símbolos pedidos) |
+| `historial` | Cierres del último año de un símbolo de la lista y sus estadísticas |
+| `peru_bcrp` | Dólar interbancario, tasa de referencia e inflación de Lima (BCRP) |
+| `eeuu_fred` | Bono del Tesoro a 10 años, tasa de la Fed e inflación (FRED) |
+
+- **Mismos datos y reglas que el panel:** lee la misma caché de KV, renueva solo lo vencido con las mismas reglas (acciones solo con la bolsa abierta) y cuenta para el mismo freno de 600 créditos. Solo responde por los símbolos de la lista; para otros, Claude debe usar el conector oficial de Twelve Data.
+- **Autenticación:** la hace Cloudflare Access con **Managed OAuth** (beta abierta). Access registra a Claude, te pide el mismo login del panel y le da a Claude un token. Con ese token, Access deja pasar la petición con su JWT y el Worker lo valida igual que en el panel (firma, AUD y `ALLOWED_EMAILS`). Sin JWT válido, `/mcp` no entrega nada.
+- **Configuración en Access** (Zero Trust → Access controls → Applications → app de `mercados…workers.dev` → Edit → Advanced settings): **Managed OAuth** activado; **Allowed redirect URIs** `https://claude.ai/api/mcp/auth_callback` y `https://claude.com/api/mcp/auth_callback`; localhost y loopback apagados; token de 15 min y sesión de 2 semanas.
+- **Agregarlo en Claude:** claude.ai → Customize → Connectors → **+ Add** → **Add custom connector**. URL: `https://mercados.pizarra-semanal.workers.dev/mcp`. En el plan gratis de Claude solo se permite un conector personalizado.
+- **Probarlo en local:** con `npm run dev`, `POST http://localhost:8788/mcp` responde con datos ficticios y sin Access.
 
 ## Estructura
 
 ```
 src/
   index.ts              router, validación de Access, cabeceras de seguridad
+  mcp.ts                conector de Claude: servidor MCP y sus 4 herramientas
   auth/access.ts        verificación del JWT de Cloudflare Access (jose)
   services/market.ts    caché en KV, freno de créditos y qué símbolos renovar
   lib/twelvedata.ts     cliente de Twelve Data
@@ -75,3 +94,5 @@ Cada push a `main` ejecuta GitHub Actions: typecheck, pruebas y `wrangler deploy
 | Un secreto con `formatOk: false` | Pegado con Ctrl+V en un prompt oculto de la terminal (guarda `\u0016`) | Cárgalo desde el panel de Cloudflare |
 | Precios «Guardado hace…» | Se alcanzó el freno de créditos o Twelve Data no respondió | Esperar al día siguiente (UTC) o revisar `/api/status` |
 | Gasto de créditos en feriados de EE. UU. | El horario no contempla feriados | Aceptado: son pocos créditos |
+| Claude no logra conectar el conector | Falta Managed OAuth o la URL de regreso de Claude en la app de Access | Revisa la configuración de Access de la sección del conector |
+| El freno cuenta unos créditos de menos | El panel (desde Lima) y Claude (desde EE. UU.) escriben el contador en KV, que tarda hasta 60 s en propagarse | Aceptado: el margen de 200 créditos lo cubre |

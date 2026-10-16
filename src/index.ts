@@ -1,6 +1,7 @@
 import { allowedEmails, verifyAccess } from './auth/access';
 import { isLocalDev, isMock, trimSecrets, type Env } from './env';
 import { ApiError, errorResponse, escapeHtml, htmlPage, json } from './lib/http';
+import { handleMcp } from './mcp';
 import { mockHistory, mockPeru, mockQuotes, mockUsa } from './mock';
 import {
   DAILY_CREDIT_CAP,
@@ -54,11 +55,14 @@ export default {
 
 async function route(req: Request, env: Env, url: URL): Promise<Response | null> {
   const p = url.pathname;
-  if (!p.startsWith('/api/')) return null;
+  if (p !== '/mcp' && !p.startsWith('/api/')) return null;
 
   const now = new Date();
   const mock = isMock(url, env);
   const deps: Deps = { kv: env.CACHE, now, twelveKey: env.TWELVE_DATA_API_KEY, fredKey: env.FRED_API_KEY };
+
+  // Conector de Claude. Llega aquí solo con un JWT de Access válido (Managed OAuth le da el token a Claude).
+  if (p === '/mcp') return handleMcp(req, { deps, mock, timeZone: env.TIMEZONE || 'America/Lima' });
 
   if (req.method === 'GET') {
     switch (p) {
