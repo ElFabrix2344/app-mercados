@@ -51,7 +51,7 @@ Las tres preguntas pendientes las respondió Claude con la opción más simple, 
 
 ## 4. Ajustes tuyos que no dependen de los amigos
 
-- [ ] **`FRED_API_KEY`** en los dos Workers (`mercados` y `mercados-mcp`). Sin la clave, la sección de EE. UU. muestra un error.
+- [x] **`FRED_API_KEY`** cargada el 22 de octubre. Verificada en el conector: bono a 10 años 5,12 % (20 oct), tasa de la Fed 3,88 % e inflación anual 3,72 % (setiembre).
 - [ ] **Reconectar el conector en claude.ai** para que aparezca `comparar` y, cuando tenga fechas, `calendario`.
 - [ ] **Probar en el celular** la medición con dos dedos: hasta ahora solo se probó simulada.
 
