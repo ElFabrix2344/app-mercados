@@ -7,7 +7,8 @@ import * as z from 'zod';
 import type { Role } from './auth/access';
 import { CALENDAR_UNTIL, EVENTS, SOURCES, upcoming } from './lib/calendar';
 import { ApiError } from './lib/http';
-import { mockCompare, mockHistory, mockPeru, mockPeruMarkets, mockQuotes, mockUsa } from './mock';
+import { mockCompare, mockHistory, mockPeru, mockPeruMarkets, mockPriceSource, mockQuotes, mockUsa } from './mock';
+import { kvSource, readTrades, valuePortfolio } from './services/portfolio';
 import {
   COMPARE_MAX,
   DAILY_CREDIT_CAP,
@@ -247,6 +248,62 @@ function registerMarketTools(server: McpServer, c: McpContext, when: When): void
           actualizado: when(r.fetchedAt),
           dato_guardado: r.stale,
           nota: r.notes.join(' ') || null,
+        };
+      }),
+  );
+
+  server.registerTool(
+    'cartera',
+    {
+      title: 'Cartera simulada',
+      description:
+        'Cartera simulada del usuario: sus compras y ventas (fecha, cantidad y precio en US$) valorizadas con los últimos precios ' +
+        'guardados del panel. Trae las posiciones abiertas (cantidad, costo promedio, precio, valor y ganancia), lo ganado en ' +
+        'ventas, los totales en US$ y en soles, y la comparación con haber hecho las mismas compras y ventas en el S&P 500 (SPY). ' +
+        'Costo promedio, sin dividendos ni comisiones. Porcentajes en puntos porcentuales (12.5 = +12,5 %). Solo lectura: las ' +
+        'operaciones se cargan en el panel.',
+      inputSchema: z.object({}),
+      annotations: { readOnlyHint: true, openWorldHint: true },
+    },
+    () =>
+      run(async () => {
+        const list = await getWatchlist(deps.kv);
+        const src = c.mock ? mockPriceSource(list, deps.now) : kvSource(deps);
+        const p = await valuePortfolio(await readTrades(deps.kv), src);
+        const t = p.totals;
+        return {
+          moneda: 'US$',
+          operaciones: p.trades.map((x) => ({ fecha: x.date, operacion: x.side === 'buy' ? 'compra' : 'venta', simbolo: x.symbol, cantidad: x.qty, precio: x.price })),
+          posiciones: p.positions.map((x) => ({
+            simbolo: x.symbol,
+            cantidad: x.qty,
+            costo_promedio: x.avgCost,
+            precio: x.price,
+            valor: x.value,
+            ganancia: x.gain,
+            ganancia_pct: x.ret === null ? null : pct(x.ret),
+            ganancia_realizada: x.realized,
+          })),
+          totales: t && {
+            invertido: t.invested,
+            valor_actual: t.value,
+            cobrado_en_ventas: t.proceeds,
+            total: t.total,
+            ganancia: t.gain,
+            rendimiento_pct: pct(t.ret),
+            ganancia_realizada: t.realized,
+            ganancia_no_realizada: t.unrealized,
+          },
+          en_soles:
+            t && p.fx
+              ? { tipo_de_cambio: p.fx.rate, fuente: p.fx.source, total: Math.round(t.total * p.fx.rate * 100) / 100, ganancia: Math.round(t.gain * p.fx.rate * 100) / 100 }
+              : null,
+          frente_al_sp500:
+            t && p.benchmark
+              ? { total_si_fuera_spy: p.benchmark.total, rendimiento_spy_pct: pct(p.benchmark.ret), diferencia_pts: pct(t.ret - p.benchmark.ret) }
+              : null,
+          precios_de: when(p.pricesAt),
+          notas: p.notes,
         };
       }),
   );

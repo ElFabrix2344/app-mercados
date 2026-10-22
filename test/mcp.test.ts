@@ -67,7 +67,7 @@ describe('servidor MCP', () => {
     const init = await rpc(c, 'initialize', { protocolVersion: '2025-06-18', capabilities: {}, clientInfo: { name: 'test', version: '0' } });
     expect(init.result.serverInfo.name).toBe('rueda');
     const { result } = await rpc(c, 'tools/list');
-    expect(result.tools.map((t: { name: string }) => t.name)).toEqual(['precios', 'historial', 'comparar', 'peru_bcrp', 'eeuu_fred', ...CALENDAR_TOOL]);
+    expect(result.tools.map((t: { name: string }) => t.name)).toEqual(['precios', 'historial', 'comparar', 'cartera', 'peru_bcrp', 'eeuu_fred', ...CALENDAR_TOOL]);
     for (const t of result.tools) expect(t.annotations.readOnlyHint).toBe(true);
   });
 

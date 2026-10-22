@@ -4,6 +4,7 @@
 import { usMarketOpen } from './lib/market-hours';
 import { addDays, isoDate } from './lib/num';
 import type { DailyPoint, Quote } from './lib/twelvedata';
+import type { PriceSource } from './services/portfolio';
 import {
   DEFAULT_RANGE,
   shapeCompare,
@@ -132,6 +133,19 @@ export function mockPeru(now: Date): Fresh<PeruData> {
     value: Number((2 + Math.sin(i / 2)).toFixed(2)),
   }));
   return fresh({ fx, policyRate: { date: addDays(today, -1), value: 4.5 }, inflation }, now);
+}
+
+/** Precios de prueba para la cartera simulada (sin KV ni APIs). */
+export function mockPriceSource(symbols: string[], now: Date): PriceSource {
+  const q = mockQuotes(symbols, now).data;
+  return {
+    quotes: async () => q,
+    closes: async (symbol) => mockPoints(symbol, now),
+    usdPen: async (quotes) => {
+      const live = quotes?.quotes.find((x) => x.symbol === 'USD/PEN')?.price;
+      return { rate: live ?? 3.7, source: live ? 'USD/PEN de tu lista' : 'tipo de cambio de prueba' };
+    },
+  };
 }
 
 export function mockPeruMarkets(now: Date): Fresh<PeruMarkets> {

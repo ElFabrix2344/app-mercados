@@ -235,6 +235,20 @@ button[disabled]{opacity:.6;cursor:default}
 .pm-chgs{display:flex;flex-wrap:wrap;gap:2px 14px;font-size:.78rem;color:var(--muted);padding-left:12px}
 .pm-chg{white-space:nowrap}
 
+/* ---------- cartera simulada ---------- */
+.pf-form{display:flex;flex-wrap:wrap;gap:8px 12px;align-items:flex-end;margin-bottom:12px}
+.pf-form label{display:flex;flex-direction:column;gap:3px;font-size:.72rem;color:var(--muted);text-transform:uppercase;letter-spacing:.05em}
+.pf-form input,.pf-form select{font:inherit;font-size:15px;color:var(--ink);background:var(--bg);border:1px solid var(--line);border-radius:var(--r);
+  padding:5px 8px;min-width:0;text-transform:none;letter-spacing:0}
+.pf-form input[type="number"]{width:9rem}
+.pf-form #pf-price{width:11rem}
+/* Una tabla debajo de la otra: tienen muchas columnas y lado a lado no caben. */
+.pf-tables{display:grid;gap:14px;grid-template-columns:minmax(0,1fr);margin-top:14px;border-top:1px solid var(--line);padding-top:12px}
+.pf-tables .hint{margin:0 0 6px}
+.pf-tables > div{min-width:0;overflow-x:auto}
+.pf-del{padding:2px 8px;font-size:.75rem;color:var(--muted)}
+.metric .value.up{color:var(--up)} .metric .value.down{color:var(--down)}
+
 /* ---------- calendario ---------- */
 .cal{list-style:none;margin:0;padding:0;display:flex;flex-direction:column}
 .cal-row{display:grid;grid-template-columns:12ch 6ch minmax(0,1fr) auto;gap:2px 14px;align-items:baseline;padding:8px 0;border-bottom:1px solid var(--hair)}

@@ -36,18 +36,18 @@ Fechas ya investigadas en las fuentes oficiales el 21 de octubre. Hay que volver
 - **INEI:** 1 de noviembre y 1 de diciembre de 2026, según su calendario oficial (inei.gob.pe/calendario). 2027 todavía no aparece. En la práctica publica el día 1 de cada mes aunque sea fin de semana o feriado, así que 2027 iría como tentativo.
 - **BLS:** 10 de noviembre y 10 de diciembre de 2026. En 2027: 13 de enero, 11 de febrero, 10 de marzo, 13 de abril, 12 de mayo, 10 de junio, 14 de julio, 11 de agosto, 14 de setiembre, 14 de octubre, 10 de noviembre y 10 de diciembre.
 
-## 3. Fase 3D: cartera simulada
+## 3. Fase 3D: cartera simulada — hecho el 22 de octubre
 
-Antes de empezar hay que decidir:
-- ¿Solo con símbolos de la lista o con cualquiera?
-- ¿Mostrarla también en soles?
-- ¿Contar los dividendos?
+Las tres preguntas pendientes las respondió Claude con la opción más simple, porque el usuario pidió avanzar sin consultar. Se pueden cambiar:
+- **Símbolos:** solo los de la lista que cotizan en dólares (acciones, ETF y cripto); USD/PEN no entra.
+- **Soles:** los totales se muestran también en soles, con el USD/PEN de la lista o el dólar del BCRP.
+- **Dividendos:** no se cuentan, ni tampoco comisiones.
 
-Alcance pensado:
-- Registrar compras y ventas simuladas: fecha, símbolo, cantidad y precio.
-- Mostrar el valor actual, la ganancia o pérdida y el rendimiento, comparados con el S&P 500 (SPY) en el mismo periodo.
-- Exportar a CSV y consultarla desde el conector.
-- Solo para el dueño, porque usa precios de Twelve Data.
+- [x] Registrar compras y ventas simuladas: fecha, símbolo, cantidad y precio. Sin precio, usa el cierre de ese día.
+- [x] Mostrar el valor actual, la ganancia o pérdida y el rendimiento, comparados con haber hecho las mismas operaciones en el S&P 500 (SPY).
+- [x] Exportar a CSV y consultarla desde el conector (herramienta `cartera`).
+- [x] Solo para el dueño, porque usa precios de Twelve Data.
+- [x] Publicado directo, a pedido del usuario: se revisa después.
 
 ## 4. Ajustes tuyos que no dependen de los amigos
 

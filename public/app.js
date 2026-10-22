@@ -25,6 +25,7 @@
     peruData: null, // lo último de /api/peru y /api/usa (el calendario muestra la tasa o la inflación actual)
     usaData: null,
     peruMarkets: null, // cobre, oro, BVL y reservas (también van en la cinta)
+    portfolio: null, // respuesta de /api/portfolio (cartera simulada, solo el dueño)
     marketOpen: null, // ¿la bolsa de Nueva York está en sesión? (de /api/status y de cada pedido de precios)
     calendar: null, // respuesta de /api/calendar
     notes: new Map(), // clave → { text, kind }
@@ -712,6 +713,8 @@
     try {
       state.quotes = await api(`/api/quotes${refresh ? '?refresh=1' : ''}`);
       if (state.quotes?.market) state.marketOpen = state.quotes.market.open;
+      // La cartera se valoriza con los precios guardados: con precios nuevos, se vuelve a pedir.
+      if (state.portfolio) loadPortfolio();
       setNote('quotes', state.quotes.stale && state.quotes.note ? `Precios guardados: ${state.quotes.note}` : null);
       setNote('mock', state.quotes.note === 'Datos de prueba' ? 'Datos de prueba: no son precios reales.' : null);
     } catch (e) {
@@ -1191,6 +1194,147 @@
     };
   }
 
+  // ---------- cartera simulada ----------
+  const usd = (v) => (v == null ? '—' : `US$ ${nf(2).format(v)}`);
+  const signedUsd = (v) => `${sign(v)}US$ ${nf(2).format(Math.abs(v))}`;
+  const pen = (v) => `S/ ${nf(2).format(v)}`;
+  const qtyFmt = new Intl.NumberFormat(LOCALE, { maximumFractionDigits: 6 });
+  /** Acciones y ETF (sin «/») o cripto en dólares; USD/PEN no entra: la cartera es en US$. */
+  const isUsdSymbol = (s) => !s.includes('/') || s.endsWith('/USD');
+
+  function renderPortfolioForm() {
+    const sel = $('pf-symbol');
+    const syms = state.symbols.filter(isUsdSymbol);
+    const current = sel.value;
+    sel.replaceChildren(...syms.map((s) => h('option', { value: s }, s)));
+    if (syms.includes(current)) sel.value = current;
+    const date = $('pf-date');
+    date.max = today();
+    if (!date.value) date.value = today();
+  }
+
+  function pfError(msg) {
+    const p = $('pf-err');
+    p.textContent = msg || '';
+    p.hidden = !msg;
+  }
+
+  async function loadPortfolio(init, path = '/api/portfolio') {
+    try {
+      state.portfolio = await api(path, init);
+      pfError(null);
+      renderPortfolio();
+      return true;
+    } catch (e) {
+      if (init) pfError(e.message);
+      else $('pf-body').replaceChildren(h('p', { class: 'err' }, e.message));
+      return false;
+    }
+  }
+
+  async function submitTrade(e) {
+    e.preventDefault();
+    const body = { date: $('pf-date').value, symbol: $('pf-symbol').value, side: $('pf-side').value, qty: $('pf-qty').value, price: $('pf-price').value || null };
+    const ok = await loadPortfolio({ method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+    if (ok) {
+      $('pf-qty').value = '';
+      $('pf-price').value = '';
+    }
+  }
+
+  function removeTrade(t) {
+    if (!window.confirm(`¿Borrar la ${t.side === 'buy' ? 'compra' : 'venta'} de ${qtyFmt.format(t.qty)} ${t.symbol} del ${fDayYear.format(day(t.date))}?`)) return;
+    loadPortfolio({ method: 'DELETE', headers: { 'Content-Type': 'application/json' } }, `/api/portfolio?id=${encodeURIComponent(t.id)}`);
+  }
+
+  function renderPortfolio() {
+    const p = state.portfolio;
+    const host = $('pf-body');
+    $('pf-csv').disabled = !p?.trades?.length;
+    if (!p) return;
+    if (!p.trades.length) {
+      host.replaceChildren(h('p', { class: 'muted' }, 'Todavía no hay operaciones. Agrega una compra para empezar.'));
+      return;
+    }
+    const t = p.totals;
+    const row = h('div', { class: 'metric-row' });
+    row.append(
+      metric('Invertido', usd(t.invested), `${p.trades.length} ${p.trades.length === 1 ? 'operación' : 'operaciones'}`),
+      metric('Valor hoy', usd(t.total), t.proceeds ? `Posiciones ${usd(t.value)} · cobrado ${usd(t.proceeds)}` : 'Con los últimos precios guardados'),
+    );
+    const gain = metric('Ganancia', pctFrac(t.ret), signedUsd(t.gain));
+    gain.querySelector('.value').classList.add(trend(t.gain));
+    row.append(gain);
+    if (p.fx) row.append(metric('En soles', pen(t.total * p.fx.rate), `Ganancia ${sign(t.gain)}${pen(Math.abs(t.gain * p.fx.rate))} · S/ ${nf(4).format(p.fx.rate)} por US$`));
+    if (p.benchmark) {
+      const diff = t.ret - p.benchmark.ret;
+      const vs = metric('Frente al S&P 500', `${sign(diff)}${nf(1).format(Math.abs(diff * 100))} pts`, `Con el SPY habrías ganado ${pctFrac(p.benchmark.ret)}`);
+      vs.querySelector('.value').classList.add(trend(diff));
+      row.append(vs);
+    }
+
+    const head = (...cols) => h('thead', {}, h('tr', {}, ...cols.map((c) => h('th', { scope: 'col' }, c))));
+    const positions = h(
+      'table',
+      { class: 'cmp-stats' },
+      head('Símbolo', 'Cantidad', 'Costo prom.', 'Precio', 'Valor', 'Ganancia'),
+      h(
+        'tbody',
+        {},
+        ...p.positions.map((x) =>
+          h(
+            'tr',
+            {},
+            h('th', { scope: 'row' }, x.symbol),
+            h('td', {}, qtyFmt.format(x.qty)),
+            h('td', {}, fmtPrice(x.avgCost)),
+            h('td', {}, x.price == null ? '—' : fmtPrice(x.price)),
+            h('td', {}, usd(x.value)),
+            h('td', { class: x.gain == null ? 'flat' : trend(x.gain) }, x.gain == null ? '—' : `${signedUsd(x.gain)} (${pctFrac(x.ret)})`),
+          ),
+        ),
+      ),
+    );
+    const trades = h(
+      'table',
+      { class: 'cmp-stats' },
+      head('Fecha', 'Operación', 'Símbolo', 'Cantidad', 'Precio', 'Monto', ''),
+      h(
+        'tbody',
+        {},
+        ...[...p.trades].reverse().map((x) => {
+          const del = h('button', { type: 'button', class: 'pf-del', 'aria-label': `Borrar la ${x.side === 'buy' ? 'compra' : 'venta'} de ${x.symbol} del ${x.date}` }, 'Borrar');
+          del.addEventListener('click', () => removeTrade(x));
+          return h(
+            'tr',
+            {},
+            h('th', { scope: 'row' }, fDayYear.format(day(x.date))),
+            h('td', {}, x.side === 'buy' ? 'Compra' : 'Venta'),
+            h('td', {}, x.symbol),
+            h('td', {}, qtyFmt.format(x.qty)),
+            h('td', {}, fmtPrice(x.price)),
+            h('td', {}, usd(x.qty * x.price)),
+            h('td', {}, del),
+          );
+        }),
+      ),
+    );
+    const notes = [...p.notes];
+    if (p.pricesAt) notes.push(`Precios de ${stamp(p.pricesAt)}.`);
+    if (t.realized) notes.push(`Ganancia realizada en ventas: ${signedUsd(t.realized)}.`);
+    host.replaceChildren(
+      row,
+      h('div', { class: 'pf-tables' }, h('div', {}, h('p', { class: 'hint' }, 'Posiciones abiertas'), p.positions.length ? positions : h('p', { class: 'muted' }, 'No hay posiciones abiertas.')), h('div', {}, h('p', { class: 'hint' }, 'Operaciones'), trades)),
+      ...(notes.length ? [h('p', { class: 'hint' }, notes.join(' '))] : []),
+    );
+    $('pf-csv').onclick = () =>
+      downloadCsv(
+        `cartera_${today()}.csv`,
+        ['fecha', 'operacion', 'simbolo', 'cantidad', 'precio_usd', 'monto_usd'],
+        p.trades.map((x) => [x.date, x.side === 'buy' ? 'compra' : 'venta', x.symbol, x.qty, x.price, round6(x.qty * x.price)]),
+      );
+  }
+
   // ---------- Perú / EE. UU. ----------
   function metric(label, value, sub) {
     return h('div', { class: 'metric' }, h('span', { class: 'label' }, label), h('span', { class: 'value' }, value), sub ? h('span', { class: 'sub' }, sub) : null);
@@ -1444,6 +1588,7 @@
       state.cmp.picks = state.cmp.picks.filter((p) => state.symbols.includes(p.sym));
       prefs.set('mercados.comparar', state.cmp);
       renderCompare();
+      renderPortfolioForm();
       await loadQuotes(false);
       loadHistories().then(loadCompare);
     } catch (err) {
@@ -1461,6 +1606,7 @@
     $('wl-cancel').addEventListener('click', () => openEditor(false));
     $('wl-form').addEventListener('submit', saveList);
     $('d-close').addEventListener('click', () => select(state.selected));
+    $('pf-form').addEventListener('submit', submitTrade);
 
     // Amigos: solo datos públicos (BCRP y FRED). El servidor igual les niega los precios de Twelve Data.
     let role = 'owner';
@@ -1504,7 +1650,9 @@
     loadUsa();
     loadPeruMarkets();
     loadCalendar();
+    renderPortfolioForm();
     await loadQuotes(false);
+    loadPortfolio();
     // La comparación espera a los historiales de las filas: así sale de la caché y no choca con el límite por minuto.
     loadHistories().then(loadCompare);
 

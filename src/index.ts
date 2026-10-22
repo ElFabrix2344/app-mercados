@@ -4,7 +4,8 @@ import { CALENDAR_UNTIL, EVENTS, SOURCES, upcoming } from './lib/calendar';
 import { ApiError, errorResponse, escapeHtml, htmlPage, json } from './lib/http';
 import { NYSE_CALENDAR_UNTIL, usMarketOpen } from './lib/market-hours';
 import { signPayload } from './lib/signed';
-import { mockCompare, mockHistory, mockPeru, mockPeruMarkets, mockQuotes, mockUsa } from './mock';
+import { mockCompare, mockHistory, mockPeru, mockPeruMarkets, mockPriceSource, mockQuotes, mockUsa } from './mock';
+import { addTrade, deleteTrade, kvSource, readTrades, valuePortfolio } from './services/portfolio';
 import {
   DAILY_CREDIT_CAP,
   DEFAULT_RANGE,
@@ -68,7 +69,7 @@ export default {
 } satisfies ExportedHandler<Env>;
 
 /** Precios de Twelve Data: su licencia gratis no permite mostrarlos a otras personas. */
-const OWNER_ONLY = new Set(['/api/watchlist', '/api/quotes', '/api/history', '/api/compare']);
+const OWNER_ONLY = new Set(['/api/watchlist', '/api/quotes', '/api/history', '/api/compare', '/api/portfolio']);
 
 async function route(req: Request, env: Env, url: URL, role: Role, email: string | null): Promise<Response | null> {
   const p = url.pathname;
@@ -134,6 +135,11 @@ async function route(req: Request, env: Env, url: URL, role: Role, email: string
         return json(mock ? mockCompare(symbols, now, range) : await compare(deps, symbols, range));
       }
 
+      case '/api/portfolio': {
+        const src = mock ? mockPriceSource(await getWatchlist(env.CACHE), now) : kvSource(deps);
+        return json(await valuePortfolio(await readTrades(env.CACHE), src));
+      }
+
       case '/api/peru':
         return json(mock ? mockPeru(now) : await peru(deps));
 
@@ -155,6 +161,16 @@ async function route(req: Request, env: Env, url: URL, role: Role, email: string
         });
       }
     }
+  }
+
+  // Cartera simulada: agregar (POST con la operación) o borrar (DELETE ?id=…); responde la cartera ya valorizada.
+  if (p === '/api/portfolio' && (req.method === 'POST' || req.method === 'DELETE')) {
+    sameOrigin(req, url);
+    const list = await getWatchlist(env.CACHE);
+    const src = mock ? mockPriceSource(list, now) : kvSource(deps);
+    if (req.method === 'POST') await addTrade(deps, src, await req.json().catch(() => null), list);
+    else await deleteTrade(deps, url.searchParams.get('id') ?? '');
+    return json(await valuePortfolio(await readTrades(env.CACHE), src));
   }
 
   if (p === '/api/watchlist' && req.method === 'PUT') {

@@ -31,8 +31,30 @@ describe('rutas según el rol (local, con datos de prueba)', () => {
     }) as unknown as Env;
   const get = (path: string, role?: string) => worker.fetch(new Request(`http://localhost${path}`), env(role), {} as ExecutionContext);
 
-  it('un amigo no puede ver precios, historial, comparaciones ni la lista', async () => {
-    for (const path of ['/api/quotes', '/api/history?symbol=BAP', '/api/compare?symbols=BAP,SPY', '/api/watchlist']) {
+  it('la cartera simulada: agrega una compra, la valoriza y la borra', async () => {
+    const e = env();
+    const call = (method: string, path: string, body?: unknown) =>
+      worker.fetch(
+        new Request(`http://localhost${path}`, { method, headers: { 'Content-Type': 'application/json' }, body: body ? JSON.stringify(body) : undefined }),
+        e,
+        {} as ExecutionContext,
+      );
+    const date = new Date(Date.now() - 20 * 86_400_000).toISOString().slice(0, 10);
+    const add = await call('POST', '/api/portfolio', { date, symbol: 'BAP', side: 'buy', qty: 2 });
+    expect(add.status).toBe(200);
+    const p = (await add.json()) as Record<string, any>;
+    expect(p.trades).toHaveLength(1);
+    expect(p.trades[0].price).toBeGreaterThan(0); // sin precio: el cierre de ese día (datos de prueba)
+    expect(p.totals.invested).toBeCloseTo(2 * p.trades[0].price, 2);
+    expect(p.benchmark.symbol).toBe('SPY');
+    expect(p.fx.rate).toBeGreaterThan(0);
+    const del = await call('DELETE', `/api/portfolio?id=${p.trades[0].id}`);
+    expect(((await del.json()) as Record<string, any>).trades).toEqual([]);
+    expect((await call('POST', '/api/portfolio', { date, symbol: 'USD/PEN', side: 'buy', qty: 1 })).status).toBe(400);
+  });
+
+  it('un amigo no puede ver precios, historial, comparaciones, la cartera ni la lista', async () => {
+    for (const path of ['/api/quotes', '/api/history?symbol=BAP', '/api/compare?symbols=BAP,SPY', '/api/portfolio', '/api/watchlist']) {
       const res = await get(path, 'friend');
       expect(res.status).toBe(403);
       expect(await res.text()).toContain('Twelve Data');

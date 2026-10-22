@@ -36,7 +36,7 @@ export interface Fresh<T> {
   note: string | null;
 }
 
-interface Stored<T> {
+export interface Stored<T> {
   fetchedAt: string;
   data: T;
 }
@@ -297,7 +297,7 @@ export type HistoryResult = Fresh<HistoryData> & {
 };
 
 /** Los 5 años guardados de un símbolo (1 crédito cuando hay que pedirlos de nuevo). */
-function storedHistory(d: Deps, symbol: string): Promise<Fresh<HistoryData>> {
+export function storedHistory(d: Deps, symbol: string): Promise<Fresh<HistoryData>> {
   const today = isoDate(d.now);
   return cached<HistoryData>(
     d,

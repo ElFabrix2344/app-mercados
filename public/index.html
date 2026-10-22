@@ -119,6 +119,24 @@
     <p class="hint" id="cmp-note"></p>
   </section>
 
+  <section class="screen owner-only" id="portfolio" aria-labelledby="pf-h">
+    <div class="screen-head">
+      <h2 id="pf-h">Cartera simulada</h2>
+      <button type="button" id="pf-csv" class="csv-btn" title="Operaciones de la cartera, para Excel" disabled>⤓ CSV</button>
+    </div>
+    <form id="pf-form" class="pf-form">
+      <label>Fecha <input type="date" id="pf-date" required></label>
+      <label>Símbolo <select id="pf-symbol" required></select></label>
+      <label>Operación <select id="pf-side"><option value="buy">Compra</option><option value="sell">Venta</option></select></label>
+      <label>Cantidad <input type="number" id="pf-qty" min="0" step="any" inputmode="decimal" required></label>
+      <label>Precio en US$ <input type="number" id="pf-price" min="0" step="any" inputmode="decimal" placeholder="Cierre de ese día"></label>
+      <button type="submit">Agregar</button>
+    </form>
+    <p class="err" id="pf-err" hidden></p>
+    <div id="pf-body"><p class="muted">Cargando…</p></div>
+    <p class="hint">En US$, a costo promedio, sin dividendos ni comisiones. Solo con los símbolos de tu lista que cotizan en dólares. Se valoriza con los precios ya guardados: no gasta créditos.</p>
+  </section>
+
   <div class="macro">
     <section class="screen" aria-labelledby="pe-h">
       <div class="screen-head"><h2 id="pe-h">Perú</h2><span class="src">BCRP</span></div>
