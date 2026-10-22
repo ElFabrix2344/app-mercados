@@ -127,7 +127,7 @@ button[disabled]{opacity:.6;cursor:default}
 .sym{display:inline-flex;align-items:center;gap:6px;white-space:nowrap}
 
 .chart{position:relative;width:100%}
-.chart svg{display:block;overflow:visible;touch-action:pan-y}
+.chart svg{display:block;overflow:visible;touch-action:pan-y;user-select:none;-webkit-user-select:none}
 .chart .line{fill:none;stroke:var(--c,var(--accent));stroke-width:2;stroke-linejoin:round;stroke-linecap:round}
 .c-spark .line{stroke-width:1.5}
 .chart .grid{stroke:var(--hair);stroke-width:1}
@@ -140,6 +140,9 @@ button[disabled]{opacity:.6;cursor:default}
 .chart .end-label.alt{fill:var(--muted);font-weight:400}
 .chart .cross{stroke:var(--muted);stroke-width:1}
 .chart .hover-dot{fill:var(--c,var(--accent));stroke:var(--panel);stroke-width:2}
+/* Medición entre dos días: franja suave detrás de las líneas y bordes finos. */
+.chart .sel-band{fill:var(--accent);fill-opacity:.08}
+.chart .sel-edge{stroke:var(--muted);stroke-width:1}
 /* Mientras llegan otros datos, el gráfico anterior queda atenuado (sin saltos). */
 .is-loading .chart,.is-loading .stats,.is-loading .cmp-grid{opacity:.45;transition:opacity .2s}
 
@@ -149,6 +152,8 @@ button[disabled]{opacity:.6;cursor:default}
 .tooltip .tt-date{display:block;margin-bottom:3px}
 .tooltip .tt-row{display:flex;align-items:center;gap:6px;white-space:nowrap}
 .tooltip .tt-row strong{display:inline;font-size:.85rem}
+.tooltip strong.up{color:var(--up)}
+.tooltip strong.down{color:var(--down)}
 
 /* ---------- ficha ---------- */
 .stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:10px 18px;margin:14px 0 0;border-top:1px solid var(--line);padding-top:12px}

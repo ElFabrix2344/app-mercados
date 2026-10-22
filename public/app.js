@@ -191,8 +191,12 @@
    * refs (valores con línea de referencia), domain [mín, máx] y ticks fijos, height, axis, xLabels, interactive, fmt,
    * dateFmt, axisDateFmt, aria, padR (número o función del ancho), endLabel(serie, valor, ancho) → texto | null,
    * extraTip(i) → filas extra del tooltip, sortTip (filas del tooltip de mayor a menor), flat (sin serie principal).
+   * Medición entre dos días: measure ('main' = solo la principal, 'all' = todas), measureRow(serie, v0, v1, spec)
+   * → { value, label } y monthly (el tramo se cuenta en meses).
    */
   function drawChart(host, spec) {
+    // Si había una medición fija en este gráfico, se va con él (si no, su tooltip quedaría flotando).
+    if (pinned && host.contains(pinned.svg)) pinned.clear();
     charts.set(host, spec);
     host.replaceChildren();
     const { dates, series } = spec;
@@ -265,6 +269,9 @@
       }
     }
     for (const r of spec.refs || []) svg.append(s('line', { class: 'ref', x1: pad.l, x2: W - pad.r, y1: Y(r), y2: Y(r) }));
+    // Capa debajo de las líneas (la franja de la medición).
+    const under = s('g', {});
+    svg.append(under);
     if (spec.band) {
       const { upper, lower } = spec.band;
       svg.append(
@@ -297,7 +304,7 @@
       });
     }
     host.append(svg);
-    if (spec.interactive) attachHover(svg, spec, { W, H, pad, X, Y });
+    if (spec.interactive) attachHover(svg, spec, { W, H, pad, X, Y, under });
   }
 
   /** Una sola serie (minigráficos, Perú, EE. UU.). pts: [{ date: 'YYYY-MM-DD', v: número }]. */
@@ -323,58 +330,239 @@
     ];
   }
 
-  function attachHover(svg, spec, { W, H, pad, X, Y }) {
+  // ---------- medir entre dos días ----------
+  // Una sola medición fija a la vez (hay un solo tooltip). Un toque o clic fuera de su gráfico la borra.
+  let pinned = null; // { svg, clear }
+  document.addEventListener(
+    'pointerdown',
+    (e) => {
+      if (pinned && !pinned.svg.contains(e.target)) pinned.clear();
+    },
+    true,
+  );
+
+  const arrowOf = (d) => (d > 0 ? '▲' : d < 0 ? '▼' : '■');
+
+  /** Variación en % y en la unidad del gráfico, con el valor de cada extremo. */
+  function measureRowDefault(sr, v0, v1, spec) {
+    const d = v1 - v0;
+    return { value: `${arrowOf(d)} ${pctFrac(v1 / v0 - 1, 2)}`, label: `${sign(d)}${spec.fmt(Math.abs(d))} · ${spec.fmt(v0)} → ${spec.fmt(v1)}` };
+  }
+
+  /** Tasas (bono, inflación): la variación va en puntos porcentuales, no en % de un %. */
+  function measureRowPoints(sr, v0, v1, spec) {
+    const d = v1 - v0;
+    return { value: `${arrowOf(d)} ${sign(d)}${nf(2).format(Math.abs(d))} pp`, label: `${spec.fmt(v0)} → ${spec.fmt(v1)}` };
+  }
+
+  /** Lectura de la medición: el tramo (fechas y duración) y una fila por serie medida. */
+  function measureContent(spec, a, b) {
+    const d0 = spec.dates[a];
+    const d1 = spec.dates[b];
+    let span;
+    if (spec.monthly) {
+      const m = (Number(d1.slice(0, 4)) - Number(d0.slice(0, 4))) * 12 + Number(d1.slice(5, 7)) - Number(d0.slice(5, 7));
+      span = `${m} ${m === 1 ? 'mes' : 'meses'}`;
+    } else {
+      const days = Math.round((Date.parse(d1) - Date.parse(d0)) / 86_400_000);
+      span = `${days} ${days === 1 ? 'día' : 'días'}`;
+    }
+    const dateFmt = spec.dateFmt || fDayYear;
+    const rows = (spec.measure === 'all' ? spec.series : spec.series.slice(0, 1))
+      .filter((sr) => sr.values[a] != null && sr.values[b] != null)
+      .map((sr) => ({ sr, v0: sr.values[a], v1: sr.values[b] }));
+    if (spec.measure === 'all') rows.sort((x, y) => y.v1 / y.v0 - x.v1 / x.v0);
+    const rowOf = spec.measureRow || measureRowDefault;
+    return [
+      h('span', { class: 'tt-date' }, `${dateFmt.format(day(d0))} → ${dateFmt.format(day(d1))} · ${span}`),
+      ...rows.map(({ sr, v0, v1 }) => {
+        const r = rowOf(sr, v0, v1, spec);
+        return h('span', { class: `tt-row ${sr.cls || ''}` }, h('span', { class: 'key' }), h('strong', { class: trend(v1 - v0) }, r.value), r.label);
+      }),
+    ];
+  }
+
+  /**
+   * Interacción del gráfico. Un día: pasar el mouse, tocar con un dedo o las flechas. Dos días (medir):
+   * arrastrar con el mouse, dos dedos en el celular o Mayús + flechas. La medición queda fija hasta un
+   * clic o toque fuera, otro clic en el gráfico o Esc.
+   */
+  function attachHover(svg, spec, { W, H, pad, X, Y, under }) {
     const n = spec.dates.length;
     svg.setAttribute('tabindex', '0');
+    svg.setAttribute('aria-keyshortcuts', 'ArrowLeft ArrowRight Shift+ArrowLeft Shift+ArrowRight Escape');
     const cross = s('line', { class: 'cross', y1: pad.t, y2: H - pad.b, visibility: 'hidden' });
     const dots = spec.series.map((sr) => s('circle', { class: `hover-dot ${sr.cls || ''}`, r: 4, visibility: 'hidden' }));
-    svg.append(cross, ...dots);
+    const measured = spec.measure === 'all' ? spec.series : spec.series.slice(0, 1);
+    const band = s('rect', { class: 'sel-band', y: pad.t, height: H - pad.t - pad.b, visibility: 'hidden' });
+    const edges = [0, 1].map(() => s('line', { class: 'sel-edge', y1: pad.t, y2: H - pad.b, visibility: 'hidden' }));
+    const ends = measured.map((sr) => [0, 1].map(() => s('circle', { class: `hover-dot ${sr.cls || ''}`, r: 4, visibility: 'hidden' })));
+    under.append(band);
+    svg.append(cross, ...edges, ...dots, ...ends.flat());
     const tip = $('tooltip');
-    let idx = -1;
+    const clamp = (i) => Math.max(0, Math.min(n - 1, i));
+    const vis = (el, on) => el.setAttribute('visibility', on ? 'visible' : 'hidden');
+    let idx = -1; // día señalado
+    let sel = null; // medición: { anchor, end } (índices)
+    let drag = null; // índice donde empezó el arrastre del mouse
+    let pointerActive = false;
+    const touches = new Map(); // dedos sobre el gráfico: pointerId → índice
+    let frozen = false; // al levantar uno de los dos dedos, la medición queda fija
+
+    /** Tooltip a la derecha de x (o centrado), arriba de y; siempre dentro de la ventana. */
+    const placeTip = (x, y, centered) => {
+      const r = svg.getBoundingClientRect();
+      const sx = r.width / W;
+      let left = centered ? r.left + x * sx - tip.offsetWidth / 2 : r.left + x * sx + 12;
+      if (!centered && left + tip.offsetWidth > window.innerWidth - 8) left = r.left + x * sx - tip.offsetWidth - 12;
+      tip.style.left = `${Math.max(8, Math.min(left, window.innerWidth - tip.offsetWidth - 8))}px`;
+      tip.style.top = `${Math.max(8, r.top + y * sx - tip.offsetHeight - 10)}px`;
+    };
+    const hideDay = () => {
+      vis(cross, false);
+      for (const d of dots) vis(d, false);
+    };
+    const clearSel = () => {
+      sel = null;
+      vis(band, false);
+      for (const e of edges) vis(e, false);
+      for (const d of ends.flat()) vis(d, false);
+      if (pinned?.svg === svg) pinned = null;
+    };
+    const hide = () => {
+      idx = -1;
+      hideDay();
+      clearSel();
+      tip.hidden = true;
+    };
+    // Hay un solo tooltip: usar este gráfico borra la medición fija de otro.
+    const takeTip = () => {
+      if (pinned && pinned.svg !== svg) pinned.clear();
+    };
     const show = (i) => {
-      idx = Math.max(0, Math.min(n - 1, i));
+      takeTip();
+      clearSel();
+      idx = clamp(i);
       const x = X(idx);
       cross.setAttribute('x1', x);
       cross.setAttribute('x2', x);
-      cross.setAttribute('visibility', 'visible');
+      vis(cross, true);
       let top = H - pad.b;
       spec.series.forEach((sr, k) => {
         const v = sr.values[idx];
-        if (v == null) {
-          dots[k].setAttribute('visibility', 'hidden');
-          return;
-        }
+        vis(dots[k], v != null);
+        if (v == null) return;
         dots[k].setAttribute('cx', x);
         dots[k].setAttribute('cy', Y(v));
-        dots[k].setAttribute('visibility', 'visible');
         top = Math.min(top, Y(v));
       });
       tip.replaceChildren(...tipContent(spec, idx));
       tip.hidden = false;
-      const r = svg.getBoundingClientRect();
-      const sx = r.width / W;
-      let left = r.left + x * sx + 12;
-      if (left + tip.offsetWidth > window.innerWidth - 8) left = r.left + x * sx - tip.offsetWidth - 12;
-      tip.style.left = `${Math.max(8, left)}px`;
-      tip.style.top = `${Math.max(8, r.top + top * sx - tip.offsetHeight - 10)}px`;
+      placeTip(x, top, false);
     };
-    const hide = () => {
-      idx = -1;
-      cross.setAttribute('visibility', 'hidden');
-      for (const d of dots) d.setAttribute('visibility', 'hidden');
-      tip.hidden = true;
+    const measure = (anchor, end) => {
+      anchor = clamp(anchor);
+      end = clamp(end);
+      if (anchor === end) {
+        show(end);
+        return;
+      }
+      takeTip();
+      hideDay();
+      sel = { anchor, end };
+      idx = end;
+      const a = Math.min(anchor, end);
+      const b = Math.max(anchor, end);
+      band.setAttribute('x', X(a));
+      band.setAttribute('width', X(b) - X(a));
+      vis(band, true);
+      [a, b].forEach((i, k) => {
+        edges[k].setAttribute('x1', X(i));
+        edges[k].setAttribute('x2', X(i));
+        vis(edges[k], true);
+      });
+      measured.forEach((sr, k) =>
+        [a, b].forEach((i, e) => {
+          const v = sr.values[i];
+          vis(ends[k][e], v != null);
+          if (v == null) return;
+          ends[k][e].setAttribute('cx', X(i));
+          ends[k][e].setAttribute('cy', Y(v));
+        }),
+      );
+      tip.replaceChildren(...measureContent(spec, a, b));
+      tip.hidden = false;
+      placeTip((X(a) + X(b)) / 2, pad.t, true);
+      pinned = { svg, clear: hide };
     };
-    const fromPointer = (e) => {
+
+    const indexAt = (e) => {
       const r = svg.getBoundingClientRect();
       const x = (e.clientX - r.left) * (W / r.width);
-      show(Math.round(((x - pad.l) / (W - pad.l - pad.r)) * (n - 1)));
+      return clamp(Math.round(((x - pad.l) / (W - pad.l - pad.r)) * (n - 1)));
     };
-    svg.addEventListener('pointermove', fromPointer);
-    svg.addEventListener('pointerdown', fromPointer);
-    svg.addEventListener('pointerleave', hide);
+    const twoFingers = () => {
+      const [p, q] = touches.values();
+      measure(p, q);
+    };
+    svg.addEventListener('pointerdown', (e) => {
+      pointerActive = true;
+      const i = indexAt(e);
+      if (e.pointerType === 'touch') {
+        touches.set(e.pointerId, i);
+        frozen = false;
+        if (touches.size >= 2) twoFingers();
+        else show(i);
+        return;
+      }
+      if (e.button !== 0) return;
+      drag = i;
+      svg.setPointerCapture?.(e.pointerId);
+      show(i);
+    });
+    svg.addEventListener('pointermove', (e) => {
+      const i = indexAt(e);
+      if (e.pointerType === 'touch') {
+        if (!touches.has(e.pointerId) || frozen) return;
+        touches.set(e.pointerId, i);
+        if (touches.size >= 2) twoFingers();
+        else if (!sel) show(i);
+        return;
+      }
+      if (drag !== null) measure(drag, i);
+      else if (!sel) show(i); // con una medición fija, pasar el mouse no la cambia
+    });
+    const release = (e) => {
+      pointerActive = false;
+      if (e.pointerType === 'touch') {
+        touches.delete(e.pointerId);
+        if (sel) frozen = touches.size > 0;
+        else if (!touches.size) hide();
+        return;
+      }
+      drag = null;
+    };
+    svg.addEventListener('pointerup', release);
+    svg.addEventListener('pointercancel', (e) => {
+      release(e);
+      if (!sel) hide();
+    });
+    svg.addEventListener('pointerleave', (e) => {
+      if (e.pointerType !== 'touch' && drag === null && !sel) hide();
+    });
     svg.addEventListener('blur', hide);
-    svg.addEventListener('focus', () => show(n - 1));
+    // Al hacer clic el gráfico también recibe el foco: ahí no hay que saltar al último día.
+    svg.addEventListener('focus', () => {
+      if (!pointerActive && idx < 0) show(n - 1);
+    });
     svg.addEventListener('keydown', (e) => {
+      const step = { ArrowLeft: -1, ArrowRight: 1 }[e.key];
+      if (step && e.shiftKey) {
+        const anchor = sel ? sel.anchor : idx >= 0 ? idx : n - 1;
+        measure(anchor, (sel ? sel.end : anchor) + step);
+        e.preventDefault();
+        return;
+      }
       const keys = { ArrowLeft: idx - 1, ArrowRight: idx + 1, Home: 0, End: n - 1 };
       if (e.key in keys) {
         show(keys[e.key]);
@@ -669,6 +857,7 @@
         interactive: true,
         fmt: (v) => nf(1).format(v),
         endLabel: (sr, v) => nf(0).format(v),
+        measureRow: (sr, v0, v1) => ({ value: `${arrowOf(v1 - v0)} ${sign(v1 - v0)}${nf(1).format(Math.abs(v1 - v0))}`, label: `RSI ${nf(1).format(v0)} → ${nf(1).format(v1)}` }),
         aria: `RSI de 14 días de ${sym} en ${RANGE_NAMES[state.range]}`,
       });
     } else {
@@ -900,6 +1089,9 @@
       fmt: (v) => nf(1).format(v),
       axisDateFmt: short ? fDay : fAxisMonth,
       sortTip: true,
+      // Al medir: la variación de cada símbolo en el tramo (en base 100 es la misma que en precio).
+      measure: 'all',
+      measureRow: (sr, v0, v1) => ({ value: `${arrowOf(v1 - v0)} ${pctFrac(v1 / v0 - 1)}`, label: sr.name }),
       aria: `Evolución en base 100 de ${listJoin(series.map((x) => x.name))} en ${RANGE_NAMES[data.range]}`,
     });
 
@@ -1014,7 +1206,7 @@
       const infChart = chartBlock(
         'Inflación 12 meses en Lima, por mes',
         inflation.map((p) => ({ date: p.date, v: p.value })),
-        { fmt: (v) => rate(v), dateFmt: fMonthYear, aria: 'Inflación a 12 meses en Lima Metropolitana, mensual' },
+        { fmt: (v) => rate(v), dateFmt: fMonthYear, monthly: true, measureRow: measureRowPoints, aria: 'Inflación a 12 meses en Lima Metropolitana, mensual' },
         { filename: `bcrp_inflacion_lima_${today()}.csv`, header: ['mes', 'inflacion_12m_pct'], rows: inflation.map((p) => [p.date.slice(0, 7), round6(p.value)]) },
       );
       host.replaceChildren(...parts, fxChart.wrap, infChart.wrap, ...[staleHint(r)].filter(Boolean));
@@ -1039,13 +1231,13 @@
       const tChart = chartBlock(
         'Rendimiento del bono a 10 años, últimos 60 días hábiles',
         treasury10y.map((p) => ({ date: p.date, v: p.value })),
-        { fmt: (v) => rate(v), axisDateFmt: fDay, aria: 'Rendimiento del bono del Tesoro a 10 años, últimos 60 días hábiles' },
+        { fmt: (v) => rate(v), axisDateFmt: fDay, measureRow: measureRowPoints, aria: 'Rendimiento del bono del Tesoro a 10 años, últimos 60 días hábiles' },
         { filename: `fred_bono_10_anios_${today()}.csv`, header: ['fecha', 'rendimiento_pct'], rows: treasury10y.map((p) => [p.date, p.value]) },
       );
       const cChart = chartBlock(
         'Inflación anual de EE. UU., por mes',
         cpiYoY.map((p) => ({ date: p.date, v: p.value })),
-        { fmt: (v) => rate(v, 1), dateFmt: fMonthYear, aria: 'Inflación anual de Estados Unidos, mensual' },
+        { fmt: (v) => rate(v, 1), dateFmt: fMonthYear, monthly: true, measureRow: measureRowPoints, aria: 'Inflación anual de Estados Unidos, mensual' },
         { filename: `fred_inflacion_eeuu_${today()}.csv`, header: ['mes', 'inflacion_anual_pct'], rows: cpiYoY.map((p) => [p.date.slice(0, 7), round6(p.value)]) },
       );
       host.replaceChildren(row, tChart.wrap, cChart.wrap, ...[staleHint(r)].filter(Boolean));
