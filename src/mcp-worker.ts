@@ -43,6 +43,13 @@ interface Props {
   email: string;
 }
 
+/**
+ * Valor de un secreto sin espacios, saltos de línea ni comillas alrededor: al cargarlos con
+ * `wrangler secret put` por tubería o pegándolos en el panel se cuelan (la app hace lo mismo con
+ * `trimSecrets`). Si no, la firma del correo no coincide entre la app y el conector.
+ */
+export const secret = (v: string | undefined): string | undefined => v?.trim().replace(/^["']|["']$/g, '') || undefined;
+
 const SECURITY_HEADERS = {
   'Content-Security-Policy': "default-src 'none'; style-src 'unsafe-inline'; form-action 'self'; frame-ancestors 'none'; base-uri 'none'",
   'X-Content-Type-Options': 'nosniff',
@@ -125,8 +132,12 @@ async function finishLogin(request: Request, env: McpEnv): Promise<Response> {
   const url = new URL(request.url);
   // Recupera la autorización aprobada; exige la cookie de este navegador y funciona una sola vez.
   const { request: original, headers } = await oauth.finishUpstream(request);
-  const claims = await verifyPayload<{ state: string; email: string; exp: number }>(url.searchParams.get('identidad') ?? '', env.LOGIN_LINK_SECRET);
+  const claims = await verifyPayload<{ state: string; email: string; exp: number }>(
+    url.searchParams.get('identidad') ?? '',
+    secret(env.LOGIN_LINK_SECRET),
+  );
   if (!claims || claims.state !== url.searchParams.get('state')) {
+    console.warn('Login del conector: identidad inválida', { firmada: !!claims, mismoState: claims?.state === url.searchParams.get('state') });
     return page('No se pudo confirmar tu correo', '<p>El enlace venció o no es válido. Vuelve a conectar desde Claude.</p>', 400);
   }
   if (roleFor(claims.email, env) !== 'owner') {
@@ -176,7 +187,7 @@ export const apiHandler = {
       return Response.json({ error: 'forbidden', message: 'Esta cuenta ya no tiene acceso al conector.' }, { status: 403 });
     }
     return handleMcp(request, {
-      deps: { kv: env.CACHE, now: new Date(), twelveKey: env.TWELVE_DATA_API_KEY, fredKey: env.FRED_API_KEY },
+      deps: { kv: env.CACHE, now: new Date(), twelveKey: secret(env.TWELVE_DATA_API_KEY), fredKey: secret(env.FRED_API_KEY) },
       mock: false,
       timeZone: env.TIMEZONE || 'America/Lima',
       role: 'owner',

@@ -207,6 +207,35 @@ describe('conector: login completo', () => {
     expect(revoked.status).toBe(403);
   });
 
+  it('acepta la clave compartida aunque en el conector se haya guardado con un salto de línea al final', async () => {
+    // Así queda al cargarla con `wrangler secret put` por tubería desde PowerShell; la app la limpia al leerla.
+    const env = mcpEnv({ LOGIN_LINK_SECRET: `${SECRET}\r\n`, OWNER_EMAILS: `${OWNER}\r\n` });
+    const jar = new Jar();
+    const clientId = await register(env);
+    const consent = await worker.fetch(new Request(await authorizeUrl(clientId, 'z'.repeat(50))), env, ctx);
+    jar.take(consent);
+    const handle = /name="handle" value="([^"]+)"/.exec(await consent.text())![1]!;
+    const approve = await worker.fetch(
+      new Request(`${MCP_ORIGIN}/authorize`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded', Cookie: jar.header() },
+        body: new URLSearchParams({ handle, decision: 'approve' }),
+      }),
+      env,
+      ctx,
+    );
+    jar.take(approve);
+    const state = new URL(approve.headers.get('Location')!).searchParams.get('state')!;
+    const firma = await signPayload({ state, email: OWNER, exp: Date.now() + 60_000 }, SECRET);
+    const res = await worker.fetch(
+      new Request(`${MCP_ORIGIN}/callback?state=${encodeURIComponent(state)}&identidad=${firma}`, { headers: { Cookie: jar.header() } }),
+      env,
+      ctx,
+    );
+    expect(res.status).toBe(302);
+    expect(new URL(res.headers.get('Location')!).origin).toBe('https://claude.ai');
+  });
+
   it('rechaza un correo firmado con otra clave o para otro state', async () => {
     const env = mcpEnv();
     const jar = new Jar();
