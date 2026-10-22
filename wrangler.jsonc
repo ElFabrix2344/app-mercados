@@ -1,6 +1,8 @@
 {
   "$schema": "./node_modules/wrangler/config-schema.json",
   "name": "mercados",
+  // Cuenta propia de Mercados (separada de la de la Bitácora). El id no es secreto.
+  "account_id": "44ad19052da3858dae65640ed99fcae6",
   "main": "src/index.ts",
   "compatibility_date": "2026-09-01",
   "compatibility_flags": ["nodejs_compat"],
@@ -24,7 +26,7 @@
       // Caché de precios, historial, BCRP y FRED. Ojo: el plan gratis permite
       // 1.000 escrituras/día (la Cache API no funciona detrás de Access).
       "binding": "CACHE",
-      "id": "a0b5022db4cb4b4a81b78c45f4af0ea4"
+      "id": "8e4e026c93df477eb3692019bd50fd3b"
     }
   ],
 

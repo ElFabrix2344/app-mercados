@@ -10,6 +10,9 @@ dist/
 .dev.vars
 .dev.vars.*
 
+# Configuración personal de Claude Code (launch.json sí se comparte)
+.claude/settings.local.json
+
 # Sistema / editores
 .DS_Store
 Thumbs.db

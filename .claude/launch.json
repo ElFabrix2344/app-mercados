@@ -1,0 +1,17 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "mercados-dev",
+      "runtimeExecutable": "C:\\Program Files\\nodejs\\node.exe",
+      "runtimeArgs": ["node_modules/wrangler/bin/wrangler.js", "dev", "--port", "8788", "--ip", "127.0.0.1"],
+      "port": 8788
+    },
+    {
+      "name": "mercados-mcp-dev",
+      "runtimeExecutable": "C:\\Program Files\\nodejs\\node.exe",
+      "runtimeArgs": ["node_modules/wrangler/bin/wrangler.js", "dev", "--port", "8790", "--ip", "127.0.0.1", "--inspector-port", "9230", "--persist-to", ".wrangler/state-mcp"],
+      "port": 8790
+    }
+  ]
+}

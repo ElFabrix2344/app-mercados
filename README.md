@@ -48,7 +48,7 @@ Todas las rutas exigen sesión de Cloudflare Access.
 - **Mismos datos y reglas que el panel:** lee la misma caché de KV, renueva solo lo vencido con las mismas reglas (acciones solo con la bolsa abierta) y cuenta para el mismo freno de 600 créditos. Solo responde por los símbolos de la lista; para otros, Claude debe usar el conector oficial de Twelve Data.
 - **Autenticación:** la hace Cloudflare Access con **Managed OAuth** (beta abierta). Access registra a Claude, te pide el mismo login del panel y le da a Claude un token. Con ese token, Access deja pasar la petición con su JWT y el Worker lo valida igual que en el panel (firma, AUD y `ALLOWED_EMAILS`). Sin JWT válido, `/mcp` no entrega nada.
 - **Configuración en Access** (Zero Trust → Access controls → Applications → app de `mercados…workers.dev` → Edit → Advanced settings): **Managed OAuth** activado; **Allowed redirect URIs** `https://claude.ai/api/mcp/auth_callback` y `https://claude.com/api/mcp/auth_callback`; localhost y loopback apagados; token de 15 min y sesión de 2 semanas.
-- **Agregarlo en Claude:** claude.ai → Customize → Connectors → **+ Add** → **Add custom connector**. URL: `https://mercados.pizarra-semanal.workers.dev/mcp`. En el plan gratis de Claude solo se permite un conector personalizado.
+- **Agregarlo en Claude:** claude.ai → Customize → Connectors → **+ Add** → **Add custom connector**. URL: `https://mercados.mercados.workers.dev/mcp`. En el plan gratis de Claude solo se permite un conector personalizado.
 - **Probarlo en local:** con `npm run dev`, `POST http://localhost:8788/mcp` responde con datos ficticios y sin Access.
 
 ## Estructura
