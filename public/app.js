@@ -28,7 +28,7 @@
     portfolio: null, // respuesta de /api/portfolio (cartera simulada, solo el dueño)
     news: null, // respuesta de /api/news (titulares generales)
     newsGroup: 'todas',
-    newsShown: 10,
+    newsShown: 6,
     symbolNews: new Map(), // símbolo → { items } | { error } | 'cargando' (se piden al abrir la ficha)
     marketOpen: null, // ¿la bolsa de Nueva York está en sesión? (de /api/status y de cada pedido de precios)
     calendar: null, // respuesta de /api/calendar
@@ -1222,14 +1222,14 @@
     ['eeuu', 'EE. UU.'],
     ['global', 'Global'],
   ];
-  const NEWS_STEP = 10;
+  const NEWS_STEP = 6; // compactas: pocas a la vista y «Ver más» para el resto
 
-  /** Un titular: enlace al medio (se abre aparte) y, debajo, medio y hora. */
+  /** Un titular en una línea: enlace al medio (se abre aparte; el texto completo, al pasar el mouse) y medio con la hora. */
   function newsItem(n) {
     const meta = [n.source, n.publishedAt ? ago(n.publishedAt) : null].filter(Boolean).join(' · ');
     const title = /^https?:\/\//.test(n.url)
-      ? h('a', { class: 'news-title', href: n.url, target: '_blank', rel: 'noopener noreferrer' }, n.title)
-      : h('span', { class: 'news-title' }, n.title);
+      ? h('a', { class: 'news-title', href: n.url, target: '_blank', rel: 'noopener noreferrer', title: n.title }, n.title)
+      : h('span', { class: 'news-title', title: n.title }, n.title);
     return h('li', { class: 'news-item' }, title, h('span', { class: 'news-meta' }, meta));
   }
 
@@ -1290,7 +1290,7 @@
     const r = symbolNewsFor(sym);
     if (!r) list.replaceChildren(h('li', { class: 'muted' }, 'Buscando titulares…'));
     else if (r.error) list.replaceChildren(h('li', { class: 'err' }, r.error));
-    else list.replaceChildren(...(r.items.length ? r.items.slice(0, 6).map(newsItem) : [h('li', { class: 'muted' }, 'No hay titulares recientes.')]));
+    else list.replaceChildren(...(r.items.length ? r.items.slice(0, 4).map(newsItem) : [h('li', { class: 'muted' }, 'No hay titulares recientes.')]));
   }
 
   // ---------- cartera simulada ----------
@@ -1712,7 +1712,7 @@
     });
     applyTapeMotion();
     $('news-more').addEventListener('click', () => {
-      state.newsShown += 20;
+      state.newsShown += 10;
       renderNews();
     });
     const savedGroup = prefs.get('mercados.noticias', 'todas');
