@@ -32,6 +32,11 @@ Claude ─► Worker «mercados-mcp» (OAuth propio) ─────────
   - Usa costo promedio y muestra los totales en US$ y en soles (con el USD/PEN de la lista o el dólar del BCRP), sin dividendos ni comisiones.
   - Se compara con haber hecho las mismas compras y ventas en el SPY: cada compra pone esa plata en el SPY y cada venta saca la parte proporcional.
   - Solo entran los símbolos de la lista que cotizan en dólares (USD/PEN no). No deja vender más de lo que había en esa fecha ni borrar una compra que respalda una venta posterior.
+- **Noticias** (`services/news.ts`, lector en `lib/rss.ts`): titulares de RSS públicos, gratis y sin claves. Se muestran titular, medio, hora y enlace, nunca la nota completa.
+  - **Generales:** Gestión (economía), Bloomberg Línea (mercados), WSJ, MarketWatch, CNBC y Bloomberg. Se guardan juntas en KV (`news`) cada 30 minutos, unas 48 escrituras al día. Si una fuente falla, se muestran las demás. Son públicas: las ven también los amigos.
+  - **Por acción:** en la ficha, titulares de Yahoo Finance (por símbolo) y de Google News (por nombre, en español). Se piden al abrirla y no se guardan.
+  - **Por qué se leen de a poco:** Gestión y Bloomberg Línea mandan la nota completa en cada ítem y pesan ~1 MB. El lector lee el stream y corta apenas tiene los primeros titulares, para respetar el límite de procesador del plan gratis (10 ms por pedido).
+- **Tipografía (legibilidad, 22 oct):** números, títulos y datos en IBM Plex Mono; frases, etiquetas y ayudas en IBM Plex Sans. Base de 15 px y nada por debajo de 12 px. Las explicaciones de uso van en un «?» por sección (`<details class="help">`) en vez de quedar siempre a la vista.
 - **Medir entre dos días:** en cualquier gráfico interactivo, arrastrar con el mouse (en el celular, dos dedos; con el teclado, Mayús + flechas) muestra las fechas, la duración y la variación entre ambos días: en % y en precio en la ficha, por símbolo en Comparar y en puntos porcentuales en las tasas. Queda fija hasta un clic fuera o Esc.
 - **Colores de los gráficos con varias líneas:** `--s1` a `--s4` en `styles.css` (cian, magenta, violeta, amarillo), validados para daltonismo sobre el fondo del panel. Cada símbolo conserva su color mientras está elegido. Las líneas solas usan el cian de marca.
 - **Lista de seguimiento:** hasta 8 símbolos (8 créditos por minuto del plan gratis).
@@ -43,7 +48,7 @@ Claude ─► Worker «mercados-mcp» (OAuth propio) ─────────
 | Dueño | Los correos de `OWNER_EMAILS` | Todo: precios, historial, comparación, cartera simulada y lista (Twelve Data), Perú y EE. UU. |
 | Amigo | El resto de `ALLOWED_EMAILS` (y de la política de Access) | Solo datos públicos: Perú (BCRP) y EE. UU. (FRED) |
 
-La licencia gratis de Twelve Data no permite mostrar sus datos a otras personas ni compartir la clave (§2.2 y §2.3 de sus [términos](https://twelvedata.com/terms)). Por eso el servidor responde **403** a los amigos en `/api/quotes`, `/api/history`, `/api/compare`, `/api/portfolio` y `/api/watchlist`, y el conector solo les ofrece `peru_bcrp` y `eeuu_fred`; no es solo un ocultamiento en pantalla. Si `OWNER_EMAILS` está vacío, nadie ve los precios (falla cerrado).
+La licencia gratis de Twelve Data no permite mostrar sus datos a otras personas ni compartir la clave (§2.2 y §2.3 de sus [términos](https://twelvedata.com/terms)). Por eso el servidor responde **403** a los amigos en `/api/quotes`, `/api/history`, `/api/compare`, `/api/portfolio`, `/api/news/symbol` y `/api/watchlist`, y el conector solo les ofrece las herramientas de datos públicos (`peru_bcrp`, `eeuu_fred`, `noticias` generales y `calendario`); no es solo un ocultamiento en pantalla. Si `OWNER_EMAILS` está vacío, nadie ve los precios (falla cerrado).
 
 **Agregar un amigo:** su correo va en la política de Access de la app (regla *Allow* → *Emails*) **y** en `ALLOWED_EMAILS`. Al editar ese secreto hay que volver a escribir toda la lista, incluido tu correo: el panel no muestra el valor anterior.
 
@@ -60,6 +65,8 @@ Todas las rutas exigen sesión de Cloudflare Access. Las marcadas con 🔒 son s
 | GET | `/api/compare?symbols=BAP,SPY&range=1A` 🔒 | De 2 a 4 símbolos de la lista: días en común, cierres, base 100, estadísticas y matriz de correlación |
 | GET | `/api/portfolio` 🔒 | Cartera simulada valorizada: operaciones, posiciones, totales en US$ y soles, y comparación con el SPY |
 | POST / DELETE | `/api/portfolio` 🔒 | Agrega una operación (`{"date", "symbol", "side": "buy"\|"sell", "qty", "price"?}`) o borra una (`?id=…`); responde la cartera valorizada |
+| GET | `/api/news` | Titulares generales (todas las fuentes, guardados 30 min), con su grupo: `latam`, `eeuu` o `global` |
+| GET | `/api/news/symbol?symbol=BAP` 🔒 | Titulares de un símbolo de la lista (Yahoo Finance y Google News), sin guardar |
 | GET | `/api/peru` | Dólar interbancario, tasa de referencia e inflación (BCRP) |
 | GET | `/api/peru-markets` | Cobre, oro, reservas internacionales e índice de la BVL: un año diario, último dato y variaciones a 1 y 12 meses (BCRP) |
 | GET | `/api/calendar?days=120` | Próximos eventos del calendario económico (`loaded: false` mientras no haya fechas cargadas) |
@@ -76,6 +83,7 @@ Vive en un **Worker aparte, `mercados-mcp`** (`src/mcp-worker.ts`, `wrangler.mcp
 | `historial` | Cierres de un símbolo de la lista en el rango pedido (hasta 5 años), sus estadísticas y los indicadores técnicos del último cierre |
 | `comparar` | De 2 a 4 símbolos de la lista: rendimiento, volatilidad, mayor caída, correlación y base 100 al cierre de cada mes |
 | `cartera` | La cartera simulada valorizada: posiciones, ganancia, totales en US$ y soles y comparación con el SPY (solo lectura) |
+| `noticias` | Titulares generales por grupo y, para el dueño, los de un símbolo de la lista, con medio, hora, enlace y resumen corto |
 | `peru_bcrp` | Dólar interbancario, tasa de referencia, inflación de Lima y, en `mercados`, cobre, oro, reservas y BVL con sus variaciones y cierres mensuales (BCRP) |
 | `calendario` | Próximas decisiones de tasas (BCRP, Fed) y publicaciones de inflación (INEI, BLS). Aparece cuando se carguen las fechas |
 | `eeuu_fred` | Bono del Tesoro a 10 años, tasa de la Fed e inflación (FRED) |
@@ -98,6 +106,8 @@ src/
   auth/access.ts        verificación del JWT de Cloudflare Access (jose)
   services/market.ts    caché en KV, freno de créditos y qué símbolos renovar
   services/portfolio.ts cartera simulada: operaciones, costo promedio, valorización y comparación con el SPY
+  services/news.ts      noticias: fuentes RSS, caché de las generales y titulares por acción
+  lib/rss.ts            lector de RSS por stream (corta apenas tiene los titulares que necesita)
   lib/twelvedata.ts     cliente de Twelve Data
   lib/bcrp.ts           cliente del BCRP (tolera el aviso HTML que agrega tras el JSON)
   lib/fred.ts           cliente de FRED

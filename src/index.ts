@@ -4,7 +4,8 @@ import { CALENDAR_UNTIL, EVENTS, SOURCES, upcoming } from './lib/calendar';
 import { ApiError, errorResponse, escapeHtml, htmlPage, json } from './lib/http';
 import { NYSE_CALENDAR_UNTIL, usMarketOpen } from './lib/market-hours';
 import { signPayload } from './lib/signed';
-import { mockCompare, mockHistory, mockPeru, mockPeruMarkets, mockPriceSource, mockQuotes, mockUsa } from './mock';
+import { mockCompare, mockHistory, mockNews, mockPeru, mockPeruMarkets, mockPriceSource, mockQuotes, mockSymbolNews, mockUsa } from './mock';
+import { marketNews, quoteName, symbolNews } from './services/news';
 import { addTrade, deleteTrade, kvSource, readTrades, valuePortfolio } from './services/portfolio';
 import {
   DAILY_CREDIT_CAP,
@@ -69,7 +70,7 @@ export default {
 } satisfies ExportedHandler<Env>;
 
 /** Precios de Twelve Data: su licencia gratis no permite mostrarlos a otras personas. */
-const OWNER_ONLY = new Set(['/api/watchlist', '/api/quotes', '/api/history', '/api/compare', '/api/portfolio']);
+const OWNER_ONLY = new Set(['/api/watchlist', '/api/quotes', '/api/history', '/api/compare', '/api/portfolio', '/api/news/symbol']);
 
 async function route(req: Request, env: Env, url: URL, role: Role, email: string | null): Promise<Response | null> {
   const p = url.pathname;
@@ -138,6 +139,20 @@ async function route(req: Request, env: Env, url: URL, role: Role, email: string
       case '/api/portfolio': {
         const src = mock ? mockPriceSource(await getWatchlist(env.CACHE), now) : kvSource(deps);
         return json(await valuePortfolio(await readTrades(env.CACHE), src));
+      }
+
+      // Titulares públicos (RSS): también para los amigos.
+      case '/api/news':
+        return json(mock ? mockNews(now) : await marketNews(deps));
+
+      // Titulares de un símbolo de la lista (la lista es del dueño).
+      case '/api/news/symbol': {
+        const symbol = (url.searchParams.get('symbol') ?? '').trim().toUpperCase();
+        if (!(await getWatchlist(env.CACHE)).includes(symbol)) {
+          throw new ApiError('bad_request', 400, 'Solo hay noticias por acción para los símbolos de la lista.');
+        }
+        const items = mock ? mockSymbolNews(symbol, now) : await symbolNews(deps, symbol, await quoteName(env.CACHE, symbol));
+        return json({ symbol, items, fetchedAt: now.toISOString() });
       }
 
       case '/api/peru':

@@ -4,6 +4,7 @@
 import { usMarketOpen } from './lib/market-hours';
 import { addDays, isoDate } from './lib/num';
 import type { DailyPoint, Quote } from './lib/twelvedata';
+import type { NewsData, NewsGroup, NewsItem } from './services/news';
 import type { PriceSource } from './services/portfolio';
 import {
   DEFAULT_RANGE,
@@ -133,6 +134,34 @@ export function mockPeru(now: Date): Fresh<PeruData> {
     value: Number((2 + Math.sin(i / 2)).toFixed(2)),
   }));
   return fresh({ fx, policyRate: { date: addDays(today, -1), value: 4.5 }, inflation }, now);
+}
+
+/** Titulares de prueba (no son noticias reales; los enlaces van a example.com). */
+export function mockNews(now: Date): Fresh<NewsData> {
+  const groups: [NewsGroup, string][] = [['latam', 'Gestión'], ['eeuu', 'WSJ'], ['global', 'Bloomberg'], ['latam', 'Bloomberg Línea'], ['eeuu', 'CNBC']];
+  const items: NewsItem[] = Array.from({ length: 14 }, (_, i) => {
+    const [group, source] = groups[i % groups.length]!;
+    return {
+      title: `Titular de prueba ${i + 1}: así se movieron los mercados en la sesión de hoy`,
+      url: `https://example.com/noticia-${i + 1}`,
+      source,
+      group,
+      publishedAt: new Date(now.getTime() - (i * 47 + 5) * 60_000).toISOString(),
+      summary: 'Resumen de prueba de la noticia.',
+    };
+  });
+  return fresh({ items, errors: {} }, now);
+}
+
+export function mockSymbolNews(symbol: string, now: Date): NewsItem[] {
+  return Array.from({ length: 4 }, (_, i) => ({
+    title: `${info(symbol).name}: titular de prueba ${i + 1}`,
+    url: `https://example.com/${encodeURIComponent(symbol)}-${i + 1}`,
+    source: i % 2 ? 'Google News' : 'Yahoo Finance',
+    group: null,
+    publishedAt: new Date(now.getTime() - (i * 190 + 30) * 60_000).toISOString(),
+    summary: null,
+  }));
 }
 
 /** Precios de prueba para la cartera simulada (sin KV ni APIs). */

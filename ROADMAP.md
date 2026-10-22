@@ -69,7 +69,9 @@ Solo cuando las secciones 1 a 4 estén terminadas.
 - [ ] **Probar la vista de amigo** con el correo de uno de ellos: debe ver solo los datos públicos (Perú, EE. UU., cobre, oro, BVL, reservas, calendario y la cinta pública).
 - [ ] **Pasarles la dirección** y avisarles que entran con su correo y un código.
 
-## 6. Noticias (después de abrir la app a los amigos)
+## 6. Noticias — hecho el 22 de octubre
+
+Se adelantaron a pedido del usuario: quedaron hechas antes de abrir la app a los amigos. Ese mismo día se aplicó la opción B de legibilidad: base de 15 px, nada por debajo de 12 px, frases en IBM Plex Sans y ayudas detrás de un «?».
 
 Primero el mercado en general, después cada acción. Fuentes probadas el 22 de octubre: todas respondieron con titulares del día, gratis y sin claves.
 
@@ -87,12 +89,12 @@ Primero el mercado en general, después cada acción. Fuentes probadas el 22 de 
 - **No sirve:** las noticias de Twelve Data. Para BAP devolvieron un comunicado genérico de la NYSE, de hace un año, que no trataba de BAP.
 
 Pasos:
-- [ ] **Mercado en general:** una sección «Noticias» con lo último de las fuentes elegidas y filtros Perú, EE. UU. y mundo.
+- [x] **Mercado en general:** una sección «Noticias» con lo último de las fuentes elegidas y filtros Perú, EE. UU. y mundo.
   - Muestra titular, medio, hora y enlace, nunca la nota completa (Bloomberg y WSJ tienen muro de pago).
   - El servidor lee los RSS cada 30 minutos y guarda todo en un solo registro de KV: unas 48 escrituras al día.
   - Es pública: también la ven los amigos.
-- [ ] **Por acción:** en la ficha de cada símbolo, los titulares de Yahoo y Google News sobre esa empresa, filtrados por medios confiables. Más adelante, las fuentes oficiales: hechos de importancia de la SMV y reportes 8-K de la SEC.
-- [ ] **Conector:** una herramienta `noticias` para preguntarle a Claude qué movió al mercado o a una acción, cruzando titulares con precios.
+- [x] **Por acción:** en la ficha de cada símbolo, los titulares de Yahoo y Google News sobre esa empresa, filtrados por medios confiables. Más adelante, las fuentes oficiales: hechos de importancia de la SMV y reportes 8-K de la SEC.
+- [x] **Conector:** una herramienta `noticias` para preguntarle a Claude qué movió al mercado o a una acción, cruzando titulares con precios.
 
 ## 7. Ideas para después
 

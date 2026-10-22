@@ -24,6 +24,8 @@ App de mercados (Cloudflare Worker + panel web + conector MCP para Claude). El R
 - Twelve Data, plan gratis: 800 créditos al día y 8 por minuto, **compartidos con el conector oficial de Twelve Data** que se usa en claude.ai. La app se frena en 600. Además, el volumen intradía del plan gratis viene de una sola parte de las bolsas: no lo muestres como volumen real.
 - El BCRP pega un aviso HTML de PHP después del JSON. `extractJson` lo resuelve: no vuelvas a `res.json()`.
 - La API del BCRP devuelve las series **ordenadas por código**, no en el orden pedido. `getBcrp` las pide ordenadas y las reacomoda; no mezcles prefijos (PD/PN) en un mismo pedido.
+- Noticias: algunos RSS (Gestión, Bloomberg Línea) traen la nota completa y pesan ~1 MB. `fetchRss` lee el stream y corta apenas tiene los titulares; no lo cambies por `res.text()`, porque el plan gratis da 10 ms de procesador por pedido. Nunca guardes ni muestres el texto completo de las notas.
+- Tipografía: números, títulos y datos en IBM Plex Mono; frases, etiquetas y ayudas en IBM Plex Sans (`--f-sans`). Nada por debajo de 12 px. Las explicaciones de uso van en el «?» de cada sección, no como texto suelto.
 - El calendario económico (`lib/calendar.ts`) se carga a mano, como los feriados de la NYSE: cada fecha se verifica en su fuente oficial. Sin fechas, el panel oculta la sección y el conector no ofrece `calendario`.
 - FRED marca con `"."` los días sin dato.
 - Los feriados y cierres anticipados de la NYSE están cargados hasta 2027 en `lib/market-hours.ts` (`NYSE_CALENDAR_UNTIL`). **Cada año hay que agregar el siguiente** desde nyse.com/markets/hours-calendars; si no, la app gasta créditos en los feriados.

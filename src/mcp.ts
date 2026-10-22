@@ -7,7 +7,8 @@ import * as z from 'zod';
 import type { Role } from './auth/access';
 import { CALENDAR_UNTIL, EVENTS, SOURCES, upcoming } from './lib/calendar';
 import { ApiError } from './lib/http';
-import { mockCompare, mockHistory, mockPeru, mockPeruMarkets, mockPriceSource, mockQuotes, mockUsa } from './mock';
+import { mockCompare, mockHistory, mockNews, mockPeru, mockPeruMarkets, mockPriceSource, mockQuotes, mockSymbolNews, mockUsa } from './mock';
+import { marketNews, newsQuery, quoteName, symbolNews, type NewsItem } from './services/news';
 import { kvSource, readTrades, valuePortfolio } from './services/portfolio';
 import {
   COMPARE_MAX,
@@ -440,6 +441,48 @@ function registerPublicTools(server: McpServer, c: McpContext, when: When): void
           actualizado: when(r.fetchedAt),
           dato_guardado: r.stale,
           nota: r.note,
+        };
+      }),
+  );
+
+  server.registerTool(
+    'noticias',
+    {
+      title: 'Noticias del mercado',
+      description:
+        'Titulares recientes de medios económicos (Bloomberg, WSJ, MarketWatch, CNBC, Gestión y Bloomberg Línea) con medio, hora, ' +
+        'enlace y un resumen corto cuando el medio lo da. Sin símbolo: noticias generales, filtrables por grupo (latam: Perú y ' +
+        'Latinoamérica; eeuu; global). Con un símbolo de la lista (solo el dueño de la app): titulares de esa empresa, de ' +
+        'Yahoo Finance y Google News. Son solo titulares: para el detalle hay que abrir el enlace (algunos medios tienen muro ' +
+        'de pago). Sirven para explicar movimientos de precios junto con las otras herramientas.',
+      inputSchema: z.object({
+        grupo: z.enum(['todas', 'latam', 'eeuu', 'global']).default('todas').describe('Qué noticias generales: todas (por defecto), latam, eeuu o global.'),
+        cantidad: z.number().int().min(1).max(30).default(15).describe('Cuántos titulares (por defecto 15).'),
+        simbolo: z.string().max(20).optional().describe('Símbolo de la lista para ver solo sus noticias, p. ej. "BAP" (solo el dueño).'),
+      }),
+      annotations: { readOnlyHint: true, openWorldHint: true },
+    },
+    ({ grupo, cantidad, simbolo }) =>
+      run(async () => {
+        const item = (n: NewsItem) => ({ titular: n.title, medio: n.source, hora: when(n.publishedAt), enlace: n.url, ...(n.summary ? { resumen: n.summary } : {}) });
+        if (simbolo) {
+          if (c.role !== 'owner') throw new ApiError('forbidden', 403, 'Las noticias por acción son solo para el dueño de la app.');
+          const list = await getWatchlist(deps.kv);
+          const symbol = normalize(simbolo);
+          if (!list.includes(symbol)) throw notInList([symbol], list);
+          const name = c.mock ? null : await quoteName(deps.kv, symbol);
+          const items = c.mock ? mockSymbolNews(symbol, deps.now) : await symbolNews(deps, symbol, name, cantidad);
+          return { simbolo: symbol, busqueda: newsQuery(symbol, name), zona_horaria: c.timeZone, noticias: items.slice(0, cantidad).map(item) };
+        }
+        const r = c.mock ? mockNews(deps.now) : await marketNews(deps);
+        const items = r.data.items.filter((n) => grupo === 'todas' || n.group === grupo).slice(0, cantidad);
+        return {
+          zona_horaria: c.timeZone,
+          grupo,
+          noticias: items.map(item),
+          ...(Object.keys(r.data.errors).length ? { fuentes_con_error: r.data.errors } : {}),
+          actualizado: when(r.fetchedAt),
+          dato_guardado: r.stale,
         };
       }),
   );

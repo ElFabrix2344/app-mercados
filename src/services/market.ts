@@ -92,7 +92,7 @@ function needKey(key: string | undefined, name: string, provider: 'twelvedata' |
 
 // ---------- caché genérica ----------
 
-async function cached<T>(
+export async function cached<T>(
   d: Deps,
   key: string,
   ttlMs: number,

@@ -26,6 +26,10 @@
     usaData: null,
     peruMarkets: null, // cobre, oro, BVL y reservas (también van en la cinta)
     portfolio: null, // respuesta de /api/portfolio (cartera simulada, solo el dueño)
+    news: null, // respuesta de /api/news (titulares generales)
+    newsGroup: 'todas',
+    newsShown: 10,
+    symbolNews: new Map(), // símbolo → { items } | { error } | 'cargando' (se piden al abrir la ficha)
     marketOpen: null, // ¿la bolsa de Nueva York está en sesión? (de /api/status y de cada pedido de precios)
     calendar: null, // respuesta de /api/calendar
     notes: new Map(), // clave → { text, kind }
@@ -861,6 +865,7 @@
     sec.hidden = false;
     renderRanges();
     renderIndicatorToggles();
+    renderSymbolNews();
     const q = quoteFor(sym);
     const hist = detailHistory(sym, state.range);
     $('d-title').textContent = q?.name ? `${sym} · ${q.name}` : sym;
@@ -951,7 +956,7 @@
     if (st) {
       stats.append(
         stat('Rendimiento en el periodo', pctFrac(st.totalReturn), `${fDayYear.format(day(st.from))} → ${fDayYear.format(day(st.to))}`),
-        stat('Volatilidad anualizada', st.annualVol != null ? pctFrac(st.annualVol).replace('+', '') : '—', 'Desviación de los rendimientos diarios'),
+        stat('Volatilidad anualizada', st.annualVol != null ? pctFrac(st.annualVol).replace('+', '') : '—'),
         stat(
           'Mayor caída desde un pico',
           st.maxDrawdown ? pctFrac(st.maxDrawdown.value) : 'Sin caídas',
@@ -1199,8 +1204,8 @@
     );
     const errs = Object.entries(data.errors || {}).map(([sym, msg]) => `${sym} (${msg})`);
     note.textContent =
-      `${n} días en común, del ${fDayYear.format(day(data.dates[0]))} al ${fDayYear.format(day(data.dates[n - 1]))}: ` +
-      `solo cuentan los días en que todos cotizan. ${data.stale ? 'Dato guardado' : 'Actualizado'} ${ago(data.fetchedAt)}.` +
+      `${n} días en común, del ${fDayYear.format(day(data.dates[0]))} al ${fDayYear.format(day(data.dates[n - 1]))}. ` +
+      `${data.stale ? 'Dato guardado' : 'Actualizado'} ${ago(data.fetchedAt)}.` +
       (errs.length ? ` No se pudo cargar ${listJoin(errs)}.` : '');
     csv.onclick = () => {
       const syms = series.map((x) => x.name);
@@ -1208,6 +1213,84 @@
       const rows = data.dates.map((d, i) => [d, ...series.map((x) => x.src.closes[i]), ...series.map((x) => x.src.rebased[i])]);
       downloadCsv(`comparar_${syms.map((sym) => sym.replace('/', '-')).join('_')}_${data.range}_${today()}.csv`, header, rows);
     };
+  }
+
+  // ---------- noticias ----------
+  const NEWS_GROUPS = [
+    ['todas', 'Todas'],
+    ['latam', 'Perú y LatAm'],
+    ['eeuu', 'EE. UU.'],
+    ['global', 'Global'],
+  ];
+  const NEWS_STEP = 10;
+
+  /** Un titular: enlace al medio (se abre aparte) y, debajo, medio y hora. */
+  function newsItem(n) {
+    const meta = [n.source, n.publishedAt ? ago(n.publishedAt) : null].filter(Boolean).join(' · ');
+    const title = /^https?:\/\//.test(n.url)
+      ? h('a', { class: 'news-title', href: n.url, target: '_blank', rel: 'noopener noreferrer' }, n.title)
+      : h('span', { class: 'news-title' }, n.title);
+    return h('li', { class: 'news-item' }, title, h('span', { class: 'news-meta' }, meta));
+  }
+
+  function renderNews() {
+    const r = state.news;
+    const group = state.newsGroup;
+    $('news-groups').replaceChildren(
+      ...NEWS_GROUPS.map(([id, label]) => {
+        const b = h('button', { type: 'button', 'aria-pressed': String(group === id) }, label);
+        b.addEventListener('click', () => {
+          state.newsGroup = id;
+          state.newsShown = NEWS_STEP;
+          prefs.set('mercados.noticias', id);
+          renderNews();
+        });
+        return b;
+      }),
+    );
+    if (!r) return;
+    const all = r.data.items.filter((n) => group === 'todas' || n.group === group);
+    const shown = all.slice(0, state.newsShown);
+    $('news-list').replaceChildren(...(shown.length ? shown.map(newsItem) : [h('li', { class: 'muted' }, 'No hay titulares en este grupo.')]));
+    $('news-more').hidden = all.length <= state.newsShown;
+    const errs = Object.keys(r.data.errors || {});
+    $('news-note').textContent = `${r.stale ? 'Guardado' : 'Actualizado'} ${ago(r.fetchedAt)}.${errs.length ? ` Sin respuesta de ${listJoin(errs)}.` : ''}`;
+  }
+
+  async function loadNews() {
+    try {
+      state.news = await api('/api/news');
+    } catch (e) {
+      $('news-list').replaceChildren(h('li', { class: 'err' }, e.message));
+    }
+    renderNews();
+  }
+
+  /** Titulares de una acción: se piden una vez por sesión, al abrir su ficha. */
+  function symbolNewsFor(sym) {
+    const cached = state.symbolNews.get(sym);
+    if (cached) return cached === 'cargando' ? undefined : cached;
+    state.symbolNews.set(sym, 'cargando');
+    api(`/api/news/symbol?symbol=${encodeURIComponent(sym)}`)
+      .then((r) => state.symbolNews.set(sym, { items: r.items }))
+      .catch((e) => state.symbolNews.set(sym, { error: e.message }))
+      .finally(() => {
+        if (state.selected === sym) renderSymbolNews();
+      });
+    return undefined;
+  }
+
+  function renderSymbolNews() {
+    const sym = state.selected;
+    const wrap = $('d-news');
+    wrap.hidden = !sym;
+    if (!sym) return;
+    $('d-news-sym').textContent = sym;
+    const list = $('d-news-list');
+    const r = symbolNewsFor(sym);
+    if (!r) list.replaceChildren(h('li', { class: 'muted' }, 'Buscando titulares…'));
+    else if (r.error) list.replaceChildren(h('li', { class: 'err' }, r.error));
+    else list.replaceChildren(...(r.items.length ? r.items.slice(0, 6).map(newsItem) : [h('li', { class: 'muted' }, 'No hay titulares recientes.')]));
   }
 
   // ---------- cartera simulada ----------
@@ -1559,7 +1642,7 @@
       );
     }
     const until = Object.values(r.coverage).sort()[0];
-    $('cal-note').textContent = `Fechas oficiales de cada fuente${until ? `, cargadas hasta el ${fDayYear.format(day(until))}` : ''}. Horas en hora de Lima.`;
+    $('cal-note').textContent = until ? `Cargado hasta el ${fDayYear.format(day(until))}.` : '';
   }
 
   async function loadCalendar() {
@@ -1628,6 +1711,17 @@
       applyTapeMotion();
     });
     applyTapeMotion();
+    $('news-more').addEventListener('click', () => {
+      state.newsShown += 20;
+      renderNews();
+    });
+    const savedGroup = prefs.get('mercados.noticias', 'todas');
+    if (NEWS_GROUPS.some(([id]) => id === savedGroup)) state.newsGroup = savedGroup;
+    // Noticias para todos (son públicas); el servidor las renueva cada 30 minutos.
+    loadNews();
+    setInterval(() => {
+      if (document.visibilityState === 'visible') loadNews();
+    }, 30 * 60_000);
 
     // Amigos: solo datos públicos (BCRP y FRED). El servidor igual les niega los precios de Twelve Data.
     let role = 'owner';

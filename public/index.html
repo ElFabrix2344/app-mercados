@@ -14,7 +14,7 @@
   <link rel="icon" href="/icon.svg" type="image/svg+xml">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&display=swap">
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500&display=swap">
   <link rel="stylesheet" href="/styles.css">
   <script src="/app.js" defer></script>
 </head>
@@ -76,6 +76,13 @@
         <span class="eyebrow" id="d-sub"></span>
         <h2 id="d-title"></h2>
       </div>
+      <details class="help">
+        <summary aria-label="Cómo se usa la ficha">?</summary>
+        <div class="help-body">
+          <p>Arrastra sobre el gráfico para ver la variación entre dos días. En el celular, con dos dedos; con el teclado, Mayús + flechas.</p>
+          <p>Las medias móviles, las bandas de Bollinger y el RSI se calculan con 5 años de historia. Un RSI sobre 70 suele leerse como sobrecompra; bajo 30, como sobreventa.</p>
+        </div>
+      </details>
       <button type="button" id="d-close">Cerrar</button>
     </div>
     <div class="d-tools">
@@ -84,22 +91,45 @@
       <button type="button" id="d-csv" class="csv-btn" title="Cierres, rendimientos diarios e indicadores del periodo, para Excel">⤓ CSV</button>
     </div>
     <div class="chart" id="d-chart"></div>
-    <p class="hint">Para medir entre dos días, arrastra sobre el gráfico; en el celular, pon dos dedos.</p>
     <div id="d-rsi-wrap" hidden>
-      <p class="hint">RSI de 14 días: sobre 70 suele leerse como sobrecompra; bajo 30, como sobreventa.</p>
+      <p class="hint">RSI de 14 días</p>
       <div class="chart" id="d-rsi"></div>
     </div>
     <dl class="stats" id="d-stats"></dl>
+    <div class="d-news" id="d-news" hidden>
+      <p class="hint">Noticias de <span id="d-news-sym"></span> (Yahoo Finance y Google News)</p>
+      <ol class="news" id="d-news-list"></ol>
+    </div>
     <details class="table-view">
       <summary>Ver tabla (cierre de cada mes)</summary>
       <table id="d-table"><thead><tr><th scope="col">Mes</th><th scope="col">Cierre</th><th scope="col">Variación</th></tr></thead><tbody></tbody></table>
     </details>
   </section>
 
+  <section class="screen" id="news" aria-labelledby="news-h">
+    <div class="screen-head">
+      <h2 id="news-h">Noticias</h2>
+      <div class="ranges" id="news-groups" role="group" aria-label="Qué noticias mostrar"></div>
+    </div>
+    <ol class="news" id="news-list"><li class="muted">Cargando…</li></ol>
+    <div class="news-foot">
+      <button type="button" id="news-more" class="csv-btn" hidden>Ver más</button>
+      <p class="hint" id="news-note"></p>
+    </div>
+  </section>
+
   <section class="screen owner-only" id="compare" aria-labelledby="cmp-h">
     <div class="screen-head">
       <h2 id="cmp-h">Comparar</h2>
       <span class="src">Base 100</span>
+      <details class="help">
+        <summary aria-label="Cómo se usa Comparar">?</summary>
+        <div class="help-body">
+          <p>Base 100: cuánto valdrían 100 invertidos el primer día en cada uno.</p>
+          <p>Solo cuentan los días en que todos cotizan (la cripto también cotiza los fines de semana).</p>
+          <p>Arrastra sobre el gráfico para ver cuánto varió cada uno entre dos días.</p>
+        </div>
+      </details>
     </div>
     <div class="d-tools">
       <div class="ranges" id="cmp-ranges" role="group" aria-label="Periodo de la comparación"></div>
@@ -107,7 +137,6 @@
       <button type="button" id="cmp-csv" class="csv-btn" title="Cierres alineados y base 100, para Excel" disabled>⤓ CSV</button>
     </div>
     <div class="chart" id="cmp-chart"></div>
-    <p class="hint">Arrastra sobre el gráfico (dos dedos en el celular) para ver cuánto varió cada uno entre dos días.</p>
     <div class="cmp-grid" id="cmp-grid" hidden>
       <div>
         <p class="hint">Resumen del periodo</p>
@@ -125,6 +154,14 @@
   <section class="screen owner-only" id="portfolio" aria-labelledby="pf-h">
     <div class="screen-head">
       <h2 id="pf-h">Cartera simulada</h2>
+      <details class="help">
+        <summary aria-label="Cómo funciona la cartera simulada">?</summary>
+        <div class="help-body">
+          <p>En US$, a costo promedio, sin dividendos ni comisiones. Solo con los símbolos de tu lista que cotizan en dólares.</p>
+          <p>Si no pones precio, se usa el cierre de ese día. Se valoriza con los precios ya guardados: no gasta créditos.</p>
+          <p>La comparación hace las mismas compras y ventas en el S&amp;P 500 (SPY).</p>
+        </div>
+      </details>
       <button type="button" id="pf-csv" class="csv-btn" title="Operaciones de la cartera, para Excel" disabled>⤓ CSV</button>
     </div>
     <form id="pf-form" class="pf-form">
@@ -137,7 +174,6 @@
     </form>
     <p class="err" id="pf-err" hidden></p>
     <div id="pf-body"><p class="muted">Cargando…</p></div>
-    <p class="hint">En US$, a costo promedio, sin dividendos ni comisiones. Solo con los símbolos de tu lista que cotizan en dólares. Se valoriza con los precios ya guardados: no gasta créditos.</p>
   </section>
 
   <div class="macro">
@@ -157,7 +193,17 @@
   </section>
 
   <section class="screen" aria-labelledby="cal-h" hidden>
-    <div class="screen-head"><h2 id="cal-h">Calendario</h2><span class="src">BCRP · Fed · INEI · BLS</span></div>
+    <div class="screen-head">
+      <h2 id="cal-h">Calendario</h2>
+      <span class="src">BCRP · Fed · INEI · BLS</span>
+      <details class="help">
+        <summary aria-label="De dónde salen las fechas">?</summary>
+        <div class="help-body">
+          <p>Fechas oficiales de cada fuente: decisiones de tasas del BCRP y de la Fed, e inflación del INEI (Lima) y del BLS (EE. UU.).</p>
+          <p>Las que la fuente todavía no confirma aparecen como tentativas. Las horas están en hora de Lima.</p>
+        </div>
+      </details>
+    </div>
     <ol class="cal" id="calendar"><li class="muted">Cargando…</li></ol>
     <p class="hint" id="cal-note"></p>
   </section>
