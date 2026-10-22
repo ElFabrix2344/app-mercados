@@ -5,7 +5,7 @@ import { usMarketOpen } from './lib/market-hours';
 import { addDays, isoDate } from './lib/num';
 import { seriesStats } from './lib/stats';
 import type { DailyPoint, Quote } from './lib/twelvedata';
-import type { Fresh, HistoryData, PeruData, QuotesData, UsaData } from './services/market';
+import { DEFAULT_RANGE, sliceRange, type Fresh, type HistoryResult, type PeruData, type QuotesData, type Range, type UsaData } from './services/market';
 
 const BASE: Record<string, { name: string; exchange: string; currency: string; start: number; vol: number; crypto?: boolean }> = {
   BAP: { name: 'Credicorp Ltd.', exchange: 'NYSE', currency: 'USD', start: 250, vol: 0.018 },
@@ -42,7 +42,8 @@ function walk(symbol: string, now: Date): DailyPoint[] {
   const today = isoDate(now);
   const pts: DailyPoint[] = [];
   let price = meta.start;
-  for (let d = addDays(today, -366); d < today; d = addDays(d, 1)) {
+  // 5 años, como el historial real.
+  for (let d = addDays(today, -1840); d < today; d = addDays(d, 1)) {
     const dow = new Date(`${d}T12:00:00Z`).getUTCDay();
     if (!meta.crypto && (dow === 0 || dow === 6)) continue;
     const shock = (rand() + rand() + rand() - 1.5) * 2 * meta.vol + meta.vol * 0.06;
@@ -82,9 +83,15 @@ export function mockQuotes(symbols: string[], now: Date): Fresh<QuotesData> & { 
   return { ...fresh({ quotes, errors: {}, symbols, fetched }, now), market: { open: usMarketOpen(now) } };
 }
 
-export function mockHistory(symbol: string, now: Date): Fresh<HistoryData> & { stats: ReturnType<typeof seriesStats> } {
-  const pts = walk(symbol, now);
-  return { ...fresh({ symbol, points: pts.map((p) => [p.date, p.close] as [string, number]) }, now), stats: seriesStats(pts) };
+export function mockHistory(symbol: string, now: Date, range: Range = DEFAULT_RANGE): HistoryResult {
+  const all = walk(symbol, now).map((p) => [p.date, p.close] as [string, number]);
+  const points = sliceRange(all, range, isoDate(now));
+  return {
+    ...fresh({ symbol, points }, now),
+    stats: seriesStats(points.map(([date, close]) => ({ date, close }))),
+    range,
+    available: { from: all[0]?.[0] ?? null, to: all.at(-1)?.[0] ?? null },
+  };
 }
 
 export function mockPeru(now: Date): Fresh<PeruData> {

@@ -16,8 +16,9 @@ Claude ─► Worker «mercados-mcp» (OAuth propio) ─────────
   - BCRP (BCRPData, sin clave): `PD04637PD`/`PD04638PD` (dólar interbancario compra/venta), `PD12301MD` (tasa de referencia), `PN01273PM` (inflación de Lima a 12 meses).
   - FRED: `DGS10` (bono del Tesoro a 10 años), `DFF` (tasa de la Fed), `CPIAUCSL` con `units=pc1` (inflación anual).
 - **Caché en KV.** La Cache API no funciona en Workers detrás de Access, así que todo se guarda en KV (plan gratis: 1.000 escrituras/día).
-  - Precios: el panel pide cada 10 min y cada símbolo se renueva por separado. Acciones y ETF solo con la bolsa de Nueva York abierta (lunes a viernes, 9:30–16:00 hora de NY; no contempla feriados) y una vez más tras el cierre. Divisas y cripto, siempre. «Actualizar» renueva si el dato tiene más de 30 s.
-  - Historial de 1 año: cada 12 h. BCRP y FRED: cada 6 h.
+  - Precios: el panel pide cada 10 min y cada símbolo se renueva por separado. Acciones y ETF solo con la bolsa de Nueva York abierta (lunes a viernes, 9:30–16:00 hora de NY, sin los feriados ni los cierres a la 1:00 p. m. del calendario oficial de la NYSE, cargado hasta 2027 en `lib/market-hours.ts`) y una vez más tras el cierre. Divisas y cripto, siempre. «Actualizar» renueva si el dato tiene más de 30 s.
+  - Historial de **5 años** por símbolo, cada 12 h: Twelve Data cobra 1 crédito por consulta sin importar cuántos días traiga. Los rangos 1M, 3M, 6M, YTD, 1A, 3A y 5A se recortan de esa misma caché y miden el rendimiento desde el cierre anterior al inicio (YTD, desde el 31 de diciembre). BCRP y FRED: cada 6 h.
+- **Exportar a Excel:** los botones «CSV» arman el archivo en el navegador (comas, punto decimal y BOM UTF-8, como lo lee Excel con la configuración es-PE). Son los cierres y rendimientos diarios del rango, en la ficha, y las series de Perú y EE. UU., que también ven los amigos.
   - **Freno:** la app gasta como máximo 600 créditos de Twelve Data al día; el resto queda para el conector de Claude. Pasado el freno se muestran los últimos precios guardados.
 - **Lista de seguimiento:** hasta 8 símbolos (8 créditos por minuto del plan gratis).
 
@@ -41,7 +42,7 @@ Todas las rutas exigen sesión de Cloudflare Access. Las marcadas con 🔒 son s
 | GET | `/api/status` | Tu rol. Al dueño además: si cada secreto está cargado y con formato correcto (sin mostrar valores) y créditos usados hoy |
 | GET / PUT | `/api/watchlist` 🔒 | Lee o guarda la lista (`{"symbols": ["BAP", "USD/PEN"]}`) |
 | GET | `/api/quotes` 🔒 | Precios de la lista (`?refresh=1` = botón «Actualizar») y estado de la bolsa |
-| GET | `/api/history?symbol=BAP` 🔒 | Cierres diarios del último año y estadísticas |
+| GET | `/api/history?symbol=BAP&range=1A` 🔒 | Cierres diarios del rango (1M, 3M, 6M, YTD, 1A, 3A, 5A) y sus estadísticas |
 | GET | `/api/peru` | Dólar interbancario, tasa de referencia e inflación (BCRP) |
 | GET | `/api/usa` | Bono a 10 años, tasa de la Fed e inflación (FRED) |
 | GET | `/conector/identidad?state=…` 🔒 | Paso del login del conector: firma tu correo y vuelve a `mercados-mcp` |
@@ -53,7 +54,7 @@ Vive en un **Worker aparte, `mercados-mcp`** (`src/mcp-worker.ts`, `wrangler.mcp
 | Herramienta | Qué devuelve |
 |---|---|
 | `precios` | Precios de la lista de seguimiento (todos o los símbolos pedidos) |
-| `historial` | Cierres del último año de un símbolo de la lista y sus estadísticas |
+| `historial` | Cierres de un símbolo de la lista en el rango pedido (hasta 5 años) y sus estadísticas |
 | `peru_bcrp` | Dólar interbancario, tasa de referencia e inflación de Lima (BCRP) |
 | `eeuu_fred` | Bono del Tesoro a 10 años, tasa de la Fed e inflación (FRED) |
 
@@ -109,7 +110,7 @@ Cada push a `main` ejecuta GitHub Actions: typecheck, pruebas y `wrangler deploy
 | «Acceso restringido» / 503 | Falta `ACCESS_TEAM_DOMAIN`, `ACCESS_AUD` o `ALLOWED_EMAILS` | Cárgalos en el panel de Cloudflare |
 | Un secreto con `formatOk: false` | Pegado con Ctrl+V en un prompt oculto de la terminal (guarda `\u0016`) | Cárgalo desde el panel de Cloudflare |
 | Precios «Guardado hace…» | Se alcanzó el freno de créditos o Twelve Data no respondió | Esperar al día siguiente (UTC) o revisar `/api/status` |
-| Gasto de créditos en feriados de EE. UU. | El horario no contempla feriados | Aceptado: son pocos créditos |
+| Desde 2028, gasto de créditos en feriados de EE. UU. | El calendario de la NYSE está cargado hasta `NYSE_CALENDAR_UNTIL` (2027; `/api/status` → `marketCalendarUntil`) | Agregar el año nuevo en `lib/market-hours.ts`, desde nyse.com/markets/hours-calendars |
 | Claude no logra conectar el conector | `LOGIN_LINK_SECRET` distinto en los dos Workers, o tu correo no está en `OWNER_EMAILS` de `mercados-mcp` | Vuelve a cargar el secreto igual en ambos; revisa `OWNER_EMAILS` |
 | El conector responde «Falta TWELVE_DATA_API_KEY» | `mercados-mcp` tiene sus propios secretos | Carga la clave también en `mercados-mcp` |
 | El freno cuenta unos créditos de menos | El panel (desde Lima) y Claude (desde EE. UU.) escriben el contador en KV, que tarda hasta 60 s en propagarse | Aceptado: el margen de 200 créditos lo cubre |

@@ -228,28 +228,85 @@ export async function quotes(
   }
 }
 
-// ---------- historial de 1 año ----------
+// ---------- historial de 5 años y rangos ----------
+
+/** Rangos de los gráficos. Todos salen del mismo historial de 5 años: Twelve Data cobra 1 crédito por consulta, traiga los días que traiga. */
+export const RANGES = ['1M', '3M', '6M', 'YTD', '1A', '3A', '5A'] as const;
+export type Range = (typeof RANGES)[number];
+export const DEFAULT_RANGE: Range = '1A';
+/** Algo más de 5 años, para que el rango 5A tenga su cierre base. */
+const HISTORY_DAYS = 5 * 366 + 10;
+
+export const isRange = (v: unknown): v is Range => typeof v === 'string' && (RANGES as readonly string[]).includes(v);
+
+/** Fecha en que empieza el rango, contando hacia atrás desde hoy (YTD: 1 de enero). */
+export function rangeStart(range: Range, today: string): string {
+  const [y, m, d] = today.split('-').map(Number) as [number, number, number];
+  const monthsBack = (n: number) => new Date(Date.UTC(y, m - 1 - n, d)).toISOString().slice(0, 10);
+  switch (range) {
+    case '1M':
+      return monthsBack(1);
+    case '3M':
+      return monthsBack(3);
+    case '6M':
+      return monthsBack(6);
+    case 'YTD':
+      return `${y}-01-01`;
+    case '1A':
+      return monthsBack(12);
+    case '3A':
+      return monthsBack(36);
+    case '5A':
+      return monthsBack(60);
+  }
+}
+
+/**
+ * Cierres del rango, empezando por el último cierre ANTERIOR al inicio: así el rendimiento se mide
+ * desde el cierre previo (YTD, desde el cierre del año anterior; 1A, desde el de hace un año).
+ */
+export function sliceRange(points: [string, number][], range: Range, today: string): [string, number][] {
+  const start = rangeStart(range, today);
+  const i = points.findIndex(([date]) => date >= start);
+  if (i === -1) return points.slice(-1);
+  return points.slice(Math.max(0, i - 1));
+}
 
 export interface HistoryData {
   symbol: string;
   points: [string, number][];
 }
 
-export async function history(d: Deps, symbol: string): Promise<Fresh<HistoryData> & { stats: SeriesStats | null }> {
+export type HistoryResult = Fresh<HistoryData> & {
+  stats: SeriesStats | null;
+  range: Range;
+  /** Lo que hay guardado (5 años), para saber si un rango quedó corto. */
+  available: { from: string | null; to: string | null };
+};
+
+export async function history(d: Deps, symbol: string, range: Range = DEFAULT_RANGE): Promise<HistoryResult> {
   const today = isoDate(d.now);
   const res = await cached<HistoryData>(
     d,
-    `hist:${symbol}`,
+    `hist5:${symbol}`,
     HISTORY_TTL_MS,
     async () => {
       // end_date no incluye ese día: la serie llega hasta el último cierre.
-      const pts = await getDailySeries(symbol, addDays(today, -366), today, needKey(d.twelveKey, 'TWELVE_DATA_API_KEY', 'twelvedata'), d.fetch);
+      const pts = await getDailySeries(symbol, addDays(today, -HISTORY_DAYS), today, needKey(d.twelveKey, 'TWELVE_DATA_API_KEY', 'twelvedata'), d.fetch);
       return { symbol, points: pts.map((p) => [p.date, p.close] as [string, number]) };
     },
     { credits: 1 },
   );
-  const pts: DailyPoint[] = res.data.points.map(([date, close]) => ({ date, close }));
-  return { ...res, stats: seriesStats(pts) };
+  const all = res.data.points;
+  const points = sliceRange(all, range, today);
+  const pts: DailyPoint[] = points.map(([date, close]) => ({ date, close }));
+  return {
+    ...res,
+    data: { symbol, points },
+    stats: seriesStats(pts),
+    range,
+    available: { from: all[0]?.[0] ?? null, to: all.at(-1)?.[0] ?? null },
+  };
 }
 
 // ---------- Perú (BCRP) ----------

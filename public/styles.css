@@ -103,6 +103,14 @@ button[disabled]{opacity:.6;cursor:default}
 }
 
 /* ---------- gráficos ---------- */
+/* Selector de periodo y botones de descarga */
+.d-tools{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:8px;margin-bottom:10px}
+.ranges{display:flex;flex-wrap:wrap;gap:4px}
+.ranges button,.csv-btn{padding:3px 9px;font-size:.78rem;color:var(--muted)}
+.ranges button[aria-pressed="true"]{border-color:var(--accent);color:var(--accent)}
+.chart-head{display:flex;align-items:baseline;justify-content:space-between;gap:8px}
+.chart-head .hint{margin:0}
+
 .chart{position:relative;width:100%}
 .chart svg{display:block;overflow:visible;touch-action:pan-y}
 .chart .line{fill:none;stroke:var(--accent);stroke-width:2;stroke-linejoin:round;stroke-linecap:round}

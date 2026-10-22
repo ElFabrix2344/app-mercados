@@ -8,7 +8,7 @@ import * as z from 'zod';
 import type { Role } from './auth/access';
 import { ApiError } from './lib/http';
 import { mockHistory, mockPeru, mockQuotes, mockUsa } from './mock';
-import { DAILY_CREDIT_CAP, MAX_SYMBOLS, creditsUsed, getWatchlist, history, peru, quotes, usa, type Deps } from './services/market';
+import { DAILY_CREDIT_CAP, DEFAULT_RANGE, MAX_SYMBOLS, RANGES, creditsUsed, getWatchlist, history, peru, quotes, usa, type Deps } from './services/market';
 
 export interface McpContext {
   deps: Deps;
@@ -114,33 +114,35 @@ function registerMarketTools(server: McpServer, c: McpContext, when: When): void
   server.registerTool(
     'historial',
     {
-      title: 'Historial de un año',
+      title: 'Historial (hasta 5 años)',
       description:
-        'Cierres diarios del último año de un símbolo de la lista de seguimiento (Twelve Data, guardados hasta 12 h) y sus ' +
-        'estadísticas: rendimiento total (último cierre / primero − 1), volatilidad anualizada de los rendimientos diarios, ' +
-        'máxima caída desde un pico previo, mejor y peor día, y cierres máximo y mínimo. Los porcentajes vienen en puntos ' +
-        'porcentuales (12.5 = +12,5 %).',
+        'Cierres diarios de un símbolo de la lista de seguimiento en el rango pedido (1M, 3M, 6M, YTD, 1A, 3A o 5A; Twelve Data, ' +
+        'guardados hasta 12 h) y sus estadísticas para ese rango: rendimiento total (medido desde el cierre anterior al inicio), ' +
+        'volatilidad anualizada de los rendimientos diarios, máxima caída desde un pico previo, mejor y peor día, y cierres ' +
+        'máximo y mínimo. Los porcentajes vienen en puntos porcentuales (12.5 = +12,5 %).',
       inputSchema: z.object({
         simbolo: z.string().max(20).describe('Símbolo de la lista, p. ej. "BAP" o "USD/PEN".'),
+        rango: z.enum(RANGES).default(DEFAULT_RANGE).describe('Periodo: 1M, 3M, 6M, YTD (año en curso), 1A (por defecto), 3A o 5A.'),
         cierres: z
           .enum(['ninguno', 'mensual', 'diario'])
           .default('mensual')
-          .describe('Cierres a incluir además de las estadísticas: ninguno, el último de cada mes (por defecto) o todos los diarios (~250).'),
+          .describe('Cierres a incluir además de las estadísticas: ninguno, el último de cada mes (por defecto) o todos los diarios (~250 por año).'),
       }),
       annotations: { readOnlyHint: true, openWorldHint: true },
     },
-    ({ simbolo, cierres }) =>
+    ({ simbolo, rango, cierres }) =>
       run(async () => {
         const list = await getWatchlist(deps.kv);
         const symbol = normalize(simbolo);
         if (!list.includes(symbol)) throw notInList([symbol], list);
 
-        const r = c.mock ? mockHistory(symbol, deps.now) : await history(deps, symbol);
+        const r = c.mock ? mockHistory(symbol, deps.now, rango) : await history(deps, symbol, rango);
         const pts = r.data.points;
         const st = r.stats;
         return {
           fuente: 'Twelve Data (cierres diarios)',
           simbolo: symbol,
+          rango: r.range,
           desde: pts[0]?.[0] ?? null,
           hasta: pts.at(-1)?.[0] ?? null,
           observaciones: pts.length,

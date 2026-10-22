@@ -22,7 +22,8 @@ App de mercados (Cloudflare Worker + panel web + conector MCP para Claude). El R
 - Twelve Data, plan gratis: 800 créditos al día y 8 por minuto, **compartidos con el conector oficial de Twelve Data** que se usa en claude.ai. La app se frena en 600. Además, el volumen intradía del plan gratis viene de una sola parte de las bolsas: no lo muestres como volumen real.
 - El BCRP pega un aviso HTML de PHP después del JSON. `extractJson` lo resuelve: no vuelvas a `res.json()`.
 - FRED marca con `"."` los días sin dato.
-- El horario de la bolsa de NY (`lib/market-hours.ts`) no contempla feriados.
+- Los feriados y cierres anticipados de la NYSE están cargados hasta 2027 en `lib/market-hours.ts` (`NYSE_CALENDAR_UNTIL`). **Cada año hay que agregar el siguiente** desde nyse.com/markets/hours-calendars; si no, la app gasta créditos en los feriados.
+- El historial guarda 5 años (`hist5:<símbolo>` en KV) por 1 crédito; los rangos se recortan de ahí con `sliceRange`, que empieza en el cierre **anterior** al inicio del rango.
 - Si cambias la forma de los datos guardados en KV, lee también el formato anterior (ver `readQuotes`).
 
 ## Estado y próximos pasos

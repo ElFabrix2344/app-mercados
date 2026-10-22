@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { verifyAccess } from '../src/auth/access';
 import type { Env } from '../src/env';
-import { DAILY_CREDIT_CAP, history, quotes, validateWatchlist } from '../src/services/market';
+import { DAILY_CREDIT_CAP, history, quotes, rangeStart, sliceRange, validateWatchlist } from '../src/services/market';
 import { fakeFetch, memoryKV } from './helpers';
 
 const quoteBody = (symbol: string) => ({ symbol, name: symbol, exchange: 'NYSE', currency: 'USD', close: '10', last_quote_at: 1792162380 });
@@ -144,16 +144,54 @@ describe('quotes con la bolsa de Nueva York cerrada', () => {
 });
 
 describe('history', () => {
-  it('pide un año hasta hoy (sin incluirlo), cobra 1 crédito y calcula estadísticas', async () => {
+  const series = [
+    { datetime: '2026-10-15', close: '121' },
+    { datetime: '2026-09-15', close: '115' },
+    { datetime: '2025-12-31', close: '110' },
+    { datetime: '2025-10-15', close: '100' },
+    { datetime: '2021-10-15', close: '50' },
+  ];
+
+  it('pide 5 años hasta hoy (sin incluirlo) con 1 solo crédito, y por defecto muestra 1 año', async () => {
     const { kv } = memoryKV();
-    const { f, calls } = fakeFetch(() => ({
-      body: { values: [{ datetime: '2026-10-15', close: '110' }, { datetime: '2025-10-16', close: '100' }], status: 'ok' },
-    }));
+    const { f, calls } = fakeFetch(() => ({ body: { values: series, status: 'ok' } }));
     const r = await history({ kv, now: new Date('2026-10-16T15:00:00Z'), fetch: f, twelveKey: 'k' }, 'BAP');
-    expect(calls[0]!.searchParams.get('start_date')).toBe('2025-10-15');
+    expect(calls[0]!.searchParams.get('start_date')! < '2021-10-16').toBe(true);
     expect(calls[0]!.searchParams.get('end_date')).toBe('2026-10-16');
-    expect(r.stats!.totalReturn).toBeCloseTo(0.1, 10);
+    expect(r.range).toBe('1A');
+    expect(r.data.points[0]).toEqual(['2025-10-15', 100]); // cierre base: el anterior al 16 oct 2025
+    expect(r.stats!.totalReturn).toBeCloseTo(0.21, 10);
+    expect(r.available).toEqual({ from: '2021-10-15', to: '2026-10-15' });
     expect(await kv.get('budget', 'json')).toEqual({ day: '2026-10-16', used: 1 });
+  });
+
+  it('los demás rangos salen de la misma caché, sin volver a pedir ni gastar créditos', async () => {
+    const { kv } = memoryKV();
+    const { f, calls } = fakeFetch(() => ({ body: { values: series, status: 'ok' } }));
+    const d = { kv, now: new Date('2026-10-16T15:00:00Z'), fetch: f, twelveKey: 'k' };
+    await history(d, 'BAP');
+    const ytd = await history(d, 'BAP', 'YTD');
+    const cinco = await history(d, 'BAP', '5A');
+    expect(calls).toHaveLength(1);
+    expect(ytd.stats!.totalReturn).toBeCloseTo(121 / 110 - 1, 10); // desde el cierre del 31 dic
+    expect(cinco.stats!.totalReturn).toBeCloseTo(121 / 50 - 1, 10);
+    expect(await kv.get('budget', 'json')).toEqual({ day: '2026-10-16', used: 1 });
+  });
+});
+
+describe('rangos', () => {
+  it('calcula el inicio de cada rango', () => {
+    expect(rangeStart('1M', '2026-10-16')).toBe('2026-09-16');
+    expect(rangeStart('3M', '2026-10-16')).toBe('2026-07-16');
+    expect(rangeStart('YTD', '2026-10-16')).toBe('2026-01-01');
+    expect(rangeStart('1A', '2026-10-16')).toBe('2025-10-16');
+    expect(rangeStart('5A', '2026-10-16')).toBe('2021-10-16');
+  });
+
+  it('empieza en el último cierre anterior al inicio y, si falta historia, usa toda la que hay', () => {
+    const pts: [string, number][] = [['2026-09-14', 1], ['2026-09-17', 2], ['2026-10-15', 3]];
+    expect(sliceRange(pts, '1M', '2026-10-16')).toEqual(pts); // base: 14 sep (el 16 no hubo cierre)
+    expect(sliceRange(pts.slice(1), '5A', '2026-10-16')).toEqual(pts.slice(1));
   });
 });
 

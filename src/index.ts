@@ -1,14 +1,18 @@
 import { allowedEmails, roleFor, verifyAccess, type Role } from './auth/access';
 import { isLocalDev, isMock, trimSecrets, type Env } from './env';
 import { ApiError, errorResponse, escapeHtml, htmlPage, json } from './lib/http';
+import { NYSE_CALENDAR_UNTIL } from './lib/market-hours';
 import { signPayload } from './lib/signed';
 import { mockHistory, mockPeru, mockQuotes, mockUsa } from './mock';
 import {
   DAILY_CREDIT_CAP,
+  DEFAULT_RANGE,
   MAX_SYMBOLS,
+  RANGES,
   creditsUsed,
   getWatchlist,
   history,
+  isRange,
   peru,
   quotes,
   saveWatchlist,
@@ -88,6 +92,8 @@ async function route(req: Request, env: Env, url: URL, role: Role, email: string
           role,
           config: configStatus(env),
           credits: { used: await creditsUsed(env.CACHE, now), cap: DAILY_CREDIT_CAP, plan: 800 },
+          // Hasta cuándo están cargados los feriados de la NYSE (después solo se excluyen fines de semana).
+          marketCalendarUntil: NYSE_CALENDAR_UNTIL,
           mock,
           now: now.toISOString(),
         });
@@ -106,7 +112,9 @@ async function route(req: Request, env: Env, url: URL, role: Role, email: string
         if (!(await getWatchlist(env.CACHE)).includes(symbol)) {
           throw new ApiError('bad_request', 400, 'Solo se piden historiales de la lista de seguimiento.');
         }
-        return json(mock ? mockHistory(symbol, now) : await history(deps, symbol));
+        const range = url.searchParams.get('range') ?? DEFAULT_RANGE;
+        if (!isRange(range)) throw new ApiError('bad_request', 400, `Rango no válido. Usa uno de: ${RANGES.join(', ')}.`);
+        return json(mock ? mockHistory(symbol, now, range) : await history(deps, symbol, range));
       }
 
       case '/api/peru':

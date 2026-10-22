@@ -13,9 +13,11 @@
     symbols: [],
     max: 8,
     quotes: null,
-    hist: new Map(), // símbolo → { points, stats } | { error }
+    hist: new Map(), // símbolo → { points, stats } | { error }  (rango 1A: filas y ficha)
     histBusy: false,
     selected: null,
+    range: '1A', // rango de la ficha
+    rangeData: new Map(), // `${símbolo}|${rango}` → { points, stats } | { error } | 'cargando'
     notes: new Map(), // clave → { text, kind }
   };
 
@@ -174,7 +176,9 @@
         label.textContent = tickFmt(t);
         svg.append(label);
       }
-      const idxs = [...new Set([0, Math.round((n - 1) / 3), Math.round((2 * (n - 1)) / 3), n - 1])];
+      // Menos etiquetas en gráficos angostos (celular), para que las fechas no se pisen.
+      const labels = iw < 300 ? 2 : iw < 480 ? 3 : 4;
+      const idxs = [...new Set(Array.from({ length: labels }, (_, k) => Math.round((k * (n - 1)) / (labels - 1))))];
       for (const i of idxs) {
         const anchor = i === 0 ? 'start' : i === n - 1 ? 'end' : 'middle';
         const label = s('text', { class: 'tick', x: X(i), y: H - 6, 'text-anchor': anchor });
@@ -386,6 +390,39 @@
     return h('div', {}, h('dt', {}, label), h('dd', {}, value, sub ? h('small', {}, sub) : null));
   }
 
+  const RANGES = ['1M', '3M', '6M', 'YTD', '1A', '3A', '5A'];
+  const RANGE_NAMES = { '1M': 'el último mes', '3M': 'los últimos 3 meses', '6M': 'los últimos 6 meses', YTD: 'lo que va del año', '1A': 'el último año', '3A': 'los últimos 3 años', '5A': 'los últimos 5 años' };
+
+  /** Historial de la ficha en el rango elegido: 1A ya está cargado (filas); los demás se piden una vez. */
+  function detailHistory(sym, range) {
+    if (range === '1A') return state.hist.get(sym);
+    const key = `${sym}|${range}`;
+    const cached = state.rangeData.get(key);
+    if (cached) return cached === 'cargando' ? undefined : cached;
+    state.rangeData.set(key, 'cargando');
+    api(`/api/history?symbol=${encodeURIComponent(sym)}&range=${range}`)
+      .then((r) => state.rangeData.set(key, { points: r.data.points, stats: r.stats }))
+      .catch((e) => state.rangeData.set(key, { error: e.message }))
+      .finally(() => {
+        if (state.selected === sym && state.range === range) renderDetail();
+      });
+    return undefined;
+  }
+
+  function renderRanges() {
+    const host = $('d-ranges');
+    host.replaceChildren(
+      ...RANGES.map((r) => {
+        const b = h('button', { type: 'button', 'aria-pressed': String(state.range === r) }, r);
+        b.addEventListener('click', () => {
+          state.range = r;
+          renderDetail();
+        });
+        return b;
+      }),
+    );
+  }
+
   function renderDetail() {
     const sym = state.selected;
     const sec = $('detail');
@@ -394,15 +431,18 @@
       return;
     }
     sec.hidden = false;
+    renderRanges();
     const q = quoteFor(sym);
-    const hist = state.hist.get(sym);
+    const hist = detailHistory(sym, state.range);
     $('d-title').textContent = q?.name ? `${sym} · ${q.name}` : sym;
     $('d-sub').textContent = q ? [q.exchange, q.currency].filter(Boolean).join(' · ') : '';
     const chart = $('d-chart');
     const stats = $('d-stats');
     const tbody = $('d-table').tBodies[0];
+    const csvBtn = $('d-csv');
     stats.replaceChildren();
     tbody.replaceChildren();
+    csvBtn.disabled = !hist?.points;
     if (!hist) {
       charts.delete(chart);
       chart.replaceChildren(h('p', { class: 'muted' }, 'Cargando historial…'));
@@ -414,7 +454,19 @@
       return;
     }
     const pts = hist.points.map(([date, v]) => ({ date, v }));
-    drawLine(chart, pts, { height: 260, axis: true, interactive: true, fmt: fmtPrice, aria: `Cierre diario de ${sym} en el último año` });
+    const short = state.range === '1M' || state.range === '3M';
+    drawLine(chart, pts, {
+      height: 260,
+      axis: true,
+      interactive: true,
+      fmt: fmtPrice,
+      axisDateFmt: short ? fDay : fAxisMonth,
+      aria: `Cierre diario de ${sym} en ${RANGE_NAMES[state.range]}`,
+    });
+    csvBtn.onclick = () => {
+      const rows = hist.points.map(([date, close], i) => [date, close, i ? round6(close / hist.points[i - 1][1] - 1) : '']);
+      downloadCsv(`${sym.replace('/', '-')}_${state.range}_${limaDate(new Date())}.csv`, ['fecha', 'cierre', 'rendimiento_diario'], rows);
+    };
 
     const st = hist.stats;
     if (st) {
@@ -424,7 +476,7 @@
         stat(
           'Mayor caída desde un pico',
           st.maxDrawdown ? pctFrac(st.maxDrawdown.value) : 'Sin caídas',
-          st.maxDrawdown ? `${fDay.format(day(st.maxDrawdown.peakDate))} → ${fDay.format(day(st.maxDrawdown.troughDate))}` : null,
+          st.maxDrawdown ? `${fDayYear.format(day(st.maxDrawdown.peakDate))} → ${fDayYear.format(day(st.maxDrawdown.troughDate))}` : null,
         ),
         stat('Peor día', st.worstDay ? pctFrac(st.worstDay.ret) : '—', st.worstDay ? fDayYear.format(day(st.worstDay.date)) : null),
         stat('Mejor día', st.bestDay ? pctFrac(st.bestDay.ret) : '—', st.bestDay ? fDayYear.format(day(st.bestDay.date)) : null),
@@ -449,11 +501,40 @@
     return h('div', { class: 'metric' }, h('span', { class: 'label' }, label), h('span', { class: 'value' }, value), sub ? h('span', { class: 'sub' }, sub) : null);
   }
 
-  function chartBlock(title, pts, opts) {
+  /** Gráfico pequeño con su título y, si se da `csv`, un botón para descargar sus datos. */
+  function chartBlock(title, pts, opts, csv) {
     const host = h('div', { class: 'chart' });
-    const wrap = h('div', {}, h('p', { class: 'hint' }, title), host);
+    const head = h('div', { class: 'chart-head' }, h('p', { class: 'hint' }, title));
+    if (csv) {
+      const b = h('button', { type: 'button', class: 'csv-btn', title: `Descargar ${csv.filename}` }, '⤓ CSV');
+      b.addEventListener('click', () => downloadCsv(csv.filename, csv.header, csv.rows));
+      head.append(b);
+    }
+    const wrap = h('div', {}, head, host);
     return { wrap, draw: () => drawLine(host, pts, { height: 140, axis: true, interactive: true, ...opts }) };
   }
+
+  // ---------- exportar ----------
+  const round6 = (x) => Math.round(x * 1e6) / 1e6;
+
+  /**
+   * Descarga un CSV para Excel: separado por comas, decimales con punto (configuración es-PE) y con
+   * BOM UTF-8 para que Excel lea bien las tildes. Se arma en el navegador: no pasa por el servidor.
+   */
+  function downloadCsv(filename, header, rows) {
+    const cell = (v) => {
+      const s = v == null ? '' : String(v);
+      return /[",\r\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+    };
+    const text = `﻿${[header, ...rows].map((r) => r.map(cell).join(',')).join('\r\n')}\r\n`;
+    const url = URL.createObjectURL(new Blob([text], { type: 'text/csv;charset=utf-8' }));
+    const a = h('a', { href: url, download: filename, hidden: true });
+    document.body.append(a);
+    a.click();
+    a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 2000);
+  }
+  const today = () => limaDate(new Date());
 
   function staleHint(r) {
     return r.stale && r.note && r.note !== 'Datos de prueba' ? h('p', { class: 'hint' }, `Dato guardado (${ago(r.fetchedAt)}): ${r.note}`) : null;
@@ -475,16 +556,18 @@
       if (live && lastFx) {
         parts.push(h('p', { class: 'hint' }, `En vivo (Twelve Data): ${nf(4).format(live.price)} · ${pctFrac(live.price / lastFx.sell - 1, 2)} frente al BCRP del ${fDay.format(day(lastFx.date))}.`));
       }
-      const fxChart = chartBlock('Dólar interbancario (venta), últimos 30 días hábiles', fx.map((p) => ({ date: p.date, v: p.sell })), {
-        fmt: (v) => nf(4).format(v),
-        axisDateFmt: fDay,
-        aria: 'Tipo de cambio interbancario de venta, últimos 30 días hábiles',
-      });
-      const infChart = chartBlock('Inflación 12 meses en Lima, por mes', inflation.map((p) => ({ date: p.date, v: p.value })), {
-        fmt: (v) => rate(v),
-        dateFmt: fMonthYear,
-        aria: 'Inflación a 12 meses en Lima Metropolitana, mensual',
-      });
+      const fxChart = chartBlock(
+        'Dólar interbancario (venta), últimos 30 días hábiles',
+        fx.map((p) => ({ date: p.date, v: p.sell })),
+        { fmt: (v) => nf(4).format(v), axisDateFmt: fDay, aria: 'Tipo de cambio interbancario de venta, últimos 30 días hábiles' },
+        { filename: `bcrp_dolar_interbancario_${today()}.csv`, header: ['fecha', 'compra', 'venta'], rows: fx.map((p) => [p.date, p.buy, p.sell]) },
+      );
+      const infChart = chartBlock(
+        'Inflación 12 meses en Lima, por mes',
+        inflation.map((p) => ({ date: p.date, v: p.value })),
+        { fmt: (v) => rate(v), dateFmt: fMonthYear, aria: 'Inflación a 12 meses en Lima Metropolitana, mensual' },
+        { filename: `bcrp_inflacion_lima_${today()}.csv`, header: ['mes', 'inflacion_12m_pct'], rows: inflation.map((p) => [p.date.slice(0, 7), round6(p.value)]) },
+      );
       host.replaceChildren(...parts, fxChart.wrap, infChart.wrap, ...[staleHint(r)].filter(Boolean));
       fxChart.draw();
       infChart.draw();
@@ -504,16 +587,18 @@
       if (t10) row.append(metric('Bono del Tesoro a 10 años', rate(t10.value), fDay.format(day(t10.date))));
       if (fedFunds) row.append(metric('Tasa de la Fed (efectiva)', rate(fedFunds.value), fDay.format(day(fedFunds.date))));
       if (cpi) row.append(metric('Inflación anual (IPC)', rate(cpi.value, 1), fMonthYear.format(day(cpi.date))));
-      const tChart = chartBlock('Rendimiento del bono a 10 años, últimos 60 días hábiles', treasury10y.map((p) => ({ date: p.date, v: p.value })), {
-        fmt: (v) => rate(v),
-        axisDateFmt: fDay,
-        aria: 'Rendimiento del bono del Tesoro a 10 años, últimos 60 días hábiles',
-      });
-      const cChart = chartBlock('Inflación anual de EE. UU., por mes', cpiYoY.map((p) => ({ date: p.date, v: p.value })), {
-        fmt: (v) => rate(v, 1),
-        dateFmt: fMonthYear,
-        aria: 'Inflación anual de Estados Unidos, mensual',
-      });
+      const tChart = chartBlock(
+        'Rendimiento del bono a 10 años, últimos 60 días hábiles',
+        treasury10y.map((p) => ({ date: p.date, v: p.value })),
+        { fmt: (v) => rate(v), axisDateFmt: fDay, aria: 'Rendimiento del bono del Tesoro a 10 años, últimos 60 días hábiles' },
+        { filename: `fred_bono_10_anios_${today()}.csv`, header: ['fecha', 'rendimiento_pct'], rows: treasury10y.map((p) => [p.date, p.value]) },
+      );
+      const cChart = chartBlock(
+        'Inflación anual de EE. UU., por mes',
+        cpiYoY.map((p) => ({ date: p.date, v: p.value })),
+        { fmt: (v) => rate(v, 1), dateFmt: fMonthYear, aria: 'Inflación anual de Estados Unidos, mensual' },
+        { filename: `fred_inflacion_eeuu_${today()}.csv`, header: ['mes', 'inflacion_anual_pct'], rows: cpiYoY.map((p) => [p.date.slice(0, 7), round6(p.value)]) },
+      );
       host.replaceChildren(row, tChart.wrap, cChart.wrap, ...[staleHint(r)].filter(Boolean));
       tChart.draw();
       cChart.draw();
