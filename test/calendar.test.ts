@@ -1,5 +1,28 @@
 import { describe, expect, it } from 'vitest';
-import { upcoming, zonedToUtc, type EconEvent } from '../src/lib/calendar';
+import { CALENDAR_UNTIL, EVENTS, SOURCES, upcoming, zonedToUtc, type EconEvent } from '../src/lib/calendar';
+
+describe('fechas cargadas', () => {
+  it('son fechas válidas, de fuentes conocidas, sin repetir y dentro de lo que dice CALENDAR_UNTIL', () => {
+    const seen = new Set<string>();
+    for (const e of EVENTS) {
+      expect(new Date(`${e.date}T12:00:00Z`).toISOString().slice(0, 10)).toBe(e.date);
+      expect(SOURCES[e.kind]).toBeDefined();
+      expect(e.date <= CALENDAR_UNTIL[e.kind]!).toBe(true);
+      expect(seen.has(`${e.kind}|${e.date}`)).toBe(false);
+      seen.add(`${e.kind}|${e.date}`);
+    }
+  });
+
+  it('las horas de la Fed y del BLS pasan bien a la hora de Lima (el cambio de hora de EE. UU. es el 1 nov 2026)', () => {
+    const list = upcoming(EVENTS, new Date('2026-10-22T12:00:00Z'), 30);
+    const fed = list.find((e) => e.kind === 'fed')!;
+    expect(fed.date).toBe('2026-10-28');
+    expect(fed.at).toBe('2026-10-28T18:00:00.000Z'); // 2:00 p. m. en Nueva York (EDT) = 1:00 p. m. en Lima
+    const bls = list.find((e) => e.kind === 'bls')!;
+    expect(bls.date).toBe('2026-11-10');
+    expect(bls.at).toBe('2026-11-10T13:30:00.000Z'); // 8:30 a. m. en Nueva York (EST) = 8:30 a. m. en Lima
+  });
+});
 
 describe('zonedToUtc', () => {
   it('convierte la hora de Nueva York respetando el horario de verano', () => {

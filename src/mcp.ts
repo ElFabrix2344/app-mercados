@@ -42,14 +42,14 @@ export interface McpContext {
 }
 
 const INSTRUCTIONS =
-  'Datos del panel personal «Mercados» del usuario: precios, historial con indicadores técnicos y comparación de los ' +
+  'Datos del panel personal «Rueda» del usuario: precios, historial con indicadores técnicos y comparación de los ' +
   'símbolos de su lista de seguimiento (Twelve Data), ' +
   'Perú (BCRP), EE. UU. (FRED) y el calendario económico. Los datos pueden venir de la caché del panel: al responder, di ' +
   'la hora de «actualizado» y avisa si «dato_guardado» es true. Para símbolos fuera de la lista usa otra fuente (por ' +
   'ejemplo, el conector de Twelve Data).';
 
 const INSTRUCTIONS_FRIEND =
-  'Datos públicos del panel «Mercados»: Perú (BCRP), EE. UU. (FRED) y el calendario económico. Los datos pueden venir de ' +
+  'Datos públicos del panel «Rueda»: Perú (BCRP), EE. UU. (FRED) y el calendario económico. Los datos pueden venir de ' +
   'la caché del panel: al responder, di la hora de «actualizado» y avisa si «dato_guardado» es true. Los precios de ' +
   'mercado no están disponibles en este conector para tu cuenta.';
 
@@ -63,7 +63,7 @@ export function handleMcp(req: Request, c: McpContext): Promise<Response> {
 
 export function buildServer(c: McpContext): McpServer {
   const owner = c.role === 'owner';
-  const server = new McpServer({ name: 'mercados', version: '0.4.0' }, { instructions: owner ? INSTRUCTIONS : INSTRUCTIONS_FRIEND });
+  const server = new McpServer({ name: 'rueda', version: '0.5.0' }, { instructions: owner ? INSTRUCTIONS : INSTRUCTIONS_FRIEND });
   const when: When = (iso) => localTime(iso, c.timeZone);
 
   // Precios e historial (Twelve Data): solo para el dueño, por la licencia del plan gratis.
@@ -84,7 +84,7 @@ function registerMarketTools(server: McpServer, c: McpContext, when: When): void
     {
       title: 'Precios de la lista de seguimiento',
       description:
-        'Precios actuales de los símbolos de la lista de seguimiento del panel Mercados (acciones y ETF de EE. UU., divisas como ' +
+        'Precios actuales de los símbolos de la lista de seguimiento del panel Rueda (acciones y ETF de EE. UU., divisas como ' +
         'USD/PEN, cripto como BTC/USD), de Twelve Data. Sin argumentos devuelve toda la lista. Sale de la caché del panel: las ' +
         'acciones solo se renuevan con la bolsa de Nueva York abierta y todo respeta el freno diario de créditos. ' +
         'variacion_pct está en puntos porcentuales (0.31 = +0,31 %). Las horas están en la zona horaria indicada.',
@@ -435,7 +435,7 @@ function notInList(symbols: string[], list: string[]): ApiError {
     'bad_request',
     400,
     `${symbols.join(', ')} no está en la lista de seguimiento (${list.join(', ')}). ` +
-      'Para otros símbolos usa otra fuente, por ejemplo el conector de Twelve Data, o agrégalos a la lista en el panel Mercados.',
+      'Para otros símbolos usa otra fuente, por ejemplo el conector de Twelve Data, o agrégalos a la lista en el panel Rueda.',
   );
 }
 

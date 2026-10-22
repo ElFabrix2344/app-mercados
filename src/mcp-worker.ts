@@ -91,9 +91,9 @@ function consentPage(d: ConsentDescription, handle: string): string {
   const loopback = d.redirectIsLoopback
     ? '<p class="warn">El acceso irá a una app de tu computadora. Continúa solo si acabas de conectar desde ella (por ejemplo, Claude Code).</p>'
     : '';
-  return `<p>${who} quiere leer los datos de tu panel Mercados: precios e historial de tu lista, Perú (BCRP) y EE. UU. (FRED). Solo lectura.</p>
+  return `<p>${who} quiere leer los datos de tu panel Rueda: precios e historial de tu lista, Perú (BCRP) y EE. UU. (FRED). Solo lectura.</p>
 <p>El acceso se enviará a <strong>${escapeHtml(d.redirectHost)}</strong>.</p>${loopback}
-<p class="muted">Si permites, se abrirá el inicio de sesión de tu app Mercados para confirmar tu correo.</p>
+<p class="muted">Si permites, se abrirá el inicio de sesión de tu app Rueda para confirmar tu correo.</p>
 <form method="post"><input type="hidden" name="handle" value="${escapeHtml(handle)}">
 <button class="ok" name="decision" value="approve">Permitir</button><button name="decision" value="deny">Cancelar</button></form>`;
 }
@@ -162,7 +162,7 @@ export const defaultHandler: ExportedHandler<McpEnv> = {
       if (pathname === '/authorize' && request.method === 'POST') return await decideConsent(request, env);
       if (pathname === '/callback' && request.method === 'GET') return await finishLogin(request, env);
       if (pathname === '/') {
-        return page('Mercados · conector de Claude', `<p>Agrégalo en claude.ai → Conectores → Agregar conector personalizado, con la URL:</p><p><strong>${MCP_RESOURCE}</strong></p>`);
+        return page('Rueda · conector de Claude', `<p>Agrégalo en claude.ai → Conectores → Agregar conector personalizado, con la URL:</p><p><strong>${MCP_RESOURCE}</strong></p>`);
       }
       return new Response('No encontrado', { status: 404, headers: SECURITY_HEADERS });
     } catch (e) {
@@ -207,7 +207,7 @@ export default new OAuthProvider<McpEnv>({
   resourceMetadata: {
     resource: MCP_RESOURCE,
     authorization_servers: [MCP_ORIGIN],
-    resource_name: 'Mercados',
+    resource_name: 'Rueda',
   },
   clientIdMetadataDocumentEnabled: true,
 });

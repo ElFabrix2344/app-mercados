@@ -1,4 +1,6 @@
-# Mercados — notas para Claude
+# Rueda (antes «Mercados») — notas para Claude
+
+El nombre visible es **Rueda**. Los nombres técnicos (Workers, direcciones, KV, scope OAuth `mercados`, claves `mercados.*` de localStorage) siguen como «mercados» a propósito: no los cambies.
 
 App de mercados (Cloudflare Worker + panel web + conector MCP para Claude). El README explica la arquitectura, la API y el despliegue: léelo antes de cambiar algo.
 

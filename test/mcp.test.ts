@@ -65,7 +65,7 @@ describe('servidor MCP', () => {
   it('responde a initialize y lista sus herramientas de solo lectura', async () => {
     const { c } = ctx();
     const init = await rpc(c, 'initialize', { protocolVersion: '2025-06-18', capabilities: {}, clientInfo: { name: 'test', version: '0' } });
-    expect(init.result.serverInfo.name).toBe('mercados');
+    expect(init.result.serverInfo.name).toBe('rueda');
     const { result } = await rpc(c, 'tools/list');
     expect(result.tools.map((t: { name: string }) => t.name)).toEqual(['precios', 'historial', 'comparar', 'peru_bcrp', 'eeuu_fred', ...CALENDAR_TOOL]);
     for (const t of result.tools) expect(t.annotations.readOnlyHint).toBe(true);
@@ -233,6 +233,21 @@ describe('herramienta comparar', () => {
     expect(r.isError).toBe(true);
     expect(r.text).toContain('NVDA no está en la lista');
     expect(calls).toHaveLength(0);
+  });
+});
+
+describe('herramienta calendario', () => {
+  it('da los próximos eventos con la hora de Lima y no llama a ninguna API', async () => {
+    const { f, calls } = quotesFetch();
+    const { c } = ctx({}, f, undefined, 'friend');
+    const r = await callTool(c, 'calendario', { dias: 30 });
+    expect(calls).toHaveLength(0);
+    expect(r.data.zona_horaria).toBe('America/Lima');
+    expect(r.data.eventos[0]).toMatchObject({ fecha: '2026-10-28', hora: '13:00', fuente: 'Reserva Federal (FOMC)' });
+    expect(r.data.eventos.map((e: { fecha: string }) => e.fecha)).toEqual(['2026-10-28', '2026-11-01', '2026-11-10', '2026-11-12']);
+    expect(r.data.eventos.find((e: { fecha: string }) => e.fecha === '2026-11-10').hora).toBe('08:30');
+    expect(r.data.eventos.find((e: { fecha: string }) => e.fecha === '2026-11-12').hora).toBeNull();
+    expect(r.data.cobertura.bcrp).toBe('2026-12-31');
   });
 });
 

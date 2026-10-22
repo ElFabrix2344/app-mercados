@@ -1,5 +1,5 @@
 'use strict';
-// Mercados: panel sin framework. Todo el texto que viene de la API se pone con textContent.
+// Rueda (antes «Mercados»): panel sin framework. Todo el texto que viene de la API se pone con textContent.
 
 (() => {
   const $ = (id) => document.getElementById(id);
@@ -24,6 +24,8 @@
     cmpError: null, // { key, message } del último intento fallido
     peruData: null, // lo último de /api/peru y /api/usa (el calendario muestra la tasa o la inflación actual)
     usaData: null,
+    peruMarkets: null, // cobre, oro, BVL y reservas (también van en la cinta)
+    marketOpen: null, // ¿la bolsa de Nueva York está en sesión? (de /api/status y de cada pedido de precios)
     calendar: null, // respuesta de /api/calendar
     notes: new Map(), // clave → { text, kind }
   };
@@ -630,12 +632,59 @@
     renderMarket();
   }
 
-  /** Estado de la bolsa de Nueva York según el servidor (el mismo criterio con el que decide qué renovar). */
+  /** «Rueda abierta / cerrada»: la sesión de la bolsa de Nueva York, con el mismo criterio con el que el servidor decide qué renovar. */
   function renderMarket() {
     const el = $('mkt');
-    const m = state.quotes?.market;
-    el.textContent = m ? (m.open ? 'NYSE abierto' : 'NYSE cerrado · acciones al cierre') : '';
-    el.className = m?.open ? 'mkt open' : 'mkt';
+    const open = state.quotes?.market?.open ?? state.marketOpen;
+    el.textContent = open == null ? '' : open ? 'Rueda abierta · NYSE' : 'Rueda cerrada · NYSE';
+    el.className = open ? 'mkt open' : 'mkt';
+    el.title = open == null ? '' : open ? 'La bolsa de Nueva York está en sesión.' : 'Fuera del horario de la bolsa de Nueva York: las acciones muestran su último cierre.';
+  }
+
+  // ---------- cinta de precios ----------
+  /** Variación del último dato contra el anterior de una serie [fecha, valor][]. */
+  const lastChange = (pts) => (pts?.length >= 2 ? pts.at(-1)[1] / pts.at(-2)[1] - 1 : null);
+
+  /**
+   * Lo que pasa por la cinta: la lista del dueño (precios ya guardados, sin gastar créditos) y, para todos,
+   * los datos públicos del BCRP y de FRED. Los amigos no tienen lista: la licencia de Twelve Data no lo permite.
+   */
+  function tapeItems() {
+    const items = [];
+    for (const sym of state.symbols) {
+      const q = quoteFor(sym);
+      if (q?.price != null) items.push({ sym, value: fmtPrice(q.price), ch: q.changePct != null ? q.changePct / 100 : null });
+    }
+    const fx = state.peruData?.fx;
+    if (fx?.length) items.push({ sym: 'Dólar BCRP', value: nf(4).format(fx.at(-1).sell), ch: fx.length > 1 ? fx.at(-1).sell / fx.at(-2).sell - 1 : null });
+    const pm = state.peruMarkets;
+    for (const [key, label] of [['copper', 'Cobre'], ['gold', 'Oro'], ['bvl', 'BVL']]) {
+      const pts = pm?.[key]?.points;
+      if (pts?.length) items.push({ sym: label, value: nf(2).format(pts.at(-1)[1]), ch: lastChange(pts) });
+    }
+    const t10 = state.usaData?.treasury10y;
+    if (t10?.length) items.push({ sym: 'Bono 10A', value: rate(t10.at(-1).value), pp: t10.length > 1 ? t10.at(-1).value - t10.at(-2).value : null });
+    return items;
+  }
+
+  function renderTape() {
+    const items = tapeItems();
+    $('tape').hidden = !items.length;
+    if (!items.length) return;
+    const half = () =>
+      h(
+        'span',
+        { class: 'tape-half' },
+        ...items.map((it) => {
+          const d = it.pp ?? it.ch;
+          const text = d == null ? null : it.pp != null ? `${arrowOf(d)} ${sign(d)}${nf(2).format(Math.abs(d))} pp` : `${arrowOf(d)} ${pctFrac(d, 2)}`;
+          return h('span', { class: 'tape-item' }, h('span', { class: 'tape-sym' }, it.sym), it.value, text ? h('span', { class: trend(d) }, text) : null);
+        }),
+      );
+    const track = $('tape-track');
+    // Dos copias seguidas: al correr media cinta vuelve a empezar sin que se note el corte.
+    track.replaceChildren(half(), half());
+    track.style.animationDuration = `${Math.max(30, items.length * 6)}s`;
   }
 
   function renderClock() {
@@ -662,6 +711,7 @@
     btn.disabled = true;
     try {
       state.quotes = await api(`/api/quotes${refresh ? '?refresh=1' : ''}`);
+      if (state.quotes?.market) state.marketOpen = state.quotes.market.open;
       setNote('quotes', state.quotes.stale && state.quotes.note ? `Precios guardados: ${state.quotes.note}` : null);
       setNote('mock', state.quotes.note === 'Datos de prueba' ? 'Datos de prueba: no son precios reales.' : null);
     } catch (e) {
@@ -670,6 +720,7 @@
       btn.disabled = false;
     }
     renderTiles();
+    renderTape();
     renderFresh();
     if (state.selected) renderDetail();
   }
@@ -1190,6 +1241,7 @@
       const r = await api('/api/peru');
       state.peruData = r.data;
       renderCalendar();
+      renderTape();
       const { fx, policyRate, inflation } = r.data;
       const lastFx = fx.at(-1);
       const lastInf = inflation.at(-1);
@@ -1228,6 +1280,7 @@
       const r = await api('/api/usa');
       state.usaData = r.data;
       renderCalendar();
+      renderTape();
       const { treasury10y, fedFunds, cpiYoY } = r.data;
       const t10 = treasury10y.at(-1);
       const cpi = cpiYoY.at(-1);
@@ -1273,6 +1326,8 @@
     const host = $('peru-markets');
     try {
       const r = await api('/api/peru-markets');
+      state.peruMarkets = r.data;
+      renderTape();
       const draws = [];
       const cards = PERU_MARKETS.map((m) => {
         const s = r.data[m.key];
@@ -1409,8 +1464,14 @@
 
     // Amigos: solo datos públicos (BCRP y FRED). El servidor igual les niega los precios de Twelve Data.
     let role = 'owner';
+    const readStatus = async () => {
+      const st = await api('/api/status');
+      state.marketOpen = st.market?.open ?? null;
+      renderMarket();
+      return st;
+    };
     try {
-      role = (await api('/api/status')).role ?? 'owner';
+      role = (await readStatus()).role ?? 'owner';
     } catch {
       /* si falla, sigue como dueño: las rutas protegidas responden con su propio error */
     }
@@ -1422,6 +1483,8 @@
       loadPeruMarkets();
       loadCalendar();
       setInterval(renderClock, 30_000);
+      // Sin precios no hay pedidos periódicos: la rueda abre y cierra según el estado del servidor.
+      setInterval(() => readStatus().catch(() => {}), QUOTE_POLL_MS);
       return;
     }
 

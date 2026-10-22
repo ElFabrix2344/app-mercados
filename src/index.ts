@@ -2,7 +2,7 @@ import { allowedEmails, roleFor, verifyAccess, type Role } from './auth/access';
 import { isLocalDev, isMock, trimSecrets, type Env } from './env';
 import { CALENDAR_UNTIL, EVENTS, SOURCES, upcoming } from './lib/calendar';
 import { ApiError, errorResponse, escapeHtml, htmlPage, json } from './lib/http';
-import { NYSE_CALENDAR_UNTIL } from './lib/market-hours';
+import { NYSE_CALENDAR_UNTIL, usMarketOpen } from './lib/market-hours';
 import { signPayload } from './lib/signed';
 import { mockCompare, mockHistory, mockPeru, mockPeruMarkets, mockQuotes, mockUsa } from './mock';
 import {
@@ -91,10 +91,12 @@ async function route(req: Request, env: Env, url: URL, role: Role, email: string
   if (req.method === 'GET') {
     switch (p) {
       case '/api/status':
-        // A los amigos no se les muestra la configuración ni el consumo de créditos.
-        if (role !== 'owner') return json({ role, now: now.toISOString() });
+        // A los amigos no se les muestra la configuración ni el consumo de créditos. El estado de la bolsa
+        // («Rueda abierta / cerrada») sale del horario de la NYSE, no de Twelve Data: lo ven todos.
+        if (role !== 'owner') return json({ role, now: now.toISOString(), market: { open: usMarketOpen(now) } });
         return json({
           role,
+          market: { open: usMarketOpen(now) },
           config: configStatus(env),
           credits: { used: await creditsUsed(env.CACHE, now), cap: DAILY_CREDIT_CAP, plan: 800 },
           // Hasta cuándo están cargados los feriados de la NYSE (después solo se excluyen fines de semana).

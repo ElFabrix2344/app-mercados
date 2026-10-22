@@ -3,12 +3,12 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-  <title>Mercados</title>
+  <title>Rueda</title>
   <meta name="theme-color" content="#0A0A0A">
   <meta name="color-scheme" content="dark">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black">
-  <meta name="apple-mobile-web-app-title" content="Mercados">
+  <meta name="apple-mobile-web-app-title" content="Rueda">
   <meta name="robots" content="noindex,nofollow">
   <link rel="manifest" href="/manifest.webmanifest" crossorigin="use-credentials">
   <link rel="icon" href="/icon.svg" type="image/svg+xml">
@@ -22,8 +22,10 @@
 <div class="wrap">
   <header class="bar">
     <div class="brand">
-      <h1 class="logo">Mercados</h1>
+      <svg class="logo-mark" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 3v18M3 12h18M5.6 5.6l12.8 12.8M18.4 5.6 5.6 18.4"/><circle class="hub" cx="12" cy="12" r="2.6"/></svg>
+      <h1 class="logo">Rueda</h1>
       <span class="clock" id="today">—</span>
+      <span class="mkt" id="mkt"></span>
     </div>
     <div class="hactions">
       <span class="status" id="fresh" aria-live="polite">Cargando…</span>
@@ -31,6 +33,9 @@
       <button type="button" id="refresh-btn" class="owner-only"><span class="ico" aria-hidden="true">↻</span> Actualizar</button>
     </div>
   </header>
+
+  <!-- Cinta de precios, como la pizarra de la bolsa. Repite datos que están más abajo: los lectores de pantalla la saltan. -->
+  <div class="tape" id="tape" aria-hidden="true" hidden><div class="tape-track" id="tape-track"></div></div>
 
   <div class="banner" id="banner" role="status" hidden></div>
 
@@ -43,7 +48,6 @@
   <section class="screen owner-only" aria-labelledby="wl-h">
     <div class="screen-head">
       <h2 id="wl-h">Lista de seguimiento</h2>
-      <span class="mkt" id="mkt"></span>
       <button type="button" id="edit-btn">Editar</button>
     </div>
     <form id="wl-form" class="wl-form" hidden>

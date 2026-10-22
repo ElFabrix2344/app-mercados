@@ -1,4 +1,4 @@
-/* Mercados — dirección «Terminal», paleta «negro neutro» (grises puros) con acento cian
+/* Rueda (antes «Mercados») — dirección «Terminal», paleta «negro neutro» (grises puros) con acento cian
    para la marca, símbolos, títulos y gráficos. Todo en IBM Plex Mono.
    Verde/rojo solo para subidas/bajadas (siempre con ▲/▼ y signo). Solo modo oscuro. */
 :root{
@@ -44,6 +44,12 @@ button[disabled]{opacity:.6;cursor:default}
 .bar{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:8px 16px;border-bottom:1px solid var(--line);padding-bottom:12px}
 .brand{display:flex;align-items:baseline;gap:14px;flex-wrap:wrap;min-width:0}
 .logo{color:var(--accent);font-weight:600;font-size:1.35rem;letter-spacing:.1em;text-transform:uppercase}
+/* La rueda del logo (el mismo dibujo que icon.svg). */
+.logo-mark{width:24px;height:24px;flex:none;align-self:center;margin-right:-4px;fill:none;stroke:var(--accent);stroke-width:1.8;stroke-linecap:round}
+.logo-mark .hub{fill:var(--bg)}
+.brand .mkt:empty{display:none}
+.brand .mkt::before{content:"●";margin-right:6px}
+.brand .mkt:not(.open)::before{content:"○"}
 .clock{color:var(--muted);text-transform:uppercase;letter-spacing:.04em}
 .hactions{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
 .status{color:var(--muted);font-size:.8rem}
@@ -55,6 +61,21 @@ button[disabled]{opacity:.6;cursor:default}
 #refresh-btn .ico{display:inline-block}
 #refresh-btn[disabled] .ico{animation:spin 1s linear infinite}
 @keyframes spin{to{transform:rotate(360deg)}}
+
+/* ---------- cinta de precios ---------- */
+.tape{overflow:hidden;white-space:nowrap;border:1px solid var(--line);border-radius:var(--r);background:var(--panel);font-size:.8rem;margin-top:-6px}
+.tape-track{display:inline-flex;padding:6px 0;animation:tape 60s linear infinite}
+.tape:hover .tape-track{animation-play-state:paused}
+.tape-half{display:inline-flex;gap:28px;padding:0 14px}
+.tape-item{display:inline-flex;gap:8px}
+.tape-sym{color:var(--accent);text-transform:uppercase}
+@keyframes tape{to{transform:translateX(-50%)}}
+/* Si el sistema pide menos movimiento, la cinta queda quieta y se recorre a mano. */
+@media (prefers-reduced-motion:reduce){
+  .tape{overflow-x:auto}
+  .tape-track{animation:none}
+  .tape-half + .tape-half{display:none}
+}
 
 .banner{padding:8px 12px;border:1px dashed var(--accent);color:var(--accent);background:var(--accent-soft);border-radius:var(--r);font-size:.85rem}
 .banner.crit{border:1px solid var(--down);color:var(--down);background:var(--down-soft)}
