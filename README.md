@@ -51,6 +51,10 @@ Claude ─► Worker «mercados-mcp» (OAuth propio) ─────────
 - **Medir entre dos días:** en cualquier gráfico interactivo, arrastrar con el mouse (en el celular, dos dedos; con el teclado, Mayús + flechas) muestra las fechas, la duración y la variación entre ambos días: en % y en precio en la ficha, por símbolo en Comparar y en puntos porcentuales en las tasas. Queda fija hasta un clic fuera o Esc.
 - **Colores de los gráficos con varias líneas:** `--s1` a `--s4` en `styles.css` (cian, magenta, violeta, amarillo), validados para daltonismo sobre el fondo del panel. Cada símbolo conserva su color mientras está elegido. Las líneas solas usan el cian de marca.
 - **Lista de seguimiento:** hasta 8 símbolos (8 créditos por minuto del plan gratis).
+- **Lista diaria** (`services/eod.ts`, solo el dueño): hasta 20 símbolos más, sin precio en vivo, con el cierre de cada día, la variación, el minigráfico de 1 año (un punto por semana) y el rendimiento de 1 año. Al tocar uno se abre su ficha, que funciona igual que con la lista principal (historial, indicadores, empresa, noticias y resultados).
+  - Una tarea programada (`triggers` en `wrangler.jsonc`, cada 10 minutos) pide los cierres que faltan: en acciones, el del día 30 minutos después del cierre de Nueva York; en cripto y divisas, el del día anterior. Como mucho 5 por ejecución (8 créditos por minuto), 1 crédito por símbolo al día, y cada símbolo se pide una sola vez por sesión aunque no haya cotizado.
+  - El panel lee un solo registro resumido (`eod` en KV) en vez de 20 historiales; la lista se guarda en `watchlist-eod`. Al guardarla, los símbolos nuevos (hasta 4) se piden en el momento.
+  - Un símbolo no puede estar en las dos listas.
 
 ## Quién ve qué
 
@@ -59,7 +63,7 @@ Claude ─► Worker «mercados-mcp» (OAuth propio) ─────────
 | Dueño | Los correos de `OWNER_EMAILS` | Todo: precios, historial, comparación, cartera simulada y lista (Twelve Data), resultados y datos de empresas (Finnhub), Perú y EE. UU. |
 | Amigo | El resto de `ALLOWED_EMAILS` (y de la política de Access) | Solo datos públicos: Perú (BCRP) y EE. UU. (FRED) |
 
-La licencia gratis de Twelve Data no permite mostrar sus datos a otras personas ni compartir la clave (§2.2 y §2.3 de sus [términos](https://twelvedata.com/terms)). Por eso el servidor responde **403** a los amigos en `/api/quotes`, `/api/history`, `/api/compare`, `/api/portfolio`, `/api/news/symbol`, `/api/company` y `/api/watchlist`, y el conector solo les ofrece las herramientas de datos públicos (`peru_bcrp`, `eeuu_fred`, `noticias` generales y `calendario`); no es solo un ocultamiento en pantalla. Si `OWNER_EMAILS` está vacío, nadie ve los precios (falla cerrado). Con Finnhub pasa lo mismo: `/api/calendar` y la herramienta `calendario` solo suman los resultados de empresas cuando quien pide es el dueño.
+La licencia gratis de Twelve Data no permite mostrar sus datos a otras personas ni compartir la clave (§2.2 y §2.3 de sus [términos](https://twelvedata.com/terms)). Por eso el servidor responde **403** a los amigos en `/api/quotes`, `/api/history`, `/api/compare`, `/api/portfolio`, `/api/news/symbol`, `/api/company`, `/api/eod` y `/api/watchlist`, y el conector solo les ofrece las herramientas de datos públicos (`peru_bcrp`, `eeuu_fred`, `noticias` generales y `calendario`); no es solo un ocultamiento en pantalla. Si `OWNER_EMAILS` está vacío, nadie ve los precios (falla cerrado). Con Finnhub pasa lo mismo: `/api/calendar` y la herramienta `calendario` solo suman los resultados de empresas cuando quien pide es el dueño.
 
 **Agregar un amigo:** su correo va en la política de Access de la app (regla *Allow* → *Emails*) **y** en `ALLOWED_EMAILS`. Al editar ese secreto hay que volver a escribir toda la lista, incluido tu correo: el panel no muestra el valor anterior.
 
@@ -71,6 +75,7 @@ Todas las rutas exigen sesión de Cloudflare Access. Las marcadas con 🔒 son s
 |---|---|---|
 | GET | `/api/status` | Tu rol. Al dueño además: si cada secreto está cargado y con formato correcto (sin mostrar valores) y créditos usados hoy |
 | GET / PUT | `/api/watchlist` 🔒 | Lee o guarda la lista (`{"symbols": ["BAP", "USD/PEN"]}`) |
+| GET / PUT | `/api/eod` 🔒 | Lista diaria: cierres guardados (no gasta créditos) o guardar la lista (`{"symbols": ["NVDA"]}`; pide ya los nuevos, hasta 4) |
 | GET | `/api/quotes` 🔒 | Precios de la lista (`?refresh=1` = botón «Actualizar») y estado de la bolsa |
 | GET | `/api/history?symbol=BAP&range=1A` 🔒 | Cierres diarios del rango (1M, 3M, 6M, YTD, 1A, 3A, 5A) y sus estadísticas. Con `&ind=1`, también MM50, MM200, Bollinger, RSI 14 y MACD, y apertura, máximo, mínimo y volumen (`bars`), alineados con los cierres |
 | GET | `/api/compare?symbols=BAP,SPY&range=1A` 🔒 | De 2 a 4 símbolos de la lista: días en común, cierres, base 100, estadísticas y matriz de correlación |
@@ -96,6 +101,7 @@ Vive en un **Worker aparte, `mercados-mcp`** (`src/mcp-worker.ts`, `wrangler.mcp
 | `comparar` | De 2 a 4 símbolos de la lista: rendimiento, volatilidad, mayor caída, correlación y base 100 al cierre de cada mes |
 | `cartera` | La cartera simulada valorizada: posiciones, ganancia, totales en US$ y soles y comparación con el SPY (solo lectura) |
 | `empresa` | Datos de una acción de la lista (Finnhub): perfil, capitalización, PER, márgenes, ROE, beta, dividendo, analistas, sorpresas del BPA y comparables |
+| `lista_diaria` | Cierres guardados de la lista diaria: último cierre, fecha, variación y rendimiento de 1 año. Sus símbolos también sirven en `historial`, `comparar`, `empresa` y `noticias` |
 | `noticias` | Titulares generales por grupo y, para el dueño, los de un símbolo de la lista, con medio, hora, enlace y resumen corto |
 | `peru_bcrp` | Dólar interbancario, tasa de referencia, inflación de Lima y, en `mercados`, cobre, oro, reservas y BVL con sus variaciones y cierres mensuales (BCRP) |
 | `calendario` | Próximas decisiones de tasas (BCRP, Fed) y publicaciones de inflación (INEI, BLS). Para el dueño, también los resultados de su lista (Finnhub): fecha, momento, BPA e ingresos esperados y el último resultado del mes con la sorpresa. Aparece mientras haya fechas cargadas |
@@ -122,6 +128,7 @@ src/
   services/news.ts      noticias: fuentes RSS, caché de las generales y titulares por acción
   services/earnings.ts  resultados de empresas de la lista (Finnhub, solo el dueño) para el calendario y la ficha
   services/company.ts   datos de la empresa para la ficha (Finnhub, solo el dueño)
+  services/eod.ts       lista diaria: cierres de hasta 20 símbolos más y la tarea programada que los renueva
   lib/finnhub.ts        cliente de Finnhub (calendario de resultados y datos de empresa)
   lib/rss.ts            lector de RSS por stream (corta apenas tiene los titulares que necesita)
   lib/twelvedata.ts     cliente de Twelve Data
@@ -148,7 +155,7 @@ Con `DEV_MODE=true` la validación de Access se salta **solo** si la petición l
 
 ## Despliegue
 
-Cada push a `main` ejecuta GitHub Actions: typecheck, pruebas y `wrangler deploy` de los **dos** Workers (`mercados` y `mercados-mcp`). Los pull requests solo ejecutan las pruebas.
+Cada push a `main` ejecuta GitHub Actions: typecheck, pruebas y `wrangler deploy` de los **dos** Workers (`mercados` y `mercados-mcp`). Los pull requests solo ejecutan las pruebas. `mercados` tiene una tarea programada (cron cada 10 minutos, para la lista diaria) que el despliegue registra solo; se ve en Workers → mercados → Settings → Trigger events.
 
 - **Secretos del repo** (GitHub → Settings → Secrets and variables → Actions): `CLOUDFLARE_API_TOKEN` (plantilla «Edit Cloudflare Workers») y `CLOUDFLARE_ACCOUNT_ID`.
 - **Secretos de `mercados`** (panel de Cloudflare → Workers → mercados → Settings → Variables and Secrets, tipo **Secret**): `ACCESS_TEAM_DOMAIN`, `ACCESS_AUD`, `ALLOWED_EMAILS`, `OWNER_EMAILS`, `TWELVE_DATA_API_KEY`, `FRED_API_KEY`, `LOGIN_LINK_SECRET` y, opcional, `FINNHUB_API_KEY` (clave gratis de finnhub.io, para los resultados de empresas). El despliegue los conserva. Para comprobarlos: `/api/status` → `config`.

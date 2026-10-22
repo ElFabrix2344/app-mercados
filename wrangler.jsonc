@@ -38,5 +38,9 @@
     "MCP_URL": "https://mercados-mcp.mercados.workers.dev"
   },
 
+  // Lista diaria: la tarea revisa cada 10 minutos qué cierres faltan y pide unos pocos por vez (1 crédito por símbolo
+  // al día, después del cierre de Nueva York). Casi siempre no hace nada: solo lee dos registros de KV.
+  "triggers": { "crons": ["*/10 * * * *"] },
+
   "observability": { "enabled": true }
 }

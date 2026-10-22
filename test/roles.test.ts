@@ -54,7 +54,7 @@ describe('rutas según el rol (local, con datos de prueba)', () => {
   });
 
   it('un amigo no puede ver precios, historial, comparaciones, la cartera ni la lista', async () => {
-    for (const path of ['/api/quotes', '/api/history?symbol=BAP', '/api/compare?symbols=BAP,SPY', '/api/portfolio', '/api/watchlist', '/api/company?symbol=BAP']) {
+    for (const path of ['/api/quotes', '/api/history?symbol=BAP', '/api/compare?symbols=BAP,SPY', '/api/portfolio', '/api/watchlist', '/api/company?symbol=BAP', '/api/eod']) {
       const res = await get(path, 'friend');
       expect(res.status).toBe(403);
       expect(await res.text()).toContain('Twelve Data');
@@ -114,6 +114,26 @@ describe('rutas según el rol (local, con datos de prueba)', () => {
     expect(((await (await get('/api/company?symbol=USD/PEN')).json()) as Record<string, any>).applicable).toBe(false);
     expect(((await (await get('/api/company?symbol=SPY')).json()) as Record<string, any>).data.profile).toBeNull();
     expect((await get('/api/company?symbol=NVDA')).status).toBe(400);
+  });
+
+  it('la lista diaria: se guarda, rechaza símbolos de la lista principal y sus símbolos abren la ficha', async () => {
+    const e = env();
+    const call = (method: string, path: string, body?: unknown) =>
+      worker.fetch(
+        new Request(`http://localhost${path}`, { method, headers: { 'Content-Type': 'application/json' }, body: body ? JSON.stringify(body) : undefined }),
+        e,
+        {} as ExecutionContext,
+      );
+    const empty = (await (await call('GET', '/api/eod')).json()) as Record<string, any>;
+    expect(empty).toMatchObject({ symbols: [], rows: [], max: 20 });
+    expect((await call('PUT', '/api/eod', { symbols: ['NVDA', 'BAP'] })).status).toBe(400);
+    const saved = (await (await call('PUT', '/api/eod', { symbols: ['nvda', 'ETH/USD'] })).json()) as Record<string, any>;
+    expect(saved.symbols).toEqual(['NVDA', 'ETH/USD']);
+    expect(saved.rows[0]).toMatchObject({ symbol: 'NVDA', pending: false });
+    expect(saved.rows[0].close).toEqual(expect.any(Number));
+    expect((await call('GET', '/api/history?symbol=NVDA&range=3M')).status).toBe(200);
+    expect((await call('GET', '/api/company?symbol=NVDA')).status).toBe(200);
+    expect((await call('GET', '/api/history?symbol=TSLA')).status).toBe(400);
   });
 
   it('el dueño ve todo', async () => {

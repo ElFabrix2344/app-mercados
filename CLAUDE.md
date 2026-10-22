@@ -36,6 +36,7 @@ App de mercados (Cloudflare Worker + panel web + conector MCP para Claude). El R
 - Velas: huecas al subir y rellenas al bajar, porque el verde (`--up`) y el rojo (`--down`) dan ΔE 2,2 con deuteranopía en el validador de `dataviz`. En los paneles de abajo de la ficha, la línea principal va en `--s3` y la señal del MACD en `--s4`.
 - Colores de los gráficos con varias líneas: `--s1`…`--s4` en `styles.css`, validados para daltonismo con el validador de la skill `dataviz` sobre `#121212`. Si cambias uno, vuelve a validar (parejas vecinas para Comparar; todas las parejas para precio + MM50 + MM200).
 - Si cambias la forma de los datos guardados en KV, lee también el formato anterior (ver `readQuotes`).
+- Lista diaria (`services/eod.ts`): la renueva la tarea programada (`scheduled` en `index.ts`, cron en `wrangler.jsonc`), nunca un pedido del panel, que solo lee el resumen `eod`. Pide de a 5 por vez (8 créditos por minuto, compartidos) y marca cada símbolo como revisado por sesión (`checked`) para no gastar créditos en uno que no cotizó. `storedHistory(d, símbolo, through)` pide hasta ese día inclusive.
 
 ## Estado y próximos pasos
 

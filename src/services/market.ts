@@ -44,7 +44,7 @@ export interface Stored<T> {
 
 // ---------- lista de seguimiento ----------
 
-const SYMBOL_RE = /^[A-Z0-9][A-Z0-9.-]{0,11}(\/[A-Z0-9]{2,10})?$/;
+export const SYMBOL_RE = /^[A-Z0-9][A-Z0-9.-]{0,11}(\/[A-Z0-9]{2,10})?$/;
 
 export function validateWatchlist(input: unknown): string[] {
   const raw = (input as { symbols?: unknown })?.symbols;
@@ -316,23 +316,28 @@ export type HistoryResult = Fresh<HistoryData> & {
   latest: { date: string; close: number; sma50: number | null; sma200: number | null; rsi14: number | null } | null;
 };
 
-/** Los 5 años guardados de un símbolo (1 crédito cuando hay que pedirlos de nuevo). */
-export function storedHistory(d: Deps, symbol: string): Promise<Fresh<HistoryData>> {
+/**
+ * Los 5 años guardados de un símbolo (1 crédito cuando hay que pedirlos de nuevo). Con `through` (lista diaria), se
+ * piden hasta ese día inclusive y lo guardado sirve mientras ya lo incluya, sin vencer por tiempo.
+ */
+export function storedHistory(d: Deps, symbol: string, through?: string): Promise<Fresh<HistoryData>> {
   const today = isoDate(d.now);
+  const hasBars = (h: HistoryData) => Array.isArray(h.bars) && h.bars.length === h.points.length;
   return cached<HistoryData>(
     d,
     `hist5:${symbol}`,
-    HISTORY_TTL_MS,
+    through ? Infinity : HISTORY_TTL_MS,
     async () => {
-      // end_date no incluye ese día: la serie llega hasta el último cierre.
-      const pts = await getDailySeries(symbol, addDays(today, -HISTORY_DAYS), today, needKey(d.twelveKey, 'TWELVE_DATA_API_KEY', 'twelvedata'), d.fetch);
+      // end_date no incluye ese día: sin `through`, la serie llega hasta el último cierre antes de hoy.
+      const end = through ? addDays(through, 1) : today;
+      const pts = await getDailySeries(symbol, addDays(today, -HISTORY_DAYS), end, needKey(d.twelveKey, 'TWELVE_DATA_API_KEY', 'twelvedata'), d.fetch);
       return {
         symbol,
         points: pts.map((p) => [p.date, p.close] as [string, number]),
         bars: pts.map((p): Bar => [p.open ?? null, p.high ?? null, p.low ?? null, p.volume ?? null]),
       };
     },
-    { credits: 1, valid: (h) => Array.isArray(h.bars) && h.bars.length === h.points.length },
+    { credits: 1, valid: through ? (h) => hasBars(h) && (h.points.at(-1)?.[0] ?? '') >= through : hasBars },
   );
 }
 

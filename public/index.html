@@ -70,6 +70,35 @@
     <p class="hint" id="hist-note" hidden></p>
   </section>
 
+  <section class="screen owner-only" id="eod" aria-labelledby="eod-h">
+    <div class="screen-head">
+      <h2 id="eod-h">Lista diaria</h2>
+      <span class="src">Cierres · Twelve Data</span>
+      <details class="help">
+        <summary aria-label="Cómo funciona la lista diaria">?</summary>
+        <div class="help-body">
+          <p>Hasta 20 símbolos más, aparte de tu lista de seguimiento. No tienen precio en vivo: se actualizan una vez al día, después del cierre de Nueva York (cripto y divisas, con el cierre del día anterior). Cada símbolo gasta 1 crédito al día.</p>
+          <p>Al tocar uno se abre su ficha, con el historial, los indicadores y los datos de la empresa.</p>
+        </div>
+      </details>
+      <button type="button" id="eod-edit">Editar</button>
+    </div>
+    <form id="eod-form" class="wl-form" hidden>
+      <label for="eod-input">Símbolos, separados por comas (máximo 20)</label>
+      <div class="wl-row">
+        <input id="eod-input" name="symbols" autocomplete="off" autocapitalize="characters" spellcheck="false">
+        <button type="submit">Guardar</button>
+        <button type="button" id="eod-cancel">Cancelar</button>
+      </div>
+      <p class="hint">Los nuevos se cargan al guardar (hasta 4 a la vez) y el resto en los minutos siguientes. Los que ya están en tu lista de seguimiento no van aquí.</p>
+      <p class="err" id="eod-err" hidden></p>
+    </form>
+    <div class="wl-cols" id="eod-cols" aria-hidden="true" hidden>
+      <span>Símbolo</span><span>Nombre</span><span>Cierre</span><span>Var. día</span><span>1 año</span><span>1A %</span><span>Fecha</span>
+    </div>
+    <div class="rows" id="eod-rows"><p class="muted">Cargando…</p></div>
+  </section>
+
   <section class="screen detail owner-only" id="detail" aria-labelledby="d-title" hidden>
     <div class="screen-head">
       <div>

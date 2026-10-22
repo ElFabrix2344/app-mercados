@@ -79,3 +79,16 @@ export function lastSessionDate(d: Date): string {
   while (!isTradingDay(day)) day = addDays(day, -1);
   return day;
 }
+
+/**
+ * Fecha (en NY) del último cierre ya ocurrido: la sesión de hoy si ya cerró hace `settleMin` minutos o más (para que el
+ * dato del día quede firme); si no, la sesión anterior.
+ */
+export function lastClosedSession(d: Date, settleMin = 0): string {
+  const { date, minutes } = nyParts(d);
+  const close = NYSE_EARLY_CLOSES.has(date) ? EARLY_CLOSE_MIN : CLOSE_MIN;
+  if (isTradingDay(date) && minutes >= close + settleMin) return date;
+  let day = addDays(date, -1);
+  while (!isTradingDay(day)) day = addDays(day, -1);
+  return day;
+}

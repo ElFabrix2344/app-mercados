@@ -105,7 +105,7 @@ Elegidos por el usuario el 22 de octubre, antes de abrir la app a los amigos:
 - [x] **Más Perú:** bonos del Perú a 10 años en soles y en dólares, y un riesgo país aproximado (el EMBIG del BCRP está detenido desde setiembre).
 - [x] **Resultados de tus empresas:** fechas de resultados trimestrales de la lista en el calendario, en la ficha y en la lista, con Finnhub. Twelve Data los cobra (plan Grow o mayor); Finnhub los da gratis con clave propia, pero sus términos no permiten mostrarlos a terceros: son solo para el dueño. Queda apagado hasta cargar `FINNHUB_API_KEY` (sección 4). Para comprobarlo: Credicorp confirmó sus resultados del 3T26 para el lunes 9 de noviembre de 2026.
 
-## 8. Lo elegido tras comparar Rueda con otras apps — en curso
+## 8. Lo elegido tras comparar Rueda con otras apps — hecho el 22 de octubre
 
 El 22 de octubre se comparó Rueda con Yahoo Finance, Google Finance, TradingView, Investing.com, Koyfin, Delta, Stock Events y lo que hay en el Perú (Trii, la app de la SMV, TuCambista, Rextie).
 
@@ -113,7 +113,7 @@ El 22 de octubre se comparó Rueda con Yahoo Finance, Google Finance, TradingVie
 - **Elegido por el usuario:**
   - [x] **Datos de la empresa** en la ficha (Finnhub, solo el dueño): PER, capitalización, beta, dividendo, márgenes, recomendación de analistas, sorpresas de BPA de los últimos 4 trimestres y comparables. Al cargar la clave, comparar el PER y la capitalización de BAP con Yahoo o Google: Credicorp reporta en soles y Finnhub podría mezclar monedas en las ADR.
   - [x] **Velas, volumen y MACD** en la ficha. Volumen verificado contra Nasdaq y MACD contra Twelve Data.
-  - [ ] **Lista ampliada** de más de 8 símbolos, actualizada una vez al día después del cierre (1 crédito por símbolo al día).
+  - [x] **Lista ampliada** («Lista diaria»): hasta 20 símbolos más, actualizados una vez al día después del cierre por una tarea programada (1 crédito por símbolo al día). Falta verla funcionar en producción tras el primer cierre.
 - **No elegido por ahora** (queda en ideas): alertas al celular por Telegram, pronósticos del grupo (juego sin plata con datos públicos, para los amigos), gráfico del día (1D y 5D), reportes oficiales de la SEC y la SMV, dividendos en la cartera simulada.
 - **Descartado:** buscador de acciones, mapa de calor y lo que más sube o baja (necesitan datos de todo el mercado, que no entran en ningún plan gratis); IA dentro de la app (el conector ya lo hace); widgets del celular (necesitan una app nativa).
 

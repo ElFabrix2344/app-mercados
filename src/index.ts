@@ -9,6 +9,7 @@ import {
   mockCompany,
   mockCompanyCalendar,
   mockCompare,
+  mockEodView,
   mockHistory,
   mockNews,
   mockPeru,
@@ -20,6 +21,7 @@ import {
 } from './mock';
 import { companyData } from './services/company';
 import { companyCalendar } from './services/earnings';
+import { EOD_NEW_NOW, eodView, knownSymbols, refreshEod, validateEodList } from './services/eod';
 import { marketNews, quoteName, symbolNews } from './services/news';
 import { addTrade, deleteTrade, kvSource, readTrades, valuePortfolio } from './services/portfolio';
 import {
@@ -82,10 +84,21 @@ export default {
     }
     return withSecurityHeaders(res);
   },
+
+  // Tarea programada (triggers de wrangler.jsonc, cada 10 minutos): renueva la lista diaria después del cierre.
+  async scheduled(controller: ScheduledController, rawEnv: Env, ctx: ExecutionContext): Promise<void> {
+    const env = trimSecrets(rawEnv);
+    const deps: Deps = { kv: env.CACHE, now: new Date(controller.scheduledTime), twelveKey: env.TWELVE_DATA_API_KEY, finnhubKey: env.FINNHUB_API_KEY };
+    ctx.waitUntil(
+      refreshEod(deps).then((r) => {
+        if (Object.keys(r.errors).length) console.warn('Lista diaria:', JSON.stringify(r.errors));
+      }),
+    );
+  },
 } satisfies ExportedHandler<Env>;
 
 /** Precios de Twelve Data: su licencia gratis no permite mostrarlos a otras personas. */
-const OWNER_ONLY = new Set(['/api/watchlist', '/api/quotes', '/api/history', '/api/compare', '/api/portfolio', '/api/news/symbol', '/api/company']);
+const OWNER_ONLY = new Set(['/api/watchlist', '/api/eod', '/api/quotes', '/api/history', '/api/compare', '/api/portfolio', '/api/news/symbol', '/api/company']);
 
 async function route(req: Request, env: Env, url: URL, role: Role, email: string | null): Promise<Response | null> {
   const p = url.pathname;
@@ -125,6 +138,10 @@ async function route(req: Request, env: Env, url: URL, role: Role, email: string
       case '/api/watchlist':
         return json({ symbols: await getWatchlist(env.CACHE), max: MAX_SYMBOLS });
 
+      // Lista diaria: cierres guardados (no gasta créditos; los renueva la tarea programada).
+      case '/api/eod':
+        return json(mock ? await mockEodView(env.CACHE, now) : await eodView(env.CACHE));
+
       case '/api/quotes': {
         const symbols = await getWatchlist(env.CACHE);
         const res = mock ? mockQuotes(symbols, now) : await quotes(deps, symbols, url.searchParams.get('refresh') === '1');
@@ -133,8 +150,8 @@ async function route(req: Request, env: Env, url: URL, role: Role, email: string
 
       case '/api/history': {
         const symbol = (url.searchParams.get('symbol') ?? '').trim().toUpperCase();
-        if (!(await getWatchlist(env.CACHE)).includes(symbol)) {
-          throw new ApiError('bad_request', 400, 'Solo se piden historiales de la lista de seguimiento.');
+        if (!(await knownSymbols(env.CACHE)).includes(symbol)) {
+          throw new ApiError('bad_request', 400, 'Solo se piden historiales de tus listas (la de seguimiento y la diaria).');
         }
         const range = rangeParam(url);
         const r = mock ? mockHistory(symbol, now, range) : await history(deps, symbol, range);
@@ -143,10 +160,10 @@ async function route(req: Request, env: Env, url: URL, role: Role, email: string
       }
 
       case '/api/compare': {
-        const list = await getWatchlist(env.CACHE);
+        const list = await knownSymbols(env.CACHE);
         const symbols = compareSymbols((url.searchParams.get('symbols') ?? '').split(','));
         const outside = symbols.filter((s) => !list.includes(s));
-        if (outside.length) throw new ApiError('bad_request', 400, `${outside.join(', ')} no está en la lista de seguimiento.`);
+        if (outside.length) throw new ApiError('bad_request', 400, `${outside.join(', ')} no está en tus listas.`);
         const range = rangeParam(url);
         return json(mock ? mockCompare(symbols, now, range) : await compare(deps, symbols, range));
       }
@@ -163,8 +180,8 @@ async function route(req: Request, env: Env, url: URL, role: Role, email: string
       // Titulares de un símbolo de la lista (la lista es del dueño).
       case '/api/news/symbol': {
         const symbol = (url.searchParams.get('symbol') ?? '').trim().toUpperCase();
-        if (!(await getWatchlist(env.CACHE)).includes(symbol)) {
-          throw new ApiError('bad_request', 400, 'Solo hay noticias por acción para los símbolos de la lista.');
+        if (!(await knownSymbols(env.CACHE)).includes(symbol)) {
+          throw new ApiError('bad_request', 400, 'Solo hay noticias por acción para los símbolos de tus listas.');
         }
         const items = mock ? mockSymbolNews(symbol, now) : await symbolNews(deps, symbol, await quoteName(env.CACHE, symbol));
         return json({ symbol, items, fetchedAt: now.toISOString() });
@@ -173,8 +190,8 @@ async function route(req: Request, env: Env, url: URL, role: Role, email: string
       // Datos de la empresa (Finnhub: solo el dueño, por sus términos). Sin clave responde `enabled: false`.
       case '/api/company': {
         const symbol = (url.searchParams.get('symbol') ?? '').trim().toUpperCase();
-        if (!(await getWatchlist(env.CACHE)).includes(symbol)) {
-          throw new ApiError('bad_request', 400, 'Solo hay datos de empresa para los símbolos de la lista.');
+        if (!(await knownSymbols(env.CACHE)).includes(symbol)) {
+          throw new ApiError('bad_request', 400, 'Solo hay datos de empresa para los símbolos de tus listas.');
         }
         return json(mock ? mockCompany(symbol, now) : await companyData(deps, symbol));
       }
@@ -196,7 +213,8 @@ async function route(req: Request, env: Env, url: URL, role: Role, email: string
         const owner = role === 'owner';
         let companies = null;
         if (owner) {
-          const list = await getWatchlist(env.CACHE);
+          // Resultados de las dos listas (la diaria también).
+          const list = await knownSymbols(env.CACHE);
           const today = isoDate(now, tz);
           companies = mock ? mockCompanyCalendar(list, now, today) : await companyCalendar(deps, list, today);
         }
@@ -221,6 +239,15 @@ async function route(req: Request, env: Env, url: URL, role: Role, email: string
     if (req.method === 'POST') await addTrade(deps, src, await req.json().catch(() => null), list);
     else await deleteTrade(deps, url.searchParams.get('id') ?? '');
     return json(await valuePortfolio(await readTrades(env.CACHE), src));
+  }
+
+  // Guarda la lista diaria y pide ya los cierres de hasta 4 símbolos nuevos (el resto, la tarea programada).
+  if (p === '/api/eod' && req.method === 'PUT') {
+    sameOrigin(req, url);
+    const symbols = validateEodList(await req.json().catch(() => null), await getWatchlist(env.CACHE));
+    await env.CACHE.put('watchlist-eod', JSON.stringify(symbols));
+    if (!mock) await refreshEod(deps, { max: EOD_NEW_NOW, onlyNew: true });
+    return json(mock ? await mockEodView(env.CACHE, now) : await eodView(env.CACHE));
   }
 
   if (p === '/api/watchlist' && req.method === 'PUT') {

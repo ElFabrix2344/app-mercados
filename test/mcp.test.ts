@@ -69,7 +69,7 @@ describe('servidor MCP', () => {
     const init = await rpc(c, 'initialize', { protocolVersion: '2025-06-18', capabilities: {}, clientInfo: { name: 'test', version: '0' } });
     expect(init.result.serverInfo.name).toBe('rueda');
     const { result } = await rpc(c, 'tools/list');
-    expect(result.tools.map((t: { name: string }) => t.name)).toEqual(['precios', 'historial', 'comparar', 'cartera', 'empresa', 'peru_bcrp', 'eeuu_fred', 'noticias', ...CALENDAR_TOOL]);
+    expect(result.tools.map((t: { name: string }) => t.name)).toEqual(['precios', 'historial', 'comparar', 'cartera', 'empresa', 'lista_diaria', 'peru_bcrp', 'eeuu_fred', 'noticias', ...CALENDAR_TOOL]);
     for (const t of result.tools) expect(t.annotations.readOnlyHint).toBe(true);
   });
 
@@ -236,7 +236,7 @@ describe('herramienta comparar', () => {
     const { c } = ctx({}, f);
     const r = await callTool(c, 'comparar', { simbolos: ['BAP', 'NVDA'] });
     expect(r.isError).toBe(true);
-    expect(r.text).toContain('NVDA no está en la lista');
+    expect(r.text).toContain('NVDA no está en tus listas');
     expect(calls).toHaveLength(0);
   });
 });
@@ -319,6 +319,29 @@ describe('herramienta empresa', () => {
     const fuera = await callTool(ctx({}, f, { twelveKey: 'k', fredKey: 'f', finnhubKey: 'h' }).c, 'empresa', { simbolo: 'NVDA' });
     expect(fuera.isError).toBe(true);
     expect(calls).toHaveLength(0);
+  });
+});
+
+describe('herramienta lista_diaria', () => {
+  it('da los cierres guardados (sin pedir nada) y acepta sus símbolos en historial', async () => {
+    const eod = {
+      rows: {
+        NVDA: { symbol: 'NVDA', name: 'NVIDIA Corp', date: '2026-10-14', close: 110, prevClose: 100, spark: [], ret1y: 0.5, checked: '2026-10-14', fetchedAt: LONG_AGO },
+      },
+    };
+    const { f, calls } = fakeFetch(() => ({ body: { values: [{ datetime: '2026-10-14', close: '110' }, { datetime: '2026-10-13', close: '100' }], status: 'ok' } }));
+    const { c } = ctx({ 'watchlist-eod': ['NVDA', 'AAPL'], eod }, f);
+    const r = await callTool(c, 'lista_diaria');
+    expect(r.data.simbolos).toEqual(['NVDA', 'AAPL']);
+    expect(r.data.cierres).toEqual([
+      { simbolo: 'NVDA', nombre: 'NVIDIA Corp', fecha: '2026-10-14', cierre: 110, variacion: 10, variacion_pct: 10, rendimiento_1a_pct: 50 },
+      { simbolo: 'AAPL', pendiente: true },
+    ]);
+    expect(calls).toHaveLength(0);
+    // Sus símbolos también sirven en historial (aquí sí se pide la serie).
+    const h = await callTool(c, 'historial', { simbolo: 'NVDA', cierres: 'ninguno' });
+    expect(h.isError).toBe(false);
+    expect(h.data.simbolo).toBe('NVDA');
   });
 });
 

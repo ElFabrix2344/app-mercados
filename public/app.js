@@ -31,6 +31,7 @@
     newsShown: 6,
     symbolNews: new Map(), // símbolo → { items } | { error } | 'cargando' (se piden al abrir la ficha)
     company: new Map(), // símbolo → respuesta de /api/company | { error } | 'cargando' (al abrir la ficha)
+    eod: null, // respuesta de /api/eod (lista diaria: cierres, no precios en vivo)
     marketOpen: null, // ¿la bolsa de Nueva York está en sesión? (de /api/status y de cada pedido de precios)
     calendar: null, // respuesta de /api/calendar
     notes: new Map(), // clave → { text, kind }
@@ -875,6 +876,7 @@
   function select(sym) {
     state.selected = state.selected === sym ? null : sym;
     renderTiles();
+    renderEod();
     renderDetail();
     if (state.selected) $('detail').scrollIntoView({ behavior: 'smooth', block: 'nearest' });
   }
@@ -988,8 +990,10 @@
     const q = quoteFor(sym);
     const hist = detailHistory(sym, state.range);
     renderIndicatorToggles(hist);
-    $('d-title').textContent = q?.name ? `${sym} · ${q.name}` : sym;
-    $('d-sub').textContent = q ? [q.exchange, q.currency].filter(Boolean).join(' · ') : '';
+    const eodRow = q ? null : eodRowFor(sym);
+    const name = q?.name ?? eodRow?.name;
+    $('d-title').textContent = name ? `${sym} · ${name}` : sym;
+    $('d-sub').textContent = q ? [q.exchange, q.currency].filter(Boolean).join(' · ') : eodRow ? `Lista diaria · cierre del ${fDayYear.format(day(eodRow.date))}` : '';
     const chart = $('d-chart');
     const rsiWrap = $('d-rsi-wrap');
     const rsiHost = $('d-rsi');
@@ -2090,10 +2094,99 @@
       // Con resultados de empresas: avisos en la lista y la línea de la ficha abierta.
       if (r.companies?.enabled) {
         renderTiles();
+        renderEod();
         if (state.selected) renderEarnings(state.selected);
       }
     } catch (e) {
       $('calendar').replaceChildren(h('li', { class: 'err' }, e.message));
+    }
+  }
+
+  // ---------- lista diaria ----------
+  /** Fila de la lista diaria con cierre (null si no está o todavía no se cargó). */
+  const eodRowFor = (sym) => state.eod?.rows.find((r) => r.symbol === sym && !r.pending) ?? null;
+
+  async function loadEod() {
+    try {
+      state.eod = await api('/api/eod');
+      renderEod();
+    } catch (e) {
+      $('eod-rows').replaceChildren(h('p', { class: 'err' }, e.message));
+    }
+  }
+
+  /** Mismas columnas que la lista de seguimiento, con el último cierre y su fecha en vez del precio y la hora. */
+  function renderEod() {
+    const v = state.eod;
+    if (!v) return;
+    const host = $('eod-rows');
+    $('eod-cols').hidden = !v.rows.length;
+    if (!v.rows.length) {
+      host.replaceChildren(h('p', { class: 'muted' }, 'Vacía. Con «Editar» agregas hasta 20 símbolos que se actualizan una vez al día.'));
+      return;
+    }
+    const draws = [];
+    host.replaceChildren(
+      ...v.rows.map((r) => {
+        const spark = h('span', { class: 'c-spark chart', 'aria-hidden': 'true' });
+        const row = h('button', { type: 'button', class: r.pending ? 'row pending' : 'row', 'aria-pressed': String(state.selected === r.symbol) });
+        if (r.pending) {
+          row.append(
+            h('span', { class: 'c-sym' }, r.symbol),
+            h('span', { class: 'c-name' }, h('span', { class: 'c-name-text' }, 'Se carga en los próximos minutos')),
+            h('span', { class: 'c-price' }, '—'),
+            h('span', { class: 'c-chg flat' }, '—'),
+            spark,
+            h('span', { class: 'c-ret flat' }, ''),
+            h('span', { class: 'c-time' }, ''),
+          );
+        } else {
+          row.append(
+            h('span', { class: 'c-sym' }, r.symbol),
+            h('span', { class: 'c-name' }, h('span', { class: 'c-name-text' }, r.name ?? ''), h('span', { class: 'c-sigs' }, earningsChip(r.symbol))),
+            h('span', { class: 'c-price' }, fmtPrice(r.close)),
+            r.changePct == null ? h('span', { class: 'c-chg flat' }, '—') : changeEl({ price: r.close, change: r.change, changePct: r.changePct }),
+            spark,
+            h('span', { class: `c-ret ${r.ret1y == null ? 'flat' : trend(r.ret1y)}` }, r.ret1y != null ? pctFrac(r.ret1y) : ''),
+            h('span', { class: 'c-time', title: `Cierre del ${fDayYear.format(day(r.date))}` }, fDay.format(day(r.date)).replace('.', '')),
+          );
+          if (r.spark.length > 1) draws.push(() => drawLine(spark, r.spark.map(([date, v]) => ({ date, v })), { axis: false, fmt: fmtPrice }));
+        }
+        row.addEventListener('click', () => select(r.symbol));
+        return row;
+      }),
+    );
+    // Los minigráficos miden su ancho: se dibujan ya en la página.
+    for (const draw of draws) draw();
+  }
+
+  function openEodEditor(open) {
+    $('eod-form').hidden = !open;
+    $('eod-err').hidden = true;
+    if (open) {
+      const input = $('eod-input');
+      input.value = (state.eod?.symbols ?? []).join(', ');
+      input.focus();
+    }
+  }
+
+  async function saveEod(e) {
+    e.preventDefault();
+    const symbols = $('eod-input').value.split(/[\s,;]+/).filter(Boolean);
+    try {
+      state.eod = await api('/api/eod', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ symbols }) });
+      openEodEditor(false);
+      if (state.selected && !state.symbols.includes(state.selected) && !state.eod.symbols.includes(state.selected)) {
+        state.selected = null;
+        renderDetail();
+      }
+      renderEod();
+      // Las fechas de resultados también salen de esta lista.
+      loadCalendar();
+    } catch (err) {
+      const p = $('eod-err');
+      p.textContent = err.message;
+      p.hidden = false;
     }
   }
 
@@ -2144,6 +2237,9 @@
     $('edit-btn').addEventListener('click', () => openEditor($('wl-form').hidden));
     $('wl-cancel').addEventListener('click', () => openEditor(false));
     $('wl-form').addEventListener('submit', saveList);
+    $('eod-edit').addEventListener('click', () => openEodEditor($('eod-form').hidden));
+    $('eod-cancel').addEventListener('click', () => openEodEditor(false));
+    $('eod-form').addEventListener('submit', saveEod);
     $('d-close').addEventListener('click', () => select(state.selected));
     $('pf-form').addEventListener('submit', submitTrade);
     $('tape-toggle').addEventListener('click', () => {
@@ -2200,6 +2296,7 @@
     for (const k of Object.keys(state.ind)) state.ind[k] = savedInd?.[k] === true;
     state.cmp = cmpPrefs();
     renderTiles();
+    loadEod();
     renderCompare();
     loadPeru();
     loadUsa();

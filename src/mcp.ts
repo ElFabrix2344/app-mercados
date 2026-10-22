@@ -13,6 +13,7 @@ import {
   mockCompany,
   mockCompanyCalendar,
   mockCompare,
+  mockEodView,
   mockHistory,
   mockNews,
   mockPeru,
@@ -23,6 +24,7 @@ import {
   mockUsa,
 } from './mock';
 import { companyData } from './services/company';
+import { eodView, knownSymbols } from './services/eod';
 import { companyCalendar, epsSurprise, MOMENT, quarterLabel } from './services/earnings';
 import { marketNews, newsQuery, quoteName, symbolNews, type NewsItem } from './services/news';
 import { kvSource, readTrades, valuePortfolio } from './services/portfolio';
@@ -62,7 +64,7 @@ export interface McpContext {
 
 const INSTRUCTIONS =
   'Datos del panel personal «Rueda» del usuario: precios, historial con indicadores técnicos y comparación de los ' +
-  'símbolos de su lista de seguimiento (Twelve Data), datos de sus empresas (Finnhub), ' +
+  'símbolos de su lista de seguimiento y de su lista diaria (Twelve Data), datos de sus empresas (Finnhub), ' +
   'Perú (BCRP), EE. UU. (FRED) y el calendario económico. Los datos pueden venir de la caché del panel: al responder, di ' +
   'la hora de «actualizado» y avisa si «dato_guardado» es true. Para símbolos fuera de la lista usa otra fuente (por ' +
   'ejemplo, el conector de Twelve Data).';
@@ -82,7 +84,7 @@ export function handleMcp(req: Request, c: McpContext): Promise<Response> {
 
 export function buildServer(c: McpContext): McpServer {
   const owner = c.role === 'owner';
-  const server = new McpServer({ name: 'rueda', version: '0.7.0' }, { instructions: owner ? INSTRUCTIONS : INSTRUCTIONS_FRIEND });
+  const server = new McpServer({ name: 'rueda', version: '0.8.0' }, { instructions: owner ? INSTRUCTIONS : INSTRUCTIONS_FRIEND });
   const when: When = (iso) => localTime(iso, c.timeZone);
 
   // Precios e historial (Twelve Data): solo para el dueño, por la licencia del plan gratis.
@@ -180,9 +182,9 @@ function registerMarketTools(server: McpServer, c: McpContext, when: When): void
     },
     ({ simbolo, rango, cierres }) =>
       run(async () => {
-        const list = await getWatchlist(deps.kv);
+        const list = await knownSymbols(deps.kv);
         const symbol = normalize(simbolo);
-        if (!list.includes(symbol)) throw notInList([symbol], list);
+        if (!list.includes(symbol)) throw notInList([symbol], list, BOTH);
 
         const r = c.mock ? mockHistory(symbol, deps.now, rango) : await history(deps, symbol, rango);
         const pts = r.data.points;
@@ -240,10 +242,10 @@ function registerMarketTools(server: McpServer, c: McpContext, when: When): void
     },
     ({ simbolos, rango }) =>
       run(async () => {
-        const list = await getWatchlist(deps.kv);
+        const list = await knownSymbols(deps.kv);
         const symbols = compareSymbols(simbolos);
         const outside = symbols.filter((s) => !list.includes(s));
-        if (outside.length) throw notInList(outside, list);
+        if (outside.length) throw notInList(outside, list, BOTH);
 
         const r = c.mock ? mockCompare(symbols, deps.now, rango) : await compare(deps, symbols, rango);
         const names = r.series.map((s) => s.symbol);
@@ -342,9 +344,9 @@ function registerMarketTools(server: McpServer, c: McpContext, when: When): void
     },
     ({ simbolo }) =>
       run(async () => {
-        const list = await getWatchlist(deps.kv);
+        const list = await knownSymbols(deps.kv);
         const symbol = normalize(simbolo);
-        if (!list.includes(symbol)) throw notInList([symbol], list);
+        if (!list.includes(symbol)) throw notInList([symbol], list, BOTH);
         const r = c.mock ? mockCompany(symbol, deps.now) : await companyData(deps, symbol);
         if (!r.enabled || !r.applicable) return { simbolo: symbol, nota: r.note };
         const { profile: p, metrics: m } = r.data;
@@ -397,6 +399,44 @@ function registerMarketTools(server: McpServer, c: McpContext, when: When): void
           actualizado: when(r.fetchedAt),
           dato_guardado: r.stale,
           nota: r.note,
+        };
+      }),
+  );
+
+  server.registerTool(
+    'lista_diaria',
+    {
+      title: 'Lista diaria (cierres)',
+      description:
+        'Símbolos de la lista diaria del panel Rueda (hasta 20, aparte de la lista de seguimiento): último cierre, su fecha, ' +
+        'variación frente al cierre anterior y rendimiento de 1 año. Se actualizan una vez al día, después del cierre de ' +
+        'Nueva York (cripto y divisas, con el cierre del día anterior): no son precios en vivo. Para el historial, ' +
+        'indicadores o datos de empresa de uno de ellos, usa historial o empresa. variacion_pct y rendimiento_1a_pct en ' +
+        'puntos porcentuales (0.31 = +0,31 %).',
+      inputSchema: z.object({}),
+      annotations: { readOnlyHint: true, openWorldHint: false },
+    },
+    () =>
+      run(async () => {
+        const v = c.mock ? await mockEodView(deps.kv, deps.now) : await eodView(deps.kv);
+        return {
+          fuente: 'Twelve Data (cierres diarios)',
+          simbolos: v.symbols,
+          maximo: v.max,
+          cierres: v.rows.map((r) =>
+            r.pending
+              ? { simbolo: r.symbol, pendiente: true }
+              : {
+                  simbolo: r.symbol,
+                  nombre: r.name,
+                  fecha: r.date,
+                  cierre: r.close,
+                  variacion: r.change === null ? null : round(r.change),
+                  variacion_pct: round(r.changePct),
+                  rendimiento_1a_pct: r.ret1y === null ? null : pct(r.ret1y),
+                },
+          ),
+          ...(v.symbols.length ? {} : { nota: 'La lista diaria está vacía: se arma en el panel Rueda.' }),
         };
       }),
   );
@@ -574,9 +614,9 @@ function registerPublicTools(server: McpServer, c: McpContext, when: When): void
         const item = (n: NewsItem) => ({ titular: n.title, medio: n.source, hora: when(n.publishedAt), enlace: n.url, ...(n.summary ? { resumen: n.summary } : {}) });
         if (simbolo) {
           if (c.role !== 'owner') throw new ApiError('forbidden', 403, 'Las noticias por acción son solo para el dueño de la app.');
-          const list = await getWatchlist(deps.kv);
+          const list = await knownSymbols(deps.kv);
           const symbol = normalize(simbolo);
-          if (!list.includes(symbol)) throw notInList([symbol], list);
+          if (!list.includes(symbol)) throw notInList([symbol], list, BOTH);
           const name = c.mock ? null : await quoteName(deps.kv, symbol);
           const items = c.mock ? mockSymbolNews(symbol, deps.now) : await symbolNews(deps, symbol, name, cantidad);
           return { simbolo: symbol, busqueda: newsQuery(symbol, name), zona_horaria: c.timeZone, noticias: items.slice(0, cantidad).map(item) };
@@ -621,7 +661,7 @@ function registerCalendarTool(server: McpServer, c: McpContext): void {
         const { deps } = c;
         let companies = null;
         if (owner) {
-          const list = await getWatchlist(deps.kv);
+          const list = await knownSymbols(deps.kv);
           const today = isoDate(deps.now, c.timeZone);
           companies = c.mock ? mockCompanyCalendar(list, deps.now, today) : await companyCalendar(deps, list, today);
         }
@@ -683,11 +723,14 @@ async function run(fn: () => Promise<unknown>): Promise<CallToolResult> {
   }
 }
 
-function notInList(symbols: string[], list: string[]): ApiError {
+/** Para las herramientas que aceptan símbolos de las dos listas. */
+const BOTH = 'tus listas, la de seguimiento y la diaria';
+
+function notInList(symbols: string[], list: string[], where = 'la lista de seguimiento'): ApiError {
   return new ApiError(
     'bad_request',
     400,
-    `${symbols.join(', ')} no está en la lista de seguimiento (${list.join(', ')}). ` +
+    `${symbols.join(', ')} no está en ${where} (${list.join(', ')}). ` +
       'Para otros símbolos usa otra fuente, por ejemplo el conector de Twelve Data, o agrégalos a la lista en el panel Rueda.',
   );
 }

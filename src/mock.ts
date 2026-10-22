@@ -6,11 +6,13 @@ import { usMarketOpen } from './lib/market-hours';
 import { addDays, isoDate } from './lib/num';
 import type { DailyPoint, Quote } from './lib/twelvedata';
 import type { CompanyResult } from './services/company';
+import { getEodList, shapeEod, summarizeHistory, type EodRow, type EodView } from './services/eod';
 import { EARNINGS_AHEAD_DAYS, shapeCompanies, type CompanyCalendar } from './services/earnings';
 import type { NewsData, NewsGroup, NewsItem } from './services/news';
 import type { PriceSource } from './services/portfolio';
 import {
   DEFAULT_RANGE,
+  getWatchlist,
   shapeCompare,
   shapeHistory,
   summarize,
@@ -331,4 +333,18 @@ export function mockCompany(symbol: string, now: Date): CompanyResult {
       now,
     ),
   };
+}
+
+/** Lista diaria de prueba: los cierres salen de las mismas caminatas aleatorias. */
+export async function mockEodView(kv: KVNamespace, now: Date): Promise<EodView> {
+  const main = await getWatchlist(kv);
+  const symbols = (await getEodList(kv)).filter((s) => !main.includes(s));
+  const today = isoDate(now);
+  const rows: Record<string, EodRow> = {};
+  for (const symbol of symbols) {
+    const name = BASE[symbol]?.name ?? null;
+    const row = summarizeHistory({ symbol, points: mockPoints(symbol, now) }, name, today, now.toISOString(), today);
+    if (row) rows[symbol] = row;
+  }
+  return shapeEod(symbols, { rows });
 }
