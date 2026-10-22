@@ -1,0 +1,31 @@
+{
+  // Worker del conector de Claude (servidor OAuth propio + /mcp). Ver src/mcp-worker.ts.
+  // Sin Cloudflare Access: los servidores de Claude deben llegar a /mcp, /token, /register y
+  // /.well-known/*. Tu correo se confirma en la app principal (que sí está detrás de Access).
+  "$schema": "./node_modules/wrangler/config-schema.json",
+  "name": "mercados-mcp",
+  "account_id": "44ad19052da3858dae65640ed99fcae6",
+  "main": "src/mcp-worker.ts",
+  "compatibility_date": "2026-09-01",
+  // global_fetch_strictly_public: lo pide la librería OAuth para leer los Client ID Metadata Documents.
+  "compatibility_flags": ["nodejs_compat", "global_fetch_strictly_public"],
+
+  "workers_dev": true,
+  "preview_urls": false,
+
+  "kv_namespaces": [
+    // La misma caché que el panel: mismos datos y mismo freno de créditos.
+    { "binding": "CACHE", "id": "8e4e026c93df477eb3692019bd50fd3b" },
+    // Clientes, permisos y tokens del conector (la librería guarda solo hashes).
+    { "binding": "OAUTH_KV", "id": "250e661c192e49e8ad07ec215e654da7" }
+  ],
+
+  // Secretos (panel de Cloudflare → Workers → mercados-mcp → Settings → Variables and Secrets):
+  // OWNER_EMAILS, LOGIN_LINK_SECRET (el mismo que en la app), TWELVE_DATA_API_KEY y FRED_API_KEY.
+  "vars": {
+    "TIMEZONE": "America/Lima",
+    "APP_URL": "https://mercados.mercados.workers.dev"
+  },
+
+  "observability": { "enabled": true }
+}

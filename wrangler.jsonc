@@ -33,7 +33,9 @@
   // Variables NO secretas. Claves y configuración de Access van como secretos
   // (panel de Cloudflare → Variables and Secrets), nunca en el repo.
   "vars": {
-    "TIMEZONE": "America/Lima"
+    "TIMEZONE": "America/Lima",
+    // Worker del conector de Claude: destino fijo del paso /conector/identidad.
+    "MCP_URL": "https://mercados-mcp.mercados.workers.dev"
   },
 
   "observability": { "enabled": true }

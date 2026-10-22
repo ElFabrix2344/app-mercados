@@ -31,7 +31,7 @@ export function allowedEmails(env: Env): string[] {
 export type Role = 'owner' | 'friend';
 
 /** Falla cerrado: si OWNER_EMAILS está vacío, nadie ve los precios de Twelve Data. */
-export function roleFor(email: string | null, env: Env): Role {
+export function roleFor(email: string | null, env: Pick<Env, 'OWNER_EMAILS'>): Role {
   return email && emailList(env.OWNER_EMAILS).includes(email.toLowerCase()) ? 'owner' : 'friend';
 }
 

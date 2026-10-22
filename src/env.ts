@@ -4,6 +4,8 @@ export interface Env {
 
   // vars (wrangler.jsonc)
   TIMEZONE: string;
+  /** Origen del Worker del conector de Claude (mercados-mcp), destino fijo del login del conector. */
+  MCP_URL?: string;
 
   // secretos (panel de Cloudflare → Variables and Secrets, o `.env` en local)
   /** https://<equipo>.cloudflareaccess.com */
@@ -18,6 +20,8 @@ export interface Env {
   OWNER_EMAILS?: string;
   TWELVE_DATA_API_KEY?: string;
   FRED_API_KEY?: string;
+  /** Clave compartida con mercados-mcp para firmar «este correo inició sesión» (32+ caracteres). */
+  LOGIN_LINK_SECRET?: string;
 
   // solo desarrollo local (se ignoran fuera de localhost)
   DEV_MODE?: string;
@@ -33,6 +37,7 @@ export const SECRET_KEYS = [
   'OWNER_EMAILS',
   'TWELVE_DATA_API_KEY',
   'FRED_API_KEY',
+  'LOGIN_LINK_SECRET',
 ] as const;
 
 const LOCAL_HOSTS = new Set(['localhost', '127.0.0.1', '[::1]']);

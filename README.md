@@ -3,8 +3,9 @@
 Panel personal y privado de mercados: precios de **Twelve Data**, datos de Perú del **BCRP** y de EE. UU. de **FRED**, en un **Cloudflare Worker** protegido con **Cloudflare Access**. Diseño «Terminal» (solo modo oscuro).
 
 ```
-Navegador ─────────► Cloudflare Access (login con tu correo) ──► Worker ──► Twelve Data / BCRP / FRED
-Claude (conector) ─► Access con Managed OAuth (token de Claude) ──┘   └──► KV (caché y freno de créditos)
+Navegador ─► Cloudflare Access (login con tu correo) ─► Worker «mercados» ─► Twelve Data / BCRP / FRED
+                                                            │  ▲                     │
+Claude ─► Worker «mercados-mcp» (OAuth propio) ─────────────┘  └─ /conector/identidad └─► KV (caché y freno, compartida)
 ```
 
 ## Cómo funciona
@@ -43,11 +44,11 @@ Todas las rutas exigen sesión de Cloudflare Access. Las marcadas con 🔒 son s
 | GET | `/api/history?symbol=BAP` 🔒 | Cierres diarios del último año y estadísticas |
 | GET | `/api/peru` | Dólar interbancario, tasa de referencia e inflación (BCRP) |
 | GET | `/api/usa` | Bono a 10 años, tasa de la Fed e inflación (FRED) |
-| POST | `/mcp` | Conector de Claude (MCP), ver abajo |
+| GET | `/conector/identidad?state=…` 🔒 | Paso del login del conector: firma tu correo y vuelve a `mercados-mcp` |
 
 ## Conector de Claude (MCP)
 
-`/mcp` es un servidor MCP remoto (Streamable HTTP, sin estado; SDK `@modelcontextprotocol/server`) para usar Mercados desde cualquier chat de claude.ai. Herramientas, todas de solo lectura:
+Vive en un **Worker aparte, `mercados-mcp`** (`src/mcp-worker.ts`, `wrangler.mcp.jsonc`), en `https://mercados-mcp.mercados.workers.dev/mcp`: un servidor MCP remoto (Streamable HTTP, sin estado; SDK `@modelcontextprotocol/server`) para usar Mercados desde claude.ai, el celular o Claude Code. Herramientas, todas de solo lectura:
 
 | Herramienta | Qué devuelve |
 |---|---|
@@ -57,17 +58,20 @@ Todas las rutas exigen sesión de Cloudflare Access. Las marcadas con 🔒 son s
 | `eeuu_fred` | Bono del Tesoro a 10 años, tasa de la Fed e inflación (FRED) |
 
 - **Mismos datos y reglas que el panel:** lee la misma caché de KV, renueva solo lo vencido con las mismas reglas (acciones solo con la bolsa abierta) y cuenta para el mismo freno de 600 créditos. Solo responde por los símbolos de la lista; para otros, Claude debe usar el conector oficial de Twelve Data.
-- **Autenticación:** la hace Cloudflare Access con **Managed OAuth** (beta abierta). Access registra a Claude, te pide el mismo login del panel y le da a Claude un token. Con ese token, Access deja pasar la petición con su JWT y el Worker lo valida igual que en el panel (firma, AUD y `ALLOWED_EMAILS`). Sin JWT válido, `/mcp` no entrega nada.
-- **Configuración en Access** (Zero Trust → Access controls → Applications → app de `mercados…workers.dev` → Edit → Advanced settings): **Managed OAuth** activado; **Allowed redirect URIs** `https://claude.ai/api/mcp/auth_callback` y `https://claude.com/api/mcp/auth_callback`; localhost y loopback apagados; token de 15 min y sesión de 2 semanas.
-- **Agregarlo en Claude:** claude.ai → Customize → Connectors → **+ Add** → **Add custom connector**. URL: `https://mercados.mercados.workers.dev/mcp`. En el plan gratis de Claude solo se permite un conector personalizado.
-- **Probarlo en local:** con `npm run dev`, `POST http://localhost:8788/mcp` responde con datos ficticios y sin Access.
+- **Por qué un Worker aparte:** Access no deja pasar a los servidores de Claude, y su login para conectores (*Managed OAuth*) falla en claude.ai web y móvil ([anthropics/claude-ai-mcp#410](https://github.com/anthropics/claude-ai-mcp/issues/410)). `mercados-mcp` no está detrás de Access: es su propio servidor OAuth 2.1, con la librería oficial `@cloudflare/workers-oauth-provider` (DCR, CIMD, PKCE, tokens guardados como hash en la KV `OAUTH_KV`).
+- **Login:** Claude abre `/authorize` → página de permiso (cliente y destino a la vista; solo destinos `claude.ai`/`claude.com` o apps locales) → **Permitir** lleva a la app, `/conector/identidad`, donde Access confirma tu correo → la app lo firma (HMAC con `LOGIN_LINK_SECRET`, 2 min) y vuelve a `/callback` → código → `/token`. El `state` queda atado al navegador que empezó (cookie `__Host-`), así que un enlace robado no sirve en otro.
+- **Quién puede:** por ahora solo el dueño (`OWNER_EMAILS`), en el login y en **cada** pedido a `/mcp`: si sacas un correo de la lista, su token deja de servir.
+- **Agregarlo en Claude:** claude.ai → Customize → Connectors → **+ Add** → **Add custom connector** → URL `https://mercados-mcp.mercados.workers.dev/mcp`. En el plan gratis de Claude solo se permite un conector personalizado.
+- **Secretos de `mercados-mcp`:** `OWNER_EMAILS`, `LOGIN_LINK_SECRET` (**el mismo** que en la app), `TWELVE_DATA_API_KEY` y `FRED_API_KEY`. Si cambias una clave en la app, cámbiala también aquí.
 
 ## Estructura
 
 ```
 src/
-  index.ts              router, validación de Access, cabeceras de seguridad
-  mcp.ts                conector de Claude: servidor MCP y sus 4 herramientas
+  index.ts              app: router, validación de Access, cabeceras de seguridad
+  mcp-worker.ts         Worker del conector: OAuth propio (permiso, login, tokens) y /mcp
+  mcp.ts                servidor MCP y sus 4 herramientas (lo usa mcp-worker.ts)
+  lib/signed.ts         mensajes firmados (HMAC) entre la app y el conector
   auth/access.ts        verificación del JWT de Cloudflare Access (jose)
   services/market.ts    caché en KV, freno de créditos y qué símbolos renovar
   lib/twelvedata.ts     cliente de Twelve Data
@@ -92,10 +96,11 @@ Con `DEV_MODE=true` la validación de Access se salta **solo** si la petición l
 
 ## Despliegue
 
-Cada push a `main` ejecuta GitHub Actions: typecheck, pruebas y `wrangler deploy`. Los pull requests solo ejecutan las pruebas.
+Cada push a `main` ejecuta GitHub Actions: typecheck, pruebas y `wrangler deploy` de los **dos** Workers (`mercados` y `mercados-mcp`). Los pull requests solo ejecutan las pruebas.
 
 - **Secretos del repo** (GitHub → Settings → Secrets and variables → Actions): `CLOUDFLARE_API_TOKEN` (plantilla «Edit Cloudflare Workers») y `CLOUDFLARE_ACCOUNT_ID`.
-- **Secretos del Worker** (panel de Cloudflare → Workers → mercados → Settings → Variables and Secrets, tipo **Secret**): `ACCESS_TEAM_DOMAIN`, `ACCESS_AUD`, `ALLOWED_EMAILS`, `OWNER_EMAILS`, `TWELVE_DATA_API_KEY`, `FRED_API_KEY`. El despliegue los conserva. Para comprobarlos: `/api/status` → `config`.
+- **Secretos de `mercados`** (panel de Cloudflare → Workers → mercados → Settings → Variables and Secrets, tipo **Secret**): `ACCESS_TEAM_DOMAIN`, `ACCESS_AUD`, `ALLOWED_EMAILS`, `OWNER_EMAILS`, `TWELVE_DATA_API_KEY`, `FRED_API_KEY`, `LOGIN_LINK_SECRET`. El despliegue los conserva. Para comprobarlos: `/api/status` → `config`.
+- **Secretos de `mercados-mcp`:** ver la sección del conector.
 
 ## Problemas conocidos
 
@@ -105,5 +110,6 @@ Cada push a `main` ejecuta GitHub Actions: typecheck, pruebas y `wrangler deploy
 | Un secreto con `formatOk: false` | Pegado con Ctrl+V en un prompt oculto de la terminal (guarda `\u0016`) | Cárgalo desde el panel de Cloudflare |
 | Precios «Guardado hace…» | Se alcanzó el freno de créditos o Twelve Data no respondió | Esperar al día siguiente (UTC) o revisar `/api/status` |
 | Gasto de créditos en feriados de EE. UU. | El horario no contempla feriados | Aceptado: son pocos créditos |
-| Claude no logra conectar el conector | Falta Managed OAuth o la URL de regreso de Claude en la app de Access | Revisa la configuración de Access de la sección del conector |
+| Claude no logra conectar el conector | `LOGIN_LINK_SECRET` distinto en los dos Workers, o tu correo no está en `OWNER_EMAILS` de `mercados-mcp` | Vuelve a cargar el secreto igual en ambos; revisa `OWNER_EMAILS` |
+| El conector responde «Falta TWELVE_DATA_API_KEY» | `mercados-mcp` tiene sus propios secretos | Carga la clave también en `mercados-mcp` |
 | El freno cuenta unos créditos de menos | El panel (desde Lima) y Claude (desde EE. UU.) escriben el contador en KV, que tarda hasta 60 s en propagarse | Aceptado: el margen de 200 créditos lo cubre |

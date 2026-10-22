@@ -1,7 +1,7 @@
 import { allowedEmails, roleFor, verifyAccess, type Role } from './auth/access';
 import { isLocalDev, isMock, trimSecrets, type Env } from './env';
 import { ApiError, errorResponse, escapeHtml, htmlPage, json } from './lib/http';
-import { handleMcp } from './mcp';
+import { signPayload } from './lib/signed';
 import { mockHistory, mockPeru, mockQuotes, mockUsa } from './mock';
 import {
   DAILY_CREDIT_CAP,
@@ -38,17 +38,19 @@ export default {
 
     // En local no hay JWT: se entra como dueño, salvo DEV_ROLE=friend para probar la vista de amigos.
     let role: Role = env.DEV_ROLE === 'friend' ? 'friend' : 'owner';
+    let email: string | null = local ? 'dev@localhost' : null;
     if (!local) {
       const auth = await verifyAccess(req, env);
       if (!auth.ok) {
         return withSecurityHeaders(htmlPage('Acceso restringido', `<p>${escapeHtml(auth.reason)}</p>`, auth.status));
       }
       role = roleFor(auth.email, env);
+      email = auth.email;
     }
 
     let res: Response;
     try {
-      res = (await route(req, env, url, role)) ?? (await env.ASSETS.fetch(req));
+      res = (await route(req, env, url, role, email)) ?? (await env.ASSETS.fetch(req));
     } catch (e) {
       res = errorResponse(e);
     }
@@ -59,17 +61,15 @@ export default {
 /** Precios de Twelve Data: su licencia gratis no permite mostrarlos a otras personas. */
 const OWNER_ONLY = new Set(['/api/watchlist', '/api/quotes', '/api/history']);
 
-async function route(req: Request, env: Env, url: URL, role: Role): Promise<Response | null> {
+async function route(req: Request, env: Env, url: URL, role: Role, email: string | null): Promise<Response | null> {
   const p = url.pathname;
-  if (p !== '/mcp' && !p.startsWith('/api/')) return null;
+  // Paso del login del conector de Claude (el conector vive en el Worker mercados-mcp).
+  if (p === '/conector/identidad' && req.method === 'GET') return connectorIdentity(url, env, role, email);
+  if (!p.startsWith('/api/')) return null;
 
   const now = new Date();
   const mock = isMock(url, env);
   const deps: Deps = { kv: env.CACHE, now, twelveKey: env.TWELVE_DATA_API_KEY, fredKey: env.FRED_API_KEY };
-
-  // Conector de Claude. Llega aquí solo con un JWT de Access válido (Managed OAuth le da el token a Claude).
-  // A los amigos solo les ofrece las herramientas de datos públicos.
-  if (p === '/mcp') return handleMcp(req, { deps, mock, timeZone: env.TIMEZONE || 'America/Lima', role });
 
   if (OWNER_ONLY.has(p) && role !== 'owner') {
     throw new ApiError(
@@ -127,6 +127,29 @@ async function route(req: Request, env: Env, url: URL, role: Role): Promise<Resp
   return json({ error: { code: 'not_found', message: 'Ruta desconocida', provider: null } }, { status: 404 });
 }
 
+/**
+ * Login del conector: el Worker mercados-mcp manda aquí al navegador con un `state`. Access ya
+ * confirmó el correo, así que se lo devolvemos firmado y con 2 minutos de validez. El `state` solo
+ * sirve en el navegador que empezó el login (cookie del conector), y el destino es fijo (MCP_URL).
+ */
+async function connectorIdentity(url: URL, env: Env, role: Role, email: string | null): Promise<Response> {
+  const state = url.searchParams.get('state') ?? '';
+  const mcpUrl = (env.MCP_URL ?? '').replace(/\/+$/, '');
+  if (!mcpUrl || (env.LOGIN_LINK_SECRET ?? '').length < 32) {
+    return htmlPage('Conector sin configurar', '<p>Falta MCP_URL o LOGIN_LINK_SECRET en la app.</p>', 503);
+  }
+  if (!state || state.length > 1024) {
+    return htmlPage('No se pudo conectar Claude', '<p>El enlace está incompleto. Vuelve a conectar desde Claude.</p>', 400);
+  }
+  if (role !== 'owner' || !email) {
+    return htmlPage('Conector solo para el dueño', '<p>Por ahora el conector de Claude solo está disponible para el dueño de la app.</p>', 403);
+  }
+  const target = new URL('/callback', mcpUrl);
+  target.searchParams.set('state', state);
+  target.searchParams.set('identidad', await signPayload({ state, email, exp: Date.now() + 2 * 60_000 }, env.LOGIN_LINK_SECRET));
+  return new Response(null, { status: 302, headers: { Location: target.toString(), 'Cache-Control': 'no-store' } });
+}
+
 /** Las escrituras solo se aceptan desde la propia app (además de Access). */
 function sameOrigin(req: Request, url: URL): void {
   const origin = req.headers.get('Origin');
@@ -150,6 +173,7 @@ export function configStatus(env: Env): Record<string, SecretInfo | number> {
     ALLOWED_EMAILS: info(env.ALLOWED_EMAILS, (s) => clean(s) && s.includes('@')),
     allowedEmailCount: allowedEmails(env).length,
     OWNER_EMAILS: info(env.OWNER_EMAILS, (s) => clean(s) && s.includes('@')),
+    LOGIN_LINK_SECRET: info(env.LOGIN_LINK_SECRET, (s) => clean(s) && s.length >= 32),
     TWELVE_DATA_API_KEY: info(env.TWELVE_DATA_API_KEY, (s) => /^[A-Za-z0-9]{16,64}$/.test(s)),
     FRED_API_KEY: info(env.FRED_API_KEY, (s) => /^[a-z0-9]{32}$/.test(s)),
   };
