@@ -29,7 +29,6 @@ App de mercados (Cloudflare Worker + panel web + conector MCP para Claude). El R
 
 - **Cuenta propia de Cloudflare** («mercados», `account_id` en `wrangler.jsonc`), con su subdominio y su Zero Trust: la app vive en `https://mercados.mercados.workers.dev`. La cuenta anterior es de otro proyecto del usuario y no se debe tocar. Ahí queda una copia vieja del Worker `mercados` que se borra **solo con confirmación del usuario**.
 - **Conector MCP (fase 2):** el código está hecho (`src/mcp.ts`). Falta en la cuenta nueva una app de Access con **Managed OAuth** (Advanced settings) y agregar el conector en claude.ai.
-- **Se va a compartir con un grupo de amigos.** Antes de abrirla hay que decidir:
-  - quién entra: la política de Access y `ALLOWED_EMAILS` (Access gratis admite hasta 50 usuarios);
-  - si la lista de seguimiento es compartida o por persona: los créditos son de un solo plan gratis;
-  - si los términos de Twelve Data y FRED permiten mostrar sus datos a otras personas.
+- **Compartida con amigos, solo con datos públicos.** Los términos de Twelve Data (plan gratis) no permiten mostrar sus datos a terceros ni compartir la clave. Por eso hay dos roles: el **dueño** (`OWNER_EMAILS`) ve todo y los **amigos** ven solo Perú (BCRP) y EE. UU. (FRED). El bloqueo es del servidor: 403 en precios, historial y lista, y el conector sin esas herramientas. Pendiente:
+  - revisar los términos de FRED (su web estaba en mantenimiento) y cargar `FRED_API_KEY`;
+  - más adelante, que cada amigo use su propia clave gratis de Twelve Data (lista y caché por persona) para que también vea precios.

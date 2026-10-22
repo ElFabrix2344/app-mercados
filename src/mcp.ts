@@ -5,6 +5,7 @@
 
 import { createMcpHandler, McpServer, type CallToolResult } from '@modelcontextprotocol/server';
 import * as z from 'zod';
+import type { Role } from './auth/access';
 import { ApiError } from './lib/http';
 import { mockHistory, mockPeru, mockQuotes, mockUsa } from './mock';
 import { DAILY_CREDIT_CAP, MAX_SYMBOLS, creditsUsed, getWatchlist, history, peru, quotes, usa, type Deps } from './services/market';
@@ -15,12 +16,19 @@ export interface McpContext {
   mock: boolean;
   /** Zona horaria en la que se muestran las horas. */
   timeZone: string;
+  /** Los amigos solo reciben las herramientas de datos públicos (BCRP y FRED). */
+  role: Role;
 }
 
 const INSTRUCTIONS =
   'Datos del panel personal «Mercados» del usuario: precios e historial de su lista de seguimiento (Twelve Data), ' +
   'Perú (BCRP) y EE. UU. (FRED). Los datos pueden venir de la caché del panel: al responder, di la hora de «actualizado» ' +
   'y avisa si «dato_guardado» es true. Para símbolos fuera de la lista usa otra fuente (por ejemplo, el conector de Twelve Data).';
+
+const INSTRUCTIONS_FRIEND =
+  'Datos públicos del panel «Mercados»: Perú (BCRP) y EE. UU. (FRED). Los datos pueden venir de la caché del panel: al ' +
+  'responder, di la hora de «actualizado» y avisa si «dato_guardado» es true. Los precios de mercado no están disponibles ' +
+  'en este conector para tu cuenta.';
 
 export function handleMcp(req: Request, c: McpContext): Promise<Response> {
   const handler = createMcpHandler(() => buildServer(c), {
@@ -31,9 +39,20 @@ export function handleMcp(req: Request, c: McpContext): Promise<Response> {
 }
 
 export function buildServer(c: McpContext): McpServer {
-  const server = new McpServer({ name: 'mercados', version: '0.2.0' }, { instructions: INSTRUCTIONS });
+  const owner = c.role === 'owner';
+  const server = new McpServer({ name: 'mercados', version: '0.3.0' }, { instructions: owner ? INSTRUCTIONS : INSTRUCTIONS_FRIEND });
+  const when: When = (iso) => localTime(iso, c.timeZone);
+
+  // Precios e historial (Twelve Data): solo para el dueño, por la licencia del plan gratis.
+  if (owner) registerMarketTools(server, c, when);
+  registerPublicTools(server, c, when);
+  return server;
+}
+
+type When = (iso: string | null | undefined) => string | null;
+
+function registerMarketTools(server: McpServer, c: McpContext, when: When): void {
   const { deps } = c;
-  const when = (iso: string | null | undefined) => localTime(iso, c.timeZone);
 
   server.registerTool(
     'precios',
@@ -147,6 +166,10 @@ export function buildServer(c: McpContext): McpServer {
         };
       }),
   );
+}
+
+function registerPublicTools(server: McpServer, c: McpContext, when: When): void {
+  const { deps } = c;
 
   server.registerTool(
     'peru_bcrp',
@@ -204,8 +227,6 @@ export function buildServer(c: McpContext): McpServer {
         };
       }),
   );
-
-  return server;
 }
 
 /** Ejecuta una herramienta: el resultado va como JSON; los errores conocidos, como mensaje para Claude. */

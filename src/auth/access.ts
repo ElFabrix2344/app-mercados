@@ -17,11 +17,22 @@ function teamDomain(env: Env): string | null {
   return raw.startsWith('https://') ? raw : `https://${raw}`;
 }
 
-export function allowedEmails(env: Env): string[] {
-  return (env.ALLOWED_EMAILS ?? '')
+const emailList = (raw: string | undefined): string[] =>
+  (raw ?? '')
     .split(',')
     .map((s) => s.trim().toLowerCase())
     .filter(Boolean);
+
+export function allowedEmails(env: Env): string[] {
+  return emailList(env.ALLOWED_EMAILS);
+}
+
+/** «owner» ve todo; «friend» solo los datos públicos (BCRP y FRED). */
+export type Role = 'owner' | 'friend';
+
+/** Falla cerrado: si OWNER_EMAILS está vacío, nadie ve los precios de Twelve Data. */
+export function roleFor(email: string | null, env: Env): Role {
+  return email && emailList(env.OWNER_EMAILS).includes(email.toLowerCase()) ? 'owner' : 'friend';
 }
 
 function readCookie(req: Request, name: string): string | null {

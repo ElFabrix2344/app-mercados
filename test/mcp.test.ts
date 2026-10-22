@@ -27,9 +27,9 @@ const storedQuotes = (at: string, symbols = DEFAULT_WATCHLIST) => ({
   },
 });
 
-function ctx(kvInit: Record<string, unknown> = {}, f?: typeof fetch, keys = { twelveKey: 'k', fredKey: 'f' }) {
+function ctx(kvInit: Record<string, unknown> = {}, f?: typeof fetch, keys = { twelveKey: 'k', fredKey: 'f' }, role: McpContext['role'] = 'owner') {
   const mem = memoryKV(kvInit);
-  const c: McpContext = { deps: { kv: mem.kv, now: NOW, fetch: f, ...keys }, mock: false, timeZone: 'America/Lima' };
+  const c: McpContext = { deps: { kv: mem.kv, now: NOW, fetch: f, ...keys }, mock: false, timeZone: 'America/Lima', role };
   return { c, mem };
 }
 
@@ -65,6 +65,16 @@ describe('servidor MCP', () => {
     const { result } = await rpc(c, 'tools/list');
     expect(result.tools.map((t: { name: string }) => t.name)).toEqual(['precios', 'historial', 'peru_bcrp', 'eeuu_fred']);
     for (const t of result.tools) expect(t.annotations.readOnlyHint).toBe(true);
+  });
+
+  it('a un amigo solo le ofrece las herramientas de datos públicos', async () => {
+    const { f, calls } = quotesFetch();
+    const { c } = ctx({ quotes: storedQuotes(LONG_AGO) }, f, undefined, 'friend');
+    const { result } = await rpc(c, 'tools/list');
+    expect(result.tools.map((t: { name: string }) => t.name)).toEqual(['peru_bcrp', 'eeuu_fred']);
+    const intento = await rpc(c, 'tools/call', { name: 'precios', arguments: {} });
+    expect(JSON.stringify(intento)).not.toContain('"precio"');
+    expect(calls).toHaveLength(0);
   });
 });
 

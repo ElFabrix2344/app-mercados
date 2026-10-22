@@ -1,4 +1,4 @@
-import { allowedEmails, verifyAccess } from './auth/access';
+import { allowedEmails, roleFor, verifyAccess, type Role } from './auth/access';
 import { isLocalDev, isMock, trimSecrets, type Env } from './env';
 import { ApiError, errorResponse, escapeHtml, htmlPage, json } from './lib/http';
 import { handleMcp } from './mcp';
@@ -36,16 +36,19 @@ export default {
     const url = new URL(req.url);
     const local = isLocalDev(url, env);
 
+    // En local no hay JWT: se entra como dueño, salvo DEV_ROLE=friend para probar la vista de amigos.
+    let role: Role = env.DEV_ROLE === 'friend' ? 'friend' : 'owner';
     if (!local) {
       const auth = await verifyAccess(req, env);
       if (!auth.ok) {
         return withSecurityHeaders(htmlPage('Acceso restringido', `<p>${escapeHtml(auth.reason)}</p>`, auth.status));
       }
+      role = roleFor(auth.email, env);
     }
 
     let res: Response;
     try {
-      res = (await route(req, env, url)) ?? (await env.ASSETS.fetch(req));
+      res = (await route(req, env, url, role)) ?? (await env.ASSETS.fetch(req));
     } catch (e) {
       res = errorResponse(e);
     }
@@ -53,7 +56,10 @@ export default {
   },
 } satisfies ExportedHandler<Env>;
 
-async function route(req: Request, env: Env, url: URL): Promise<Response | null> {
+/** Precios de Twelve Data: su licencia gratis no permite mostrarlos a otras personas. */
+const OWNER_ONLY = new Set(['/api/watchlist', '/api/quotes', '/api/history']);
+
+async function route(req: Request, env: Env, url: URL, role: Role): Promise<Response | null> {
   const p = url.pathname;
   if (p !== '/mcp' && !p.startsWith('/api/')) return null;
 
@@ -62,12 +68,24 @@ async function route(req: Request, env: Env, url: URL): Promise<Response | null>
   const deps: Deps = { kv: env.CACHE, now, twelveKey: env.TWELVE_DATA_API_KEY, fredKey: env.FRED_API_KEY };
 
   // Conector de Claude. Llega aquí solo con un JWT de Access válido (Managed OAuth le da el token a Claude).
-  if (p === '/mcp') return handleMcp(req, { deps, mock, timeZone: env.TIMEZONE || 'America/Lima' });
+  // A los amigos solo les ofrece las herramientas de datos públicos.
+  if (p === '/mcp') return handleMcp(req, { deps, mock, timeZone: env.TIMEZONE || 'America/Lima', role });
+
+  if (OWNER_ONLY.has(p) && role !== 'owner') {
+    throw new ApiError(
+      'forbidden',
+      403,
+      'Los precios de mercado son solo para el dueño de la app: la licencia gratis de Twelve Data no permite mostrarlos a otras personas.',
+    );
+  }
 
   if (req.method === 'GET') {
     switch (p) {
       case '/api/status':
+        // A los amigos no se les muestra la configuración ni el consumo de créditos.
+        if (role !== 'owner') return json({ role, now: now.toISOString() });
         return json({
+          role,
           config: configStatus(env),
           credits: { used: await creditsUsed(env.CACHE, now), cap: DAILY_CREDIT_CAP, plan: 800 },
           mock,
@@ -131,6 +149,7 @@ export function configStatus(env: Env): Record<string, SecretInfo | number> {
     ACCESS_AUD: info(env.ACCESS_AUD, (s) => /^[0-9a-f]{64}$/.test(s)),
     ALLOWED_EMAILS: info(env.ALLOWED_EMAILS, (s) => clean(s) && s.includes('@')),
     allowedEmailCount: allowedEmails(env).length,
+    OWNER_EMAILS: info(env.OWNER_EMAILS, (s) => clean(s) && s.includes('@')),
     TWELVE_DATA_API_KEY: info(env.TWELVE_DATA_API_KEY, (s) => /^[A-Za-z0-9]{16,64}$/.test(s)),
     FRED_API_KEY: info(env.FRED_API_KEY, (s) => /^[a-z0-9]{32}$/.test(s)),
   };

@@ -4,6 +4,7 @@ export type ApiErrorCode =
   | 'upstream_error' // el proveedor falló o no respondió
   | 'bad_response' // respuesta con forma inesperada
   | 'bad_request'
+  | 'forbidden' // el rol no puede ver ese dato (p. ej., precios de Twelve Data para amigos)
   | 'not_found';
 
 export type Provider = 'twelvedata' | 'bcrp' | 'fred';

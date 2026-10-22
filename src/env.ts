@@ -11,18 +11,26 @@ export interface Env {
   ACCESS_AUD?: string;
   /** Correos autorizados separados por comas. Vacío = no entra nadie. */
   ALLOWED_EMAILS?: string;
+  /**
+   * Correos del dueño (separados por comas): solo ellos ven los precios de Twelve Data, porque la licencia
+   * gratis no permite mostrarlos a otras personas. El resto ve solo datos públicos. Vacío = nadie los ve.
+   */
+  OWNER_EMAILS?: string;
   TWELVE_DATA_API_KEY?: string;
   FRED_API_KEY?: string;
 
   // solo desarrollo local (se ignoran fuera de localhost)
   DEV_MODE?: string;
   MOCK_DATA?: string;
+  /** "friend" simula a un amigo en local; si no, en local se entra como dueño. */
+  DEV_ROLE?: string;
 }
 
 export const SECRET_KEYS = [
   'ACCESS_TEAM_DOMAIN',
   'ACCESS_AUD',
   'ALLOWED_EMAILS',
+  'OWNER_EMAILS',
   'TWELVE_DATA_API_KEY',
   'FRED_API_KEY',
 ] as const;

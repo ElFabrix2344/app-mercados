@@ -565,6 +565,22 @@
     $('wl-form').addEventListener('submit', saveList);
     $('d-close').addEventListener('click', () => select(state.selected));
 
+    // Amigos: solo datos públicos (BCRP y FRED). El servidor igual les niega los precios de Twelve Data.
+    let role = 'owner';
+    try {
+      role = (await api('/api/status')).role ?? 'owner';
+    } catch {
+      /* si falla, sigue como dueño: las rutas protegidas responden con su propio error */
+    }
+    if (role !== 'owner') {
+      document.body.classList.add('rol-amigo');
+      $('fresh').textContent = 'Datos públicos';
+      loadPeru();
+      loadUsa();
+      setInterval(renderClock, 30_000);
+      return;
+    }
+
     try {
       const w = await api('/api/watchlist');
       state.symbols = w.symbols;

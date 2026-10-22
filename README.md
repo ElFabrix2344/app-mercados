@@ -20,16 +20,27 @@ Claude (conector) ─► Access con Managed OAuth (token de Claude) ──┘   
   - **Freno:** la app gasta como máximo 600 créditos de Twelve Data al día; el resto queda para el conector de Claude. Pasado el freno se muestran los últimos precios guardados.
 - **Lista de seguimiento:** hasta 8 símbolos (8 créditos por minuto del plan gratis).
 
+## Quién ve qué
+
+| Rol | Quién | Qué ve |
+|---|---|---|
+| Dueño | Los correos de `OWNER_EMAILS` | Todo: precios, historial y lista (Twelve Data), Perú y EE. UU. |
+| Amigo | El resto de `ALLOWED_EMAILS` (y de la política de Access) | Solo datos públicos: Perú (BCRP) y EE. UU. (FRED) |
+
+La licencia gratis de Twelve Data no permite mostrar sus datos a otras personas ni compartir la clave (§2.2 y §2.3 de sus [términos](https://twelvedata.com/terms)). Por eso el servidor responde **403** a los amigos en `/api/quotes`, `/api/history` y `/api/watchlist`, y el conector solo les ofrece `peru_bcrp` y `eeuu_fred`; no es solo un ocultamiento en pantalla. Si `OWNER_EMAILS` está vacío, nadie ve los precios (falla cerrado).
+
+**Agregar un amigo:** su correo va en la política de Access de la app (regla *Allow* → *Emails*) **y** en `ALLOWED_EMAILS`. Al editar ese secreto hay que volver a escribir toda la lista, incluido tu correo: el panel no muestra el valor anterior.
+
 ## API
 
-Todas las rutas exigen sesión de Cloudflare Access.
+Todas las rutas exigen sesión de Cloudflare Access. Las marcadas con 🔒 son solo para el dueño.
 
 | Método | Ruta | Qué hace |
 |---|---|---|
-| GET | `/api/status` | Si cada secreto está cargado y con formato correcto (sin mostrar valores) y créditos usados hoy |
-| GET / PUT | `/api/watchlist` | Lee o guarda la lista (`{"symbols": ["BAP", "USD/PEN"]}`) |
-| GET | `/api/quotes` | Precios de la lista (`?refresh=1` = botón «Actualizar») y estado de la bolsa |
-| GET | `/api/history?symbol=BAP` | Cierres diarios del último año y estadísticas |
+| GET | `/api/status` | Tu rol. Al dueño además: si cada secreto está cargado y con formato correcto (sin mostrar valores) y créditos usados hoy |
+| GET / PUT | `/api/watchlist` 🔒 | Lee o guarda la lista (`{"symbols": ["BAP", "USD/PEN"]}`) |
+| GET | `/api/quotes` 🔒 | Precios de la lista (`?refresh=1` = botón «Actualizar») y estado de la bolsa |
+| GET | `/api/history?symbol=BAP` 🔒 | Cierres diarios del último año y estadísticas |
 | GET | `/api/peru` | Dólar interbancario, tasa de referencia e inflación (BCRP) |
 | GET | `/api/usa` | Bono a 10 años, tasa de la Fed e inflación (FRED) |
 | POST | `/mcp` | Conector de Claude (MCP), ver abajo |
@@ -84,7 +95,7 @@ Con `DEV_MODE=true` la validación de Access se salta **solo** si la petición l
 Cada push a `main` ejecuta GitHub Actions: typecheck, pruebas y `wrangler deploy`. Los pull requests solo ejecutan las pruebas.
 
 - **Secretos del repo** (GitHub → Settings → Secrets and variables → Actions): `CLOUDFLARE_API_TOKEN` (plantilla «Edit Cloudflare Workers») y `CLOUDFLARE_ACCOUNT_ID`.
-- **Secretos del Worker** (panel de Cloudflare → Workers → mercados → Settings → Variables and Secrets, tipo **Secret**): `ACCESS_TEAM_DOMAIN`, `ACCESS_AUD`, `ALLOWED_EMAILS`, `TWELVE_DATA_API_KEY`, `FRED_API_KEY`. El despliegue los conserva. Para comprobarlos: `/api/status` → `config`.
+- **Secretos del Worker** (panel de Cloudflare → Workers → mercados → Settings → Variables and Secrets, tipo **Secret**): `ACCESS_TEAM_DOMAIN`, `ACCESS_AUD`, `ALLOWED_EMAILS`, `OWNER_EMAILS`, `TWELVE_DATA_API_KEY`, `FRED_API_KEY`. El despliegue los conserva. Para comprobarlos: `/api/status` → `config`.
 
 ## Problemas conocidos
 

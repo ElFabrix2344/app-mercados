@@ -16,6 +16,10 @@ body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--f-mono);fo
   font-variant-numeric:tabular-nums;-webkit-font-smoothing:antialiased;
   padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
 [hidden]{display:none!important}
+/* Roles: el dueño ve todo; los amigos («rol-amigo» en <body>) solo los datos públicos. */
+.friend-only{display:none}
+.rol-amigo .owner-only{display:none!important}
+.rol-amigo .friend-only{display:block}
 .wrap{max-width:1180px;margin:0 auto;padding:16px 16px 40px;display:flex;flex-direction:column;gap:16px}
 .wrap.simple{max-width:40rem;padding-top:3rem}
 .wrap.simple h1{color:var(--accent);text-transform:uppercase;letter-spacing:.08em;font-size:1.1rem}
@@ -139,3 +143,4 @@ button[disabled]{opacity:.6;cursor:default}
 .metric .sub{font-size:.75rem;color:var(--muted)}
 
 .foot{font-size:.75rem;color:var(--muted);border-top:1px solid var(--line);padding-top:10px}
+.foot p{margin:0 0 4px}
