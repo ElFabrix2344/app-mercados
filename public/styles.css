@@ -165,6 +165,8 @@ button[disabled]{opacity:.6;cursor:default}
 
 /* Leyendas y selectores con clave de color: una línea corta del color de la serie; el texto nunca va de color. */
 .s1{--c:var(--s1)} .s2{--c:var(--s2)} .s3{--c:var(--s3)} .s4{--c:var(--s4)}
+/* Volumen e histograma: gris neutro también en la clave del tooltip. */
+.vol,.hist{--c:var(--muted)}
 .legend{display:flex;flex-wrap:wrap;align-items:center;gap:4px}
 .legend-item{display:inline-flex;align-items:center;gap:6px;font-size:.82rem;color:var(--muted);padding:3px 6px}
 .tog{padding:3px 9px;font-size:.82rem;color:var(--muted)}
@@ -196,6 +198,20 @@ button[disabled]{opacity:.6;cursor:default}
 .chart .trade.buy{fill:var(--up)}
 .chart .trade.sell{fill:var(--down)}
 .key.none{display:none}
+/* Claves de la leyenda: velas (contorno) y barras (volumen, histograma). */
+.key.candle{width:7px;height:12px;border-radius:1px;background:transparent;border:1px solid var(--muted)}
+.key.bars{width:9px;height:10px;border-radius:2px 2px 0 0;background:var(--muted);opacity:.7}
+/* Velas: las que suben, huecas; las que bajan, rellenas (el verde y el rojo se confunden con daltonismo). */
+.chart .wick{fill:none;stroke-width:1}
+.chart .wick.up{stroke:var(--up)} .chart .wick.down{stroke:var(--down)}
+.chart .candle.up{fill:var(--panel);stroke:var(--up);stroke-width:1}
+.chart .candle.down{fill:var(--down);stroke:var(--down);stroke-width:1}
+/* Barras neutras: el volumen y el histograma del MACD no compiten con las líneas. */
+.chart .bars{fill:var(--muted);fill-opacity:.55}
+.chart .bars.hist{fill-opacity:.45}
+.panel-head{display:flex;flex-wrap:wrap;align-items:center;gap:2px 10px;margin-top:8px}
+.panel-head .hint{margin:0 6px 0 0}
+.panel-head .legend-item{padding:0}
 /* Mientras llegan otros datos, el gráfico anterior queda atenuado (sin saltos). */
 .is-loading .chart,.is-loading .stats,.is-loading .cmp-grid{opacity:.45;transition:opacity .2s}
 

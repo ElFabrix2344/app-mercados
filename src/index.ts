@@ -138,8 +138,8 @@ async function route(req: Request, env: Env, url: URL, role: Role, email: string
         }
         const range = rangeParam(url);
         const r = mock ? mockHistory(symbol, now, range) : await history(deps, symbol, range);
-        // Los indicadores pesan más que los cierres: van solo si se piden (la ficha sí, los minigráficos no).
-        return json(url.searchParams.get('ind') === '1' ? r : { ...r, indicators: undefined });
+        // Indicadores, velas y volumen pesan más que los cierres: van solo si se piden (la ficha sí, los minigráficos no).
+        return json(url.searchParams.get('ind') === '1' ? r : { ...r, indicators: undefined, bars: undefined });
       }
 
       case '/api/compare': {

@@ -24,6 +24,7 @@ Claude ─► Worker «mercados-mcp» (OAuth propio) ─────────
   - **Freno:** la app gasta como máximo 600 créditos de Twelve Data al día; el resto queda para el conector de Claude. Pasado el freno se muestran los últimos precios guardados.
 - **Exportar a Excel:** los botones «CSV» arman el archivo en el navegador (comas, punto decimal y BOM UTF-8, como lo lee Excel con la configuración es-PE). Son los cierres, rendimientos diarios e indicadores del rango, en la ficha; los cierres alineados y la base 100, en Comparar; y las series de Perú y EE. UU., que también ven los amigos.
 - **Indicadores técnicos (ficha):** medias móviles de 50 y 200 días, bandas de Bollinger (20 días, 2 desviaciones) y RSI de 14 días (suavizado de Wilder) en `lib/indicators.ts`. Se calculan en el servidor con los 5 años guardados y después se recortan al rango, así la MM200 existe desde el primer día de cualquier rango. Se prenden y apagan en la leyenda del gráfico (la elección queda guardada en el navegador).
+- **Velas, volumen y MACD (ficha):** el historial de 5 años guarda también apertura, máximo, mínimo y volumen de cada día (`bars` en `hist5:<símbolo>`; los registros de antes se renuevan una vez, 1 crédito por símbolo). Las velas se ven hasta 1 año (en 3 y 5 años serían de menos de 1 px): huecas si el día cerró más arriba de lo que abrió y rellenas si cerró más abajo, porque el verde y el rojo se confunden con daltonismo (ΔE 2,2 en el validador). El volumen va en un panel aparte (nunca dos escalas en un gráfico); en acciones es el consolidado de las bolsas de EE. UU., verificado contra Nasdaq (BAP, 21 oct: 392.500 frente a 392.494). El MACD (12, 26, 9) es la media exponencial de 12 días menos la de 26, con su señal de 9 y el histograma, en otro panel; coincide con el de Twelve Data hasta el cuarto decimal. Todos los paneles de la ficha usan una franja por día, así el cursor marca el mismo día en todos. El CSV de la ficha suma apertura, máximo, mínimo, volumen y MACD.
 - **Comparar:** de 2 a 4 símbolos de la lista en base 100, con rendimiento, volatilidad, mayor caída y la correlación de los rendimientos diarios. Solo cuentan los días en que todos cotizan (la cripto también cotiza los fines de semana). Sale de la misma caché del historial: normalmente no gasta créditos.
 - **Mercados y tasas del Perú:** cobre, oro, BVL, reservas, bonos del Perú a 10 años (en soles y en dólares) y un riesgo país aproximado. Cada uno muestra el último dato, la variación a 1 y 12 meses y el gráfico del último año, con datos del BCRP (públicos: también los ven los amigos). Las tasas cambian en puntos porcentuales y el riesgo país en puntos básicos. Se guardan aparte de lo demás de Perú (`peru-markets2` en KV), así que si el BCRP falla con ellas el resto se sigue viendo.
   - **Riesgo país aproximado:** bono peruano en dólares a 10 años menos el Tesoro de EE. UU. a 10 años. El EMBIG del BCRP (`PD04709XD`) está detenido desde el 3 de setiembre de 2026, sin aviso.
@@ -71,7 +72,7 @@ Todas las rutas exigen sesión de Cloudflare Access. Las marcadas con 🔒 son s
 | GET | `/api/status` | Tu rol. Al dueño además: si cada secreto está cargado y con formato correcto (sin mostrar valores) y créditos usados hoy |
 | GET / PUT | `/api/watchlist` 🔒 | Lee o guarda la lista (`{"symbols": ["BAP", "USD/PEN"]}`) |
 | GET | `/api/quotes` 🔒 | Precios de la lista (`?refresh=1` = botón «Actualizar») y estado de la bolsa |
-| GET | `/api/history?symbol=BAP&range=1A` 🔒 | Cierres diarios del rango (1M, 3M, 6M, YTD, 1A, 3A, 5A) y sus estadísticas. Con `&ind=1`, también MM50, MM200, Bollinger y RSI 14 alineados con los cierres |
+| GET | `/api/history?symbol=BAP&range=1A` 🔒 | Cierres diarios del rango (1M, 3M, 6M, YTD, 1A, 3A, 5A) y sus estadísticas. Con `&ind=1`, también MM50, MM200, Bollinger, RSI 14 y MACD, y apertura, máximo, mínimo y volumen (`bars`), alineados con los cierres |
 | GET | `/api/compare?symbols=BAP,SPY&range=1A` 🔒 | De 2 a 4 símbolos de la lista: días en común, cierres, base 100, estadísticas y matriz de correlación |
 | GET | `/api/portfolio` 🔒 | Cartera simulada valorizada: operaciones, posiciones, totales en US$ y soles, y comparación con el SPY |
 | POST / DELETE | `/api/portfolio` 🔒 | Agrega una operación (`{"date", "symbol", "side": "buy"\|"sell", "qty", "price"?}`) o borra una (`?id=…`); responde la cartera valorizada |
@@ -91,7 +92,7 @@ Vive en un **Worker aparte, `mercados-mcp`** (`src/mcp-worker.ts`, `wrangler.mcp
 | Herramienta | Qué devuelve |
 |---|---|
 | `precios` | Precios de la lista de seguimiento (todos o los símbolos pedidos) |
-| `historial` | Cierres de un símbolo de la lista en el rango pedido (hasta 5 años), sus estadísticas y los indicadores técnicos del último cierre |
+| `historial` | Cierres de un símbolo de la lista en el rango pedido (hasta 5 años), sus estadísticas y los indicadores técnicos del último cierre (medias, RSI, Bollinger, MACD y volumen) |
 | `comparar` | De 2 a 4 símbolos de la lista: rendimiento, volatilidad, mayor caída, correlación y base 100 al cierre de cada mes |
 | `cartera` | La cartera simulada valorizada: posiciones, ganancia, totales en US$ y soles y comparación con el SPY (solo lectura) |
 | `empresa` | Datos de una acción de la lista (Finnhub): perfil, capitalización, PER, márgenes, ROE, beta, dividendo, analistas, sorpresas del BPA y comparables |
@@ -128,7 +129,7 @@ src/
   lib/fred.ts           cliente de FRED
   lib/market-hours.ts   horario de la bolsa de Nueva York
   lib/stats.ts          rendimiento, volatilidad, mayor caída, peor/mejor día
-  lib/indicators.ts     medias móviles, Bollinger, RSI, alineación por fecha y correlación
+  lib/indicators.ts     medias móviles simples y exponenciales, Bollinger, RSI, MACD, alineación por fecha y correlación
   lib/calendar.ts       calendario económico: fechas oficiales cargadas por año y conversión a la hora de Lima
   mock.ts               datos ficticios para desarrollo local
 public/                 index.html, app.js (gráficos en SVG propios), styles.css

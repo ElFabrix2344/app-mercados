@@ -165,7 +165,8 @@ function registerMarketTools(server: McpServer, c: McpContext, when: When): void
         'volatilidad anualizada de los rendimientos diarios, máxima caída desde un pico previo, mejor y peor día, y cierres ' +
         'máximo y mínimo. También los indicadores técnicos del último cierre, calculados con los 5 años guardados: medias ' +
         'móviles simples de 50 y 200 días (y la distancia del cierre a cada una), RSI de 14 días (Wilder) y bandas de ' +
-        'Bollinger de 20 días y 2 desviaciones (posicion_pct: 0 = banda inferior, 100 = banda superior). ' +
+        'Bollinger de 20 días y 2 desviaciones (posicion_pct: 0 = banda inferior, 100 = banda superior), MACD (12, 26, 9: ' +
+        'línea, señal e histograma) y el volumen de ese día (consolidado de las bolsas de EE. UU.; null en divisas). ' +
         'Los porcentajes vienen en puntos porcentuales (12.5 = +12,5 %).',
       inputSchema: z.object({
         simbolo: z.string().max(20).describe('Símbolo de la lista, p. ej. "BAP" o "USD/PEN".'),
@@ -420,6 +421,8 @@ function indicatorSnapshot(r: HistoryResult) {
     cierre_vs_mm50_pct: vs(mm50),
     cierre_vs_mm200_pct: vs(mm200),
     rsi14: round(at(r.indicators.rsi14)),
+    macd: at(r.indicators.macd) === null ? null : { linea: round(at(r.indicators.macd)), senal: round(at(r.indicators.macdSignal)), histograma: round(at(r.indicators.macdHist)) },
+    volumen: r.bars?.volume.at(-1) ?? null,
     bollinger:
       sup !== null && inf !== null
         ? { superior: sup, inferior: inf, posicion_pct: sup > inf ? Math.round(((cierre - inf) / (sup - inf)) * 1000) / 10 : null }

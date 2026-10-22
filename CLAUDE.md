@@ -32,6 +32,8 @@ App de mercados (Cloudflare Worker + panel web + conector MCP para Claude). El R
 - Los feriados y cierres anticipados de la NYSE están cargados hasta 2027 en `lib/market-hours.ts` (`NYSE_CALENDAR_UNTIL`). **Cada año hay que agregar el siguiente** desde nyse.com/markets/hours-calendars; si no, la app gasta créditos en los feriados.
 - El historial guarda 5 años (`hist5:<símbolo>` en KV) por 1 crédito; los rangos se recortan de ahí con `sliceRange`, que empieza en el cierre **anterior** al inicio del rango.
 - Los indicadores (`lib/indicators.ts`) se calculan con los 5 años y **después** se recortan al rango; `/api/history` solo los manda con `&ind=1` (pesan más que los cierres). `compare` alinea las series por fecha **antes** de recortar y carga los símbolos uno por uno: el contador de créditos se lee y escribe en KV y en paralelo se perderían sumas.
+- El historial guardado (`hist5:`) trae `bars` (apertura, máximo, mínimo y volumen) desde el 22 oct; `cached` acepta `valid` para renovar una vez los registros con el formato anterior. El volumen diario de Twelve Data sí es el consolidado (verificado contra Nasdaq); el intradía, no.
+- Velas: huecas al subir y rellenas al bajar, porque el verde (`--up`) y el rojo (`--down`) dan ΔE 2,2 con deuteranopía en el validador de `dataviz`. En los paneles de abajo de la ficha, la línea principal va en `--s3` y la señal del MACD en `--s4`.
 - Colores de los gráficos con varias líneas: `--s1`…`--s4` en `styles.css`, validados para daltonismo con el validador de la skill `dataviz` sobre `#121212`. Si cambias uno, vuelve a validar (parejas vecinas para Comparar; todas las parejas para precio + MM50 + MM200).
 - Si cambias la forma de los datos guardados en KV, lee también el formato anterior (ver `readQuotes`).
 

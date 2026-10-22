@@ -27,6 +27,11 @@ export type QuoteBatch = { quotes: Quote[]; errors: Record<string, string> };
 export interface DailyPoint {
   date: string; // YYYY-MM-DD
   close: number;
+  /** Apertura, máximo, mínimo y volumen del día (las divisas no traen volumen). */
+  open?: number | null;
+  high?: number | null;
+  low?: number | null;
+  volume?: number | null;
 }
 
 type Fetch = typeof fetch;
@@ -109,9 +114,12 @@ export function parseSeries(raw: unknown): DailyPoint[] {
   if (!Array.isArray(values)) throw new ApiError('bad_response', 502, 'Twelve Data: serie sin valores.', 'twelvedata');
   const pts: DailyPoint[] = [];
   for (const v of values) {
-    const date = String((v as Record<string, unknown>)?.datetime ?? '').slice(0, 10);
-    const close = num((v as Record<string, unknown>)?.close);
-    if (/^\d{4}-\d{2}-\d{2}$/.test(date) && close !== null) pts.push({ date, close });
+    const r = (v ?? {}) as Record<string, unknown>;
+    const date = String(r.datetime ?? '').slice(0, 10);
+    const close = num(r.close);
+    if (/^\d{4}-\d{2}-\d{2}$/.test(date) && close !== null) {
+      pts.push({ date, close, open: num(r.open), high: num(r.high), low: num(r.low), volume: num(r.volume) });
+    }
   }
   // La API devuelve de más reciente a más antiguo: se ordena ascendente.
   return pts.sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : 0));

@@ -56,23 +56,75 @@ export function rsi(values: number[], n = 14): (number | null)[] {
   return out;
 }
 
+/**
+ * Media móvil exponencial de `n` días (factor 2 / (n + 1)). Arranca con la media simple de los primeros `n` valores
+ * y salta los null del comienzo (la señal del MACD se calcula sobre una línea que empieza más tarde).
+ */
+export function ema(values: (number | null)[], n: number): (number | null)[] {
+  const out: (number | null)[] = new Array(values.length).fill(null);
+  const first = values.findIndex((v) => v !== null);
+  if (first < 0 || values.length - first < n) return out;
+  const k = 2 / (n + 1);
+  let prev = 0;
+  for (let i = first; i < first + n; i++) prev += values[i]! / n;
+  out[first + n - 1] = prev;
+  for (let i = first + n; i < values.length; i++) {
+    prev = values[i]! * k + prev * (1 - k);
+    out[i] = prev;
+  }
+  return out;
+}
+
+/** MACD: media exponencial de `fast` días menos la de `slow`, su señal (media exponencial de `signal`) y la diferencia (histograma). */
+export function macd(values: number[], fast = 12, slow = 26, signal = 9): { line: (number | null)[]; signal: (number | null)[]; hist: (number | null)[] } {
+  const ef = ema(values, fast);
+  const es = ema(values, slow);
+  const line = values.map((_, i) => (ef[i] != null && es[i] != null ? ef[i]! - es[i]! : null));
+  const sig = ema(line, signal);
+  const hist = line.map((v, i) => (v != null && sig[i] != null ? v - sig[i]! : null));
+  return { line, signal: sig, hist };
+}
+
 export interface Indicators {
   sma50: (number | null)[];
   sma200: (number | null)[];
   bbUpper: (number | null)[];
   bbLower: (number | null)[];
   rsi14: (number | null)[];
+  /** MACD (12, 26, 9): línea, señal e histograma. */
+  macd: (number | null)[];
+  macdSignal: (number | null)[];
+  macdHist: (number | null)[];
 }
 
 export function indicators(closes: number[]): Indicators {
   const bb = bollinger(closes, 20, 2);
-  return { sma50: sma(closes, 50), sma200: sma(closes, 200), bbUpper: bb.upper, bbLower: bb.lower, rsi14: rsi(closes, 14) };
+  const m = macd(closes);
+  return {
+    sma50: sma(closes, 50),
+    sma200: sma(closes, 200),
+    bbUpper: bb.upper,
+    bbLower: bb.lower,
+    rsi14: rsi(closes, 14),
+    macd: m.line,
+    macdSignal: m.signal,
+    macdHist: m.hist,
+  };
 }
 
 /** Recorta todos los indicadores desde `start` (el mismo índice donde empieza el rango). */
 export function sliceIndicators(ind: Indicators, start: number): Indicators {
   const cut = (xs: (number | null)[]) => xs.slice(start).map((x) => (x === null ? null : round4(x)));
-  return { sma50: cut(ind.sma50), sma200: cut(ind.sma200), bbUpper: cut(ind.bbUpper), bbLower: cut(ind.bbLower), rsi14: cut(ind.rsi14) };
+  return {
+    sma50: cut(ind.sma50),
+    sma200: cut(ind.sma200),
+    bbUpper: cut(ind.bbUpper),
+    bbLower: cut(ind.bbLower),
+    rsi14: cut(ind.rsi14),
+    macd: cut(ind.macd),
+    macdSignal: cut(ind.macdSignal),
+    macdHist: cut(ind.macdHist),
+  };
 }
 
 const round4 = (x: number) => Math.round(x * 1e4) / 1e4;

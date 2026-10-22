@@ -228,6 +228,30 @@ describe('history con indicadores', () => {
     expect(r.indicators.rsi14.at(-1)).toBe(100);
     // La lectura del último cierre va siempre (la usan las señales de la lista).
     expect(r.latest).toEqual({ date: r.data.points.at(-1)![0], close: 399, sma50: 374.5, sma200: 299.5, rsi14: 100 });
+    // Subiendo 1 por día, las medias exponenciales de 12 y 26 van 5,5 y 12,5 atrás: el MACD es 7 y la señal también.
+    expect(r.indicators.macd).toHaveLength(n);
+    expect(r.indicators.macd.at(-1)).toBeCloseTo(7, 6);
+    expect(r.indicators.macdSignal.at(-1)).toBeCloseTo(7, 6);
+    expect(r.indicators.macdHist.at(-1)).toBeCloseTo(0, 6);
+  });
+
+  it('guarda apertura, máximo, mínimo y volumen, y renueva una vez lo guardado sin ellos', async () => {
+    const values = [
+      { datetime: '2026-10-15', open: '384.17', high: '392.96', low: '380', close: '388.42', volume: '360200' },
+      { datetime: '2026-10-14', open: '376.61', high: '388.15', low: '374.98', close: '383.94', volume: '335700' },
+    ];
+    const now = new Date('2026-10-16T15:00:00Z');
+    // Registro de antes del cambio: sin `bars` y todavía vigente.
+    const old = { fetchedAt: '2026-10-16T14:00:00.000Z', data: { symbol: 'BAP', points: [['2026-10-14', 383.94], ['2026-10-15', 388.42]] } };
+    const { kv } = memoryKV({ 'hist5:BAP': old });
+    const { f, calls } = fakeFetch(() => ({ body: { values, status: 'ok' } }));
+    const d = { kv, now, fetch: f, twelveKey: 'k' };
+    const r = await history(d, 'BAP', '1M');
+    expect(calls).toHaveLength(1);
+    expect(r.bars).toEqual({ open: [376.61, 384.17], high: [388.15, 392.96], low: [374.98, 380], volume: [335700, 360200] });
+    // Ya con `bars`, sale de la caché.
+    await history(d, 'BAP', '3M');
+    expect(calls).toHaveLength(1);
   });
 });
 

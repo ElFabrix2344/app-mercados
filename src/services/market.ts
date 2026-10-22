@@ -98,11 +98,13 @@ export async function cached<T>(
   key: string,
   ttlMs: number,
   load: () => Promise<T>,
-  opts: { credits?: number } = {},
+  opts: { credits?: number; valid?: (data: T) => boolean } = {},
 ): Promise<Fresh<T>> {
   const prev = await d.kv.get<Stored<T>>(key, 'json');
-  const age = prev ? d.now.getTime() - Date.parse(prev.fetchedAt) : Infinity;
-  if (prev && age < ttlMs) return { data: prev.data, fetchedAt: prev.fetchedAt, stale: false, note: null };
+  // Un registro de antes de un cambio de formato se renueva aunque no haya vencido (y sirve de respaldo si falla).
+  const current = prev && (!opts.valid || opts.valid(prev.data));
+  const age = current ? d.now.getTime() - Date.parse(prev.fetchedAt) : Infinity;
+  if (current && age < ttlMs) return { data: prev.data, fetchedAt: prev.fetchedAt, stale: false, note: null };
 
   const credits = opts.credits ?? 0;
   if (credits && (await creditsUsed(d.kv, d.now)) + credits > DAILY_CREDIT_CAP) {
@@ -279,9 +281,22 @@ export function sliceRange(points: [string, number][], range: Range, today: stri
   return points.slice(rangeStartIndex(points.map(([date]) => date), range, today));
 }
 
+/** Apertura, máximo, mínimo y volumen de un día (alineado con `points`; las divisas no traen volumen). */
+export type Bar = [open: number | null, high: number | null, low: number | null, volume: number | null];
+
 export interface HistoryData {
   symbol: string;
   points: [string, number][];
+  /** Falta en lo guardado antes del 22 oct 2026: esos registros se renuevan una vez (1 crédito). */
+  bars?: Bar[];
+}
+
+/** Velas y volumen del rango, en columnas alineadas con los cierres. */
+export interface HistoryBars {
+  open: (number | null)[];
+  high: (number | null)[];
+  low: (number | null)[];
+  volume: (number | null)[];
 }
 
 export type HistoryResult = Fresh<HistoryData> & {
@@ -295,6 +310,8 @@ export type HistoryResult = Fresh<HistoryData> & {
    * de cualquier rango.
    */
   indicators: Indicators;
+  /** Apertura, máximo, mínimo y volumen alineados con `points` (null si lo guardado es de antes de tenerlos). */
+  bars: HistoryBars | null;
   /** Lectura del último cierre (la misma en cualquier rango): va siempre, para las señales de la lista. */
   latest: { date: string; close: number; sma50: number | null; sma200: number | null; rsi14: number | null } | null;
 };
@@ -309,10 +326,21 @@ export function storedHistory(d: Deps, symbol: string): Promise<Fresh<HistoryDat
     async () => {
       // end_date no incluye ese día: la serie llega hasta el último cierre.
       const pts = await getDailySeries(symbol, addDays(today, -HISTORY_DAYS), today, needKey(d.twelveKey, 'TWELVE_DATA_API_KEY', 'twelvedata'), d.fetch);
-      return { symbol, points: pts.map((p) => [p.date, p.close] as [string, number]) };
+      return {
+        symbol,
+        points: pts.map((p) => [p.date, p.close] as [string, number]),
+        bars: pts.map((p): Bar => [p.open ?? null, p.high ?? null, p.low ?? null, p.volume ?? null]),
+      };
     },
-    { credits: 1 },
+    { credits: 1, valid: (h) => Array.isArray(h.bars) && h.bars.length === h.points.length },
   );
+}
+
+/** Columnas de velas y volumen desde `start`; null si lo guardado no las tiene. */
+function sliceBars(bars: Bar[] | undefined, start: number): HistoryBars | null {
+  if (!bars) return null;
+  const cut = bars.slice(start);
+  return { open: cut.map((b) => b[0]), high: cut.map((b) => b[1]), low: cut.map((b) => b[2]), volume: cut.map((b) => b[3]) };
 }
 
 /** Recorta los 5 años guardados al rango y calcula sus estadísticas e indicadores. */
@@ -329,6 +357,7 @@ export function shapeHistory(stored: Fresh<HistoryData>, range: Range, today: st
     range,
     available: { from: all[0]?.[0] ?? null, to: last?.[0] ?? null },
     indicators: ind,
+    bars: sliceBars(stored.data.bars, start),
     latest: last
       ? { date: last[0], close: last[1], sma50: ind.sma50.at(-1) ?? null, sma200: ind.sma200.at(-1) ?? null, rsi14: ind.rsi14.at(-1) ?? null }
       : null,

@@ -80,7 +80,8 @@
         <summary aria-label="Cómo se usa la ficha">?</summary>
         <div class="help-body">
           <p>Arrastra sobre el gráfico para ver la variación entre dos días. En el celular, con dos dedos; con el teclado, Mayús + flechas.</p>
-          <p>Las medias móviles, las bandas de Bollinger y el RSI se calculan con 5 años de historia. Un RSI sobre 70 suele leerse como sobrecompra; bajo 30, como sobreventa.</p>
+          <p>Las medias móviles, las bandas de Bollinger, el RSI y el MACD se calculan con 5 años de historia. Un RSI sobre 70 suele leerse como sobrecompra; bajo 30, como sobreventa. El MACD es la media exponencial de 12 días menos la de 26; cuando cruza su señal (la media de 9 días del MACD) suele leerse como cambio de impulso.</p>
+          <p>Velas: cada una muestra la apertura, el máximo, el mínimo y el cierre del día. Hueca si cerró más arriba de lo que abrió; rellena si cerró más abajo. Se ven hasta 1 año.</p>
           <p>Los datos de la empresa vienen de Finnhub, solo los ves tú y se guardan 24 horas. El PER y el BPA son de los últimos 12 meses; los montos van en la moneda en que reporta la empresa.</p>
         </div>
       </details>
@@ -93,9 +94,22 @@
       <button type="button" id="d-csv" class="csv-btn" title="Cierres, rendimientos diarios e indicadores del periodo, para Excel">⤓ CSV</button>
     </div>
     <div class="chart" id="d-chart"></div>
+    <div id="d-vol-wrap" hidden>
+      <p class="hint" id="d-vol-hint">Volumen diario</p>
+      <div class="chart" id="d-vol"></div>
+    </div>
     <div id="d-rsi-wrap" hidden>
       <p class="hint">RSI de 14 días</p>
       <div class="chart" id="d-rsi"></div>
+    </div>
+    <div id="d-macd-wrap" hidden>
+      <div class="panel-head">
+        <p class="hint">MACD (12, 26, 9)</p>
+        <span class="legend-item s3"><span class="key"></span>MACD</span>
+        <span class="legend-item s4"><span class="key"></span>Señal</span>
+        <span class="legend-item"><span class="key bars"></span>Histograma</span>
+      </div>
+      <div class="chart" id="d-macd"></div>
     </div>
     <dl class="stats" id="d-stats"></dl>
     <div class="d-co" id="d-co" hidden>

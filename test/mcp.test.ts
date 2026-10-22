@@ -169,6 +169,9 @@ describe('herramienta historial', () => {
       cierre_vs_mm200_pct: null,
       rsi14: null,
       bollinger: null,
+      macd: null,
+      // La serie de prueba no trae volumen.
+      volumen: null,
     });
   });
 

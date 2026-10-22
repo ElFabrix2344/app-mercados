@@ -18,7 +18,7 @@
     selected: null,
     range: '1A', // rango de la ficha
     rangeData: new Map(), // `${símbolo}|${rango}` → { points, stats, ind } | { error } | 'cargando'
-    ind: { sma50: false, sma200: false, bb: false, rsi: false }, // indicadores visibles en la ficha
+    ind: { candles: false, sma50: false, sma200: false, bb: false, vol: false, rsi: false, macd: false }, // lo que se ve en la ficha
     cmp: { picks: [], range: '1A' }, // comparar: [{ sym, slot }] (el color sigue al símbolo) y rango
     cmpData: new Map(), // `${símbolos ordenados}|${rango}` → respuesta de /api/compare | 'cargando'
     cmpError: null, // { key, message } del último intento fallido
@@ -195,6 +195,44 @@
     return d;
   }
 
+  /** Barra de ancho `w` desde la base `y0` hasta `y`: punta redondeada (4px como mucho) y base recta. */
+  function barPath(x, w, y, y0) {
+    const len = Math.abs(y0 - y);
+    if (len < 0.5) return '';
+    const f = (v) => v.toFixed(1);
+    const r = Math.min(4, w / 2, len);
+    if (r < 1) return `M${f(x)},${f(Math.min(y, y0))}h${f(w)}v${f(len)}h${f(-w)}Z`;
+    const dir = y < y0 ? 1 : -1; // 1: la barra crece hacia arriba
+    return `M${f(x)},${f(y0)}V${f(y + dir * r)}Q${f(x)},${f(y)} ${f(x + r)},${f(y)}H${f(x + w - r)}Q${f(x + w)},${f(y)} ${f(x + w)},${f(y + dir * r)}V${f(y0)}Z`;
+  }
+
+  /**
+   * Velas: mecha del mínimo al máximo y cuerpo de la apertura al cierre. Las que suben van huecas y las que bajan,
+   * rellenas: así se distinguen también sin ver colores (el verde y el rojo se confunden con daltonismo).
+   */
+  function drawCandles(svg, { open, high, low }, close, X, Y, w) {
+    const f = (v) => v.toFixed(1);
+    const d = { wickUp: '', wickDown: '', up: '', down: '' };
+    close.forEach((c, i) => {
+      const o = open[i];
+      const top = high[i];
+      const bottom = low[i];
+      if (c == null || o == null || top == null || bottom == null) return;
+      const up = c >= o;
+      const x = X(i);
+      const bodyTop = Y(Math.max(o, c));
+      const bodyH = Math.max(1, Y(Math.min(o, c)) - bodyTop);
+      d[up ? 'wickUp' : 'wickDown'] += `M${f(x)},${f(Y(top))}V${f(Y(bottom))}`;
+      d[up ? 'up' : 'down'] += `M${f(x - w / 2)},${f(bodyTop)}h${f(w)}v${f(bodyH)}h${f(-w)}Z`;
+    });
+    svg.append(
+      s('path', { class: 'wick up', d: d.wickUp }),
+      s('path', { class: 'wick down', d: d.wickDown }),
+      s('path', { class: 'candle up', d: d.up }),
+      s('path', { class: 'candle down', d: d.down }),
+    );
+  }
+
   /**
    * Gráfico de líneas sobre fechas comunes, con una o varias series.
    * spec.dates: ['YYYY-MM-DD', …]; spec.series: [{ name, values: [número | null], cls, tipLabel? }]: la primera es
@@ -202,8 +240,10 @@
    * refs (valores con línea de referencia), domain [mín, máx] y ticks fijos, height, axis, xLabels, interactive, fmt,
    * dateFmt, axisDateFmt, aria, padR (número o función del ancho), endLabel(serie, valor, ancho) → texto | null,
    * extraTip(i) → filas extra del tooltip, sortTip (filas del tooltip de mayor a menor), flat (sin serie principal).
-   * Medición entre dos días: measure ('main' = solo la principal, 'all' = todas), measureRow(serie, v0, v1, spec)
-   * → { value, label } y monthly (el tramo se cuenta en meses).
+   * Medición entre dos días: measure ('main' = solo la principal, 'all' = todas, 'none' = sin medición), measureRow(serie,
+   * v0, v1, spec) → { value, label } y monthly (el tramo se cuenta en meses). Una serie con kind: 'bars' se dibuja como
+   * barras desde el cero (volumen, histograma); candles { open, high, low } dibuja velas con el cierre de la serie
+   * principal; inset pone cada día al centro de su franja (la ficha lo usa en todos sus gráficos para que se alineen).
    */
   function drawChart(host, spec) {
     // Si había una medición fija en este gráfico, se va con él (si no, su tooltip quedaría flotando).
@@ -221,6 +261,12 @@
       }
     };
     for (const sr of series) sr.values.forEach(take);
+    // Las barras (volumen, histograma del MACD) salen de cero: el cero entra en la escala.
+    if (series.some((sr) => sr.kind === 'bars')) take(0);
+    if (spec.candles) {
+      spec.candles.high.forEach(take);
+      spec.candles.low.forEach(take);
+    }
     if (spec.band) {
       spec.band.upper.forEach(take);
       spec.band.lower.forEach(take);
@@ -256,7 +302,11 @@
     }
     const iw = W - pad.l - pad.r;
     const ih = H - pad.t - pad.b;
-    const X = (i) => pad.l + (i * iw) / (n - 1);
+    // inset: cada día ocupa una franja y su marca va al centro, así las velas y barras de los extremos no quedan cortadas.
+    const slot = spec.inset ? iw / n : iw / (n - 1);
+    const X = spec.inset ? (i) => pad.l + (i + 0.5) * slot : (i) => pad.l + i * slot;
+    // Velas y barras: 2px de aire entre vecinas y 24px de ancho como mucho.
+    const barW = slot >= 4 ? Math.min(24, slot - 2) : Math.max(1, slot * 0.6);
     const Y = (v) => pad.t + ((hi - v) * ih) / (hi - lo);
     const xy = (i, v) => `${X(i).toFixed(1)},${Y(v).toFixed(1)}`;
 
@@ -292,8 +342,19 @@
         s('path', { class: 'band-edge', d: linePath(lower, xy) }),
       );
     }
-    // La serie principal se dibuja al final para quedar encima.
-    const drawOrder = [...series.slice(1), series[0]];
+    // Barras (volumen, histograma) debajo de todo, desde el cero.
+    const base = Y(Math.min(Math.max(0, lo), hi));
+    for (const sr of series) {
+      if (sr.kind !== 'bars') continue;
+      let d = '';
+      sr.values.forEach((v, i) => {
+        if (v != null) d += barPath(X(i) - barW / 2, barW, Y(v), base);
+      });
+      svg.append(s('path', { class: `bars ${sr.cls || ''}`, d }));
+    }
+    if (spec.candles) drawCandles(svg, spec.candles, series[0].values, X, Y, barW);
+    // Líneas (con velas, el cierre ya está en ellas). La serie principal se dibuja al final para quedar encima.
+    const drawOrder = [...series.slice(1), series[0]].filter((sr) => sr.kind !== 'bars' && !(spec.candles && sr === series[0]));
     for (const sr of drawOrder) svg.append(s('path', { class: `line ${sr.cls || ''}`, d: linePath(sr.values, xy) }));
     // Operaciones de la cartera: ▲ compra y ▼ venta, a su precio.
     for (const m of spec.markers || []) {
@@ -324,7 +385,7 @@
       });
     }
     host.append(svg);
-    if (spec.interactive) attachHover(svg, spec, { W, H, pad, X, Y, under });
+    if (spec.interactive) attachHover(svg, spec, { W, H, pad, X, Y, under, slot });
   }
 
   /** Una sola serie (minigráficos, Perú, EE. UU.). pts: [{ date: 'YYYY-MM-DD', v: número }]. */
@@ -407,13 +468,14 @@
    * arrastrar con el mouse, dos dedos en el celular o Mayús + flechas. La medición queda fija hasta un
    * clic o toque fuera, otro clic en el gráfico o Esc.
    */
-  function attachHover(svg, spec, { W, H, pad, X, Y, under }) {
+  function attachHover(svg, spec, { W, H, pad, X, Y, under, slot }) {
     const n = spec.dates.length;
     svg.setAttribute('tabindex', '0');
     svg.setAttribute('aria-keyshortcuts', 'ArrowLeft ArrowRight Shift+ArrowLeft Shift+ArrowRight Escape');
     const cross = s('line', { class: 'cross', y1: pad.t, y2: H - pad.b, visibility: 'hidden' });
     const dots = spec.series.map((sr) => s('circle', { class: `hover-dot ${sr.cls || ''}`, r: 4, visibility: 'hidden' }));
-    const measured = spec.measure === 'all' ? spec.series : spec.series.slice(0, 1);
+    const canMeasure = spec.measure !== 'none';
+    const measured = !canMeasure ? [] : spec.measure === 'all' ? spec.series : spec.series.slice(0, 1);
     const band = s('rect', { class: 'sel-band', y: pad.t, height: H - pad.t - pad.b, visibility: 'hidden' });
     const edges = [0, 1].map(() => s('line', { class: 'sel-edge', y1: pad.t, y2: H - pad.b, visibility: 'hidden' }));
     const ends = measured.map((sr) => [0, 1].map(() => s('circle', { class: `hover-dot ${sr.cls || ''}`, r: 4, visibility: 'hidden' })));
@@ -470,7 +532,8 @@
       let top = H - pad.b;
       spec.series.forEach((sr, k) => {
         const v = sr.values[idx];
-        vis(dots[k], v != null);
+        // Las barras no llevan punto: el cursor y el tooltip bastan.
+        vis(dots[k], v != null && sr.kind !== 'bars');
         if (v == null) return;
         dots[k].setAttribute('cx', x);
         dots[k].setAttribute('cy', Y(v));
@@ -483,7 +546,7 @@
     const measure = (anchor, end) => {
       anchor = clamp(anchor);
       end = clamp(end);
-      if (anchor === end) {
+      if (anchor === end || !canMeasure) {
         show(end);
         return;
       }
@@ -519,7 +582,7 @@
     const indexAt = (e) => {
       const r = svg.getBoundingClientRect();
       const x = (e.clientX - r.left) * (W / r.width);
-      return clamp(Math.round(((x - pad.l) / (W - pad.l - pad.r)) * (n - 1)));
+      return clamp(spec.inset ? Math.floor((x - pad.l) / slot) : Math.round((x - pad.l) / slot));
     };
     const twoFingers = () => {
       const [p, q] = touches.values();
@@ -834,7 +897,7 @@
     if (!cached) {
       state.rangeData.set(key, 'cargando');
       api(`/api/history?symbol=${encodeURIComponent(sym)}&range=${range}&ind=1`)
-        .then((r) => state.rangeData.set(key, { points: r.data.points, stats: r.stats, ind: r.indicators }))
+        .then((r) => state.rangeData.set(key, { points: r.data.points, stats: r.stats, ind: r.indicators, bars: r.bars ?? null }))
         .catch((e) => state.rangeData.set(key, { error: e.message }))
         .finally(() => {
           if (state.selected === sym && state.range === range) renderDetail();
@@ -860,23 +923,44 @@
     );
   }
 
-  // Colores validados para daltonismo sobre el panel: precio s1, MM50 s4, MM200 s2 (todas las parejas) y RSI s3 aparte.
+  // Colores validados para daltonismo sobre el panel: precio s1, MM50 s4, MM200 s2 (todas las parejas). En los paneles de
+  // abajo, la línea principal va en s3 (RSI y MACD) y la señal del MACD en s4, como la otra media (s3–s4 es pareja validada).
   const INDICATORS = [
+    { key: 'candles', label: 'Velas', keyCls: 'candle', title: 'Velas japonesas: apertura, máximo, mínimo y cierre de cada día (hasta 1 año)' },
     { key: 'sma50', label: 'MM50', cls: 's4', title: 'Media móvil simple de 50 días' },
     { key: 'sma200', label: 'MM200', cls: 's2', title: 'Media móvil simple de 200 días' },
-    { key: 'bb', label: 'Bollinger', cls: '', title: 'Bandas de Bollinger: media de 20 días ± 2 desviaciones estándar' },
+    { key: 'bb', label: 'Bollinger', keyCls: 'band', title: 'Bandas de Bollinger: media de 20 días ± 2 desviaciones estándar' },
+    { key: 'vol', label: 'Volumen', keyCls: 'bars', title: 'Volumen diario (panel debajo del gráfico)' },
     { key: 'rsi', label: 'RSI 14', cls: 's3', title: 'Índice de fuerza relativa de 14 días (panel debajo del gráfico)' },
+    { key: 'macd', label: 'MACD', cls: 's3', title: 'MACD (12, 26, 9): media exponencial de 12 días menos la de 26, con su señal de 9 días (panel debajo)' },
   ];
+  /** Rangos con velas: en 3 y 5 años cada vela tendría menos de 1 px. */
+  const CANDLE_RANGES = new Set(['1M', '3M', '6M', 'YTD', '1A']);
 
-  /** Leyenda de la ficha: «Cierre» fijo y un botón por indicador (su clave de color es la de la línea). */
-  function renderIndicatorToggles() {
+  /** Por qué no se puede prender algo en este rango o símbolo (null si se puede). `bars`: undefined mientras llegan. */
+  function unavailable(key, bars) {
+    if (key === 'candles') {
+      if (!CANDLE_RANGES.has(state.range)) return 'Las velas se ven hasta 1 año: en 3 y 5 años serían demasiado finas.';
+      if (bars === null) return 'Todavía no hay velas guardadas para este símbolo.';
+    }
+    if (key === 'vol' && (bars === null || (bars && !bars.volume.some((v) => v > 0)))) return 'Sin volumen para este símbolo (las divisas no lo traen).';
+    return null;
+  }
+
+  /** Leyenda de la ficha: «Cierre» (o cómo leer las velas) y un botón por indicador, con la clave de su línea o marca. */
+  function renderIndicatorToggles(hist) {
+    const bars = hist?.bars;
+    const candlesOn = state.ind.candles && !unavailable('candles', bars);
     $('d-ind').replaceChildren(
-      h('span', { class: 'legend-item s1' }, h('span', { class: 'key' }), 'Cierre'),
+      candlesOn
+        ? h('span', { class: 'legend-item' }, h('span', { class: 'key candle' }), 'Velas: hueca sube, rellena baja')
+        : h('span', { class: 'legend-item s1' }, h('span', { class: 'key' }), 'Cierre'),
       ...INDICATORS.map((it) => {
+        const off = unavailable(it.key, bars);
         const b = h(
           'button',
-          { type: 'button', class: `tog ${it.cls}`, 'aria-pressed': String(!!state.ind[it.key]), title: it.title },
-          h('span', { class: it.key === 'bb' ? 'key band' : 'key' }),
+          { type: 'button', class: `tog ${it.cls || ''}`, 'aria-pressed': String(!!state.ind[it.key] && !off), title: off ?? it.title, disabled: !!off },
+          h('span', { class: `key ${it.keyCls || ''}` }),
           it.label,
         );
         b.addEventListener('click', () => {
@@ -898,17 +982,21 @@
     }
     sec.hidden = false;
     renderRanges();
-    renderIndicatorToggles();
     renderSymbolNews();
     renderEarnings(sym);
     renderCompany();
     const q = quoteFor(sym);
     const hist = detailHistory(sym, state.range);
+    renderIndicatorToggles(hist);
     $('d-title').textContent = q?.name ? `${sym} · ${q.name}` : sym;
     $('d-sub').textContent = q ? [q.exchange, q.currency].filter(Boolean).join(' · ') : '';
     const chart = $('d-chart');
     const rsiWrap = $('d-rsi-wrap');
     const rsiHost = $('d-rsi');
+    const volWrap = $('d-vol-wrap');
+    const volHost = $('d-vol');
+    const macdWrap = $('d-macd-wrap');
+    const macdHost = $('d-macd');
     const stats = $('d-stats');
     const tbody = $('d-table').tBodies[0];
     const csvBtn = $('d-csv');
@@ -922,9 +1010,10 @@
     stats.replaceChildren();
     tbody.replaceChildren();
     if (hist.error) {
-      charts.delete(chart);
-      charts.delete(rsiHost);
+      for (const host of [chart, rsiHost, volHost, macdHost]) charts.delete(host);
       rsiWrap.hidden = true;
+      volWrap.hidden = true;
+      macdWrap.hidden = true;
       chart.replaceChildren(h('p', { class: 'err' }, hist.error));
       return;
     }
@@ -932,6 +1021,8 @@
     const pts = hist.points.map(([date, v]) => ({ date, v }));
     const ind = hist.ind; // falta mientras llegan los indicadores
     const on = (k) => !!(ind && state.ind[k]);
+    const bars = hist.bars ?? null; // velas y volumen: llegan con los indicadores
+    const candles = state.ind.candles && !unavailable('candles', hist.bars) && bars ? bars : null;
     const series = [{ name: 'Cierre', values: pts.map((p) => p.v), cls: 's1' }];
     if (on('sma50')) series.push({ name: 'MM50', values: ind.sma50, cls: 's4' });
     if (on('sma200')) series.push({ name: 'MM200', values: ind.sma200, cls: 's2' });
@@ -961,9 +1052,18 @@
       aria: `Cierre diario de ${sym} en ${RANGE_NAMES[state.range]}${extras.length ? `, con ${listJoin(extras)}` : ''}`,
       endLabel: (sr, v) => (sr.cls === 's1' ? fmtPrice(v) : sr.name),
       markers,
+      inset: true,
+      candles: candles && { open: candles.open, high: candles.high, low: candles.low },
       extraTip:
-        on('bb') || on('rsi') || markers.length
+        candles || on('bb') || on('rsi') || markers.length
           ? (i) => [
+              ...(candles && candles.open[i] != null
+                ? [
+                    { keyCls: 'none', value: fmtPrice(candles.open[i]), label: 'Apertura' },
+                    { keyCls: 'none', value: fmtPrice(candles.high[i]), label: 'Máximo' },
+                    { keyCls: 'none', value: fmtPrice(candles.low[i]), label: 'Mínimo' },
+                  ]
+                : []),
               ...(on('bb') && ind.bbUpper[i] != null
                 ? [{ keyCls: 'band', value: `${fmtPrice(ind.bbLower[i])} – ${fmtPrice(ind.bbUpper[i])}`, label: 'Bollinger' }]
                 : []),
@@ -984,6 +1084,7 @@
         axis: true,
         xLabels: false,
         interactive: true,
+        inset: true,
         fmt: (v) => nf(1).format(v),
         endLabel: (sr, v) => nf(0).format(v),
         measureRow: (sr, v0, v1) => ({ value: `${arrowOf(v1 - v0)} ${sign(v1 - v0)}${nf(1).format(Math.abs(v1 - v0))}`, label: `RSI ${nf(1).format(v0)} → ${nf(1).format(v1)}` }),
@@ -992,12 +1093,58 @@
     } else {
       charts.delete(rsiHost);
     }
+    // Volumen: panel aparte (otra escala; nunca dos ejes en un mismo gráfico).
+    const showVol = state.ind.vol && !!bars && !unavailable('vol', bars);
+    volWrap.hidden = !showVol;
+    if (showVol) {
+      // Acciones: el consolidado de las bolsas de EE. UU. (verificado contra Nasdaq); cripto: el del exchange que da el precio.
+      $('d-vol-hint').textContent = sym.includes('/') ? 'Volumen diario (del exchange que da el precio)' : 'Volumen diario (acciones negociadas en todas las bolsas de EE. UU.)';
+      drawChart(volHost, {
+        dates,
+        series: [{ name: 'Volumen', values: bars.volume, cls: 'vol', kind: 'bars' }],
+        height: 90,
+        axis: true,
+        xLabels: false,
+        interactive: true,
+        inset: true,
+        measure: 'none',
+        fmt: (v) => compact.format(v),
+        aria: `Volumen diario de ${sym} en ${RANGE_NAMES[state.range]}`,
+      });
+    } else {
+      charts.delete(volHost);
+    }
+    macdWrap.hidden = !on('macd');
+    if (on('macd')) {
+      drawChart(macdHost, {
+        dates,
+        series: [
+          { name: 'MACD', values: ind.macd, cls: 's3' },
+          { name: 'Señal', values: ind.macdSignal, cls: 's4' },
+          { name: 'Histograma', values: ind.macdHist, cls: 'hist', kind: 'bars' },
+        ],
+        refs: [0],
+        height: 110,
+        axis: true,
+        xLabels: false,
+        interactive: true,
+        inset: true,
+        fmt: (v) => nf(2).format(v),
+        endLabel: (sr, v) => (sr.kind === 'bars' ? null : sr.cls === 's3' ? nf(2).format(v) : sr.name),
+        measureRow: (sr, v0, v1) => ({ value: `${arrowOf(v1 - v0)} ${sign(v1 - v0)}${nf(2).format(Math.abs(v1 - v0))}`, label: `MACD ${nf(2).format(v0)} → ${nf(2).format(v1)}` }),
+        aria: `MACD (12, 26, 9) de ${sym} en ${RANGE_NAMES[state.range]}`,
+      });
+    } else {
+      charts.delete(macdHost);
+    }
     csvBtn.onclick = () => {
       const header = ['fecha', 'cierre', 'rendimiento_diario'];
-      if (ind) header.push('mm50', 'mm200', 'bollinger_sup', 'bollinger_inf', 'rsi14');
+      if (bars) header.push('apertura', 'maximo', 'minimo', 'volumen');
+      if (ind) header.push('mm50', 'mm200', 'bollinger_sup', 'bollinger_inf', 'rsi14', 'macd', 'macd_senal', 'macd_histograma');
       const rows = hist.points.map(([date, close], i) => {
         const row = [date, close, i ? round6(close / hist.points[i - 1][1] - 1) : ''];
-        if (ind) row.push(ind.sma50[i], ind.sma200[i], ind.bbUpper[i], ind.bbLower[i], ind.rsi14[i]);
+        if (bars) row.push(bars.open[i], bars.high[i], bars.low[i], bars.volume[i]);
+        if (ind) row.push(ind.sma50[i], ind.sma200[i], ind.bbUpper[i], ind.bbLower[i], ind.rsi14[i], ind.macd[i], ind.macdSignal[i], ind.macdHist[i]);
         return row;
       });
       downloadCsv(`${sym.replace('/', '-')}_${state.range}_${today()}.csv`, header, rows);

@@ -112,7 +112,7 @@ El 22 de octubre se comparó Rueda con Yahoo Finance, Google Finance, TradingVie
 - **Lo propio de Rueda:** el Perú en una pantalla con fuentes oficiales (BCRP), el conector para Claude con tus datos, el calendario con fechas del Perú en hora de Lima, exportar a Excel gratis (Yahoo lo cobra), la matriz de correlación, y nada de anuncios.
 - **Elegido por el usuario:**
   - [x] **Datos de la empresa** en la ficha (Finnhub, solo el dueño): PER, capitalización, beta, dividendo, márgenes, recomendación de analistas, sorpresas de BPA de los últimos 4 trimestres y comparables. Al cargar la clave, comparar el PER y la capitalización de BAP con Yahoo o Google: Credicorp reporta en soles y Finnhub podría mezclar monedas en las ADR.
-  - [ ] **Velas, volumen y MACD** en la ficha.
+  - [x] **Velas, volumen y MACD** en la ficha. Volumen verificado contra Nasdaq y MACD contra Twelve Data.
   - [ ] **Lista ampliada** de más de 8 símbolos, actualizada una vez al día después del cierre (1 crédito por símbolo al día).
 - **No elegido por ahora** (queda en ideas): alertas al celular por Telegram, pronósticos del grupo (juego sin plata con datos públicos, para los amigos), gráfico del día (1D y 5D), reportes oficiales de la SEC y la SMV, dividendos en la cartera simulada.
 - **Descartado:** buscador de acciones, mapa de calor y lo que más sube o baja (necesitan datos de todo el mercado, que no entran en ningún plan gratis); IA dentro de la app (el conector ya lo hace); widgets del celular (necesitan una app nativa).

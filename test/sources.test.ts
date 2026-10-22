@@ -44,20 +44,21 @@ describe('Twelve Data', () => {
     await expect(getQuotes(['BAP'], 'k', badKey.f)).rejects.toMatchObject({ code: 'not_configured' });
   });
 
-  it('ordena la serie diaria de antigua a reciente', async () => {
+  it('ordena la serie diaria de antigua a reciente, con apertura, máximo, mínimo y volumen', async () => {
     const { f } = fakeFetch(() => ({
       body: {
         meta: { symbol: 'BAP' },
         values: [
-          { datetime: '2026-10-15', close: '388.42' },
+          { datetime: '2026-10-15', open: '384.17001', high: '392.95999', low: '380', close: '388.42', volume: '360200' },
           { datetime: '2026-10-14', close: '383.94' },
         ],
         status: 'ok',
       },
     }));
     expect(await getDailySeries('BAP', '2025-10-16', '2026-10-16', 'k', f)).toEqual([
-      { date: '2026-10-14', close: 383.94 },
-      { date: '2026-10-15', close: 388.42 },
+      // Las divisas (y algunos días) no traen todo: lo que falta queda en null.
+      { date: '2026-10-14', close: 383.94, open: null, high: null, low: null, volume: null },
+      { date: '2026-10-15', close: 388.42, open: 384.17001, high: 392.95999, low: 380, volume: 360200 },
     ]);
   });
 });

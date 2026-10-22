@@ -14,6 +14,7 @@ import {
   shapeCompare,
   shapeHistory,
   summarize,
+  type Bar,
   type CompareResult,
   type Fresh,
   type HistoryResult,
@@ -67,13 +68,21 @@ function info(symbol: string) {
 /** Ruido con media 0 y desviación ~1. */
 const noise = (rand: () => number) => (rand() + rand() + rand() - 1.5) * 2;
 
+/** Volumen diario típico de prueba; las divisas y las series del BCRP no tienen. */
+const MOCK_VOLUME: Record<string, number> = { BAP: 300_000, SCCO: 1_200_000, BVN: 900_000, SPY: 60_000_000, 'BTC/USD': 25_000 };
+
 function walk(symbol: string, now: Date): DailyPoint[] {
   const meta = info(symbol);
   const rand = rng(seedOf(symbol));
+  // Apertura, máximo, mínimo y volumen salen de otra semilla: los cierres no cambian.
+  const extra = rng(seedOf(`${symbol}:velas`));
+  const traded = meta.exchange !== 'Forex' && meta.exchange !== 'BCRP';
+  const baseVolume = MOCK_VOLUME[symbol] ?? 1_000_000;
   const idio = Math.sqrt(1 - meta.beta ** 2);
   const today = isoDate(now);
   const pts: DailyPoint[] = [];
   let price = meta.start;
+  let prevClose = meta.start;
   // 5 años, como el historial real.
   for (let d = addDays(today, -1840); d < today; d = addDays(d, 1)) {
     const dow = new Date(`${d}T12:00:00Z`).getUTCDay();
@@ -81,7 +90,15 @@ function walk(symbol: string, now: Date): DailyPoint[] {
     const market = noise(rng(seedOf(`mercado${d}`)));
     const shock = (meta.beta * market + idio * noise(rand)) * meta.vol + meta.vol * 0.06;
     price = Math.max(price * (1 + shock), meta.start * 0.2);
-    pts.push({ date: d, close: Number(price.toPrecision(6)) });
+    const close = Number(price.toPrecision(6));
+    const open = Number((prevClose * (1 + noise(extra) * meta.vol * 0.3)).toPrecision(6));
+    const wick = () => Math.abs(noise(extra)) * meta.vol * 0.4;
+    const high = Number((Math.max(open, close) * (1 + wick())).toPrecision(6));
+    const low = Number((Math.min(open, close) * (1 - wick())).toPrecision(6));
+    // Más volumen los días de movimientos grandes.
+    const volume = traded ? Math.round(baseVolume * (1 + Math.abs(shock) * 25) * (0.6 + extra() * 0.8)) : null;
+    pts.push({ date: d, close, open, high, low, volume });
+    prevClose = close;
   }
   return pts;
 }
@@ -119,7 +136,10 @@ export function mockQuotes(symbols: string[], now: Date): Fresh<QuotesData> & { 
 }
 
 export function mockHistory(symbol: string, now: Date, range: Range = DEFAULT_RANGE): HistoryResult {
-  return shapeHistory(fresh({ symbol, points: mockPoints(symbol, now) }, now), range, isoDate(now));
+  const pts = walk(symbol, now);
+  const points = pts.map((p) => [p.date, p.close] as [string, number]);
+  const bars = pts.map((p): Bar => [p.open ?? null, p.high ?? null, p.low ?? null, p.volume ?? null]);
+  return shapeHistory(fresh({ symbol, points, bars }, now), range, isoDate(now));
 }
 
 export function mockCompare(symbols: string[], now: Date, range: Range = DEFAULT_RANGE): CompareResult {
