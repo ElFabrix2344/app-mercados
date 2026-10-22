@@ -106,7 +106,7 @@ describe('conector: descubrimiento OAuth', () => {
 });
 
 describe('conector: login completo', () => {
-  it('registro → permiso → app (correo) → código → token → /mcp con las 4 herramientas', async () => {
+  it('registro → permiso → app (correo) → código → token → /mcp con las 5 herramientas', async () => {
     const env = mcpEnv();
     const jar = new Jar();
     const clientId = await register(env);
@@ -192,7 +192,7 @@ describe('conector: login completo', () => {
       ? text.split('\n').find((l) => l.startsWith('data: '))!.slice(6)
       : text;
     const body = JSON.parse(raw) as { result: { tools: { name: string }[] } };
-    expect(body.result.tools.map((t) => t.name)).toEqual(['precios', 'historial', 'peru_bcrp', 'eeuu_fred']);
+    expect(body.result.tools.map((t) => t.name)).toEqual(['precios', 'historial', 'comparar', 'peru_bcrp', 'eeuu_fred']);
 
     // 7. Si el correo deja de ser dueño, el mismo token ya no sirve
     const revoked = await worker.fetch(

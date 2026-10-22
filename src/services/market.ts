@@ -4,10 +4,11 @@
 import { BCRP_SERIES, getBcrp, lastWithValue, type BcrpPoint } from '../lib/bcrp';
 import { FRED_SERIES, getFred, type FredPoint } from '../lib/fred';
 import { ApiError } from '../lib/http';
+import { alignByDate, indicators, pearson, rebase, returnsOf, sliceIndicators, type Indicators } from '../lib/indicators';
 import { lastSessionDate, usMarketOpen } from '../lib/market-hours';
 import { addDays, isoDate } from '../lib/num';
 import { seriesStats, type SeriesStats } from '../lib/stats';
-import { getDailySeries, getQuotes, type DailyPoint, type Quote } from '../lib/twelvedata';
+import { getDailySeries, getQuotes, type Quote } from '../lib/twelvedata';
 
 export const DEFAULT_WATCHLIST = ['BAP', 'SCCO', 'BVN', 'SPY', 'USD/PEN', 'BTC/USD'];
 export const MAX_SYMBOLS = 8; // el plan gratis permite 8 créditos por minuto
@@ -262,14 +263,19 @@ export function rangeStart(range: Range, today: string): string {
 }
 
 /**
- * Cierres del rango, empezando por el último cierre ANTERIOR al inicio: así el rendimiento se mide
- * desde el cierre previo (YTD, desde el cierre del año anterior; 1A, desde el de hace un año).
+ * Dónde empieza el rango dentro de una lista de fechas: en el último cierre ANTERIOR al inicio, para
+ * medir el rendimiento desde el cierre previo (YTD, desde el cierre del año anterior; 1A, desde el de
+ * hace un año). Si falta historia, desde el primero; si no hay cierres en el rango, el último.
  */
-export function sliceRange(points: [string, number][], range: Range, today: string): [string, number][] {
+export function rangeStartIndex(dates: string[], range: Range, today: string): number {
   const start = rangeStart(range, today);
-  const i = points.findIndex(([date]) => date >= start);
-  if (i === -1) return points.slice(-1);
-  return points.slice(Math.max(0, i - 1));
+  const i = dates.findIndex((date) => date >= start);
+  return i === -1 ? Math.max(0, dates.length - 1) : Math.max(0, i - 1);
+}
+
+/** Cierres del rango (ver `rangeStartIndex`). */
+export function sliceRange(points: [string, number][], range: Range, today: string): [string, number][] {
+  return points.slice(rangeStartIndex(points.map(([date]) => date), range, today));
 }
 
 export interface HistoryData {
@@ -282,11 +288,18 @@ export type HistoryResult = Fresh<HistoryData> & {
   range: Range;
   /** Lo que hay guardado (5 años), para saber si un rango quedó corto. */
   available: { from: string | null; to: string | null };
+  /**
+   * Medias de 50 y 200 días, Bollinger (20 días, 2 desviaciones) y RSI de 14 días, alineados con
+   * `points`. Se calculan con los 5 años guardados: la media de 200 días existe desde el primer día
+   * de cualquier rango.
+   */
+  indicators: Indicators;
 };
 
-export async function history(d: Deps, symbol: string, range: Range = DEFAULT_RANGE): Promise<HistoryResult> {
+/** Los 5 años guardados de un símbolo (1 crédito cuando hay que pedirlos de nuevo). */
+function storedHistory(d: Deps, symbol: string): Promise<Fresh<HistoryData>> {
   const today = isoDate(d.now);
-  const res = await cached<HistoryData>(
+  return cached<HistoryData>(
     d,
     `hist5:${symbol}`,
     HISTORY_TTL_MS,
@@ -297,15 +310,120 @@ export async function history(d: Deps, symbol: string, range: Range = DEFAULT_RA
     },
     { credits: 1 },
   );
-  const all = res.data.points;
-  const points = sliceRange(all, range, today);
-  const pts: DailyPoint[] = points.map(([date, close]) => ({ date, close }));
+}
+
+/** Recorta los 5 años guardados al rango y calcula sus estadísticas e indicadores. */
+export function shapeHistory(stored: Fresh<HistoryData>, range: Range, today: string): HistoryResult {
+  const all = stored.data.points;
+  const start = rangeStartIndex(all.map(([date]) => date), range, today);
+  const points = all.slice(start);
   return {
-    ...res,
-    data: { symbol, points },
-    stats: seriesStats(pts),
+    ...stored,
+    data: { symbol: stored.data.symbol, points },
+    stats: seriesStats(points.map(([date, close]) => ({ date, close }))),
     range,
     available: { from: all[0]?.[0] ?? null, to: all.at(-1)?.[0] ?? null },
+    indicators: sliceIndicators(indicators(all.map(([, close]) => close)), start),
+  };
+}
+
+export async function history(d: Deps, symbol: string, range: Range = DEFAULT_RANGE): Promise<HistoryResult> {
+  return shapeHistory(await storedHistory(d, symbol), range, isoDate(d.now));
+}
+
+// ---------- comparar símbolos ----------
+
+export const COMPARE_MAX = 4;
+
+export interface CompareSeries {
+  symbol: string;
+  closes: number[];
+  /** Cuánto valdrían 100 invertidos el primer día común. */
+  rebased: number[];
+  stats: { totalReturn: number; annualVol: number | null; maxDrawdown: number | null } | null;
+}
+
+export interface CompareData {
+  range: Range;
+  /** Días en que todos los símbolos tienen cierre (la cripto también cotiza los fines de semana). */
+  dates: string[];
+  series: CompareSeries[];
+  /** Correlación de los rendimientos diarios, en el orden de `series` (null si no se puede calcular). */
+  correlation: (number | null)[][];
+}
+
+export type CompareResult = CompareData & {
+  /** El dato más antiguo entre los símbolos comparados. */
+  fetchedAt: string;
+  stale: boolean;
+  notes: string[];
+  /** Símbolos que no se pudieron cargar: se compara el resto. */
+  errors: Record<string, string>;
+};
+
+/** Normaliza la selección: de 2 a 4 símbolos distintos. */
+export function compareSymbols(raw: string[]): string[] {
+  const symbols = [...new Set(raw.map((s) => s.trim().toUpperCase()).filter(Boolean))];
+  if (symbols.length < 2 || symbols.length > COMPARE_MAX) {
+    throw new ApiError('bad_request', 400, `Elige de 2 a ${COMPARE_MAX} símbolos distintos para comparar.`);
+  }
+  return symbols;
+}
+
+const round4 = (x: number | null) => (x === null ? null : Math.round(x * 1e4) / 1e4);
+
+/**
+ * Alinea los 5 años de cada símbolo por fecha y recién ahí recorta el rango (desde el último día
+ * común anterior al inicio): base 100, estadísticas y correlaciones usan exactamente los mismos días.
+ */
+export function shapeCompare(stored: HistoryData[], range: Range, today: string): CompareData {
+  const aligned = alignByDate(stored.map((h) => h.points));
+  const start = rangeStartIndex(aligned.dates, range, today);
+  const dates = aligned.dates.slice(start);
+  const closes = aligned.values.map((v) => v.slice(start));
+  const returns = closes.map(returnsOf);
+  return {
+    range,
+    dates,
+    series: stored.map((h, i) => {
+      const st = seriesStats(dates.map((date, j) => ({ date, close: closes[i]![j]! })));
+      return {
+        symbol: h.symbol,
+        closes: closes[i]!,
+        rebased: rebase(closes[i]!),
+        stats: st && { totalReturn: st.totalReturn, annualVol: st.annualVol, maxDrawdown: st.maxDrawdown?.value ?? null },
+      };
+    }),
+    correlation: returns.map((a, i) => returns.map((b, j) => (i === j ? 1 : round4(pearson(a, b))))),
+  };
+}
+
+export async function compare(d: Deps, symbols: string[], range: Range): Promise<CompareResult> {
+  const loaded: Fresh<HistoryData>[] = [];
+  const errors: Record<string, string> = {};
+  let firstError: ApiError | null = null;
+  // Uno por uno: el contador de créditos se lee y se escribe en KV, y en paralelo se perderían sumas.
+  for (const s of symbols) {
+    try {
+      loaded.push(await storedHistory(d, s));
+    } catch (e) {
+      if (!(e instanceof ApiError)) throw e;
+      errors[s] = e.message;
+      firstError ??= e;
+    }
+  }
+  if (loaded.length < 2) throw firstError ?? new ApiError('bad_request', 400, 'Hacen falta al menos 2 símbolos para comparar.');
+  const data = shapeCompare(
+    loaded.map((h) => h.data),
+    range,
+    isoDate(d.now),
+  );
+  return {
+    ...data,
+    fetchedAt: loaded.map((h) => h.fetchedAt).sort()[0]!,
+    stale: loaded.some((h) => h.stale),
+    notes: [...new Set(loaded.map((h) => h.note).filter((n): n is string => !!n))],
+    errors,
   };
 }
 

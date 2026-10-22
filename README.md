@@ -18,8 +18,11 @@ Claude ─► Worker «mercados-mcp» (OAuth propio) ─────────
 - **Caché en KV.** La Cache API no funciona en Workers detrás de Access, así que todo se guarda en KV (plan gratis: 1.000 escrituras/día).
   - Precios: el panel pide cada 10 min y cada símbolo se renueva por separado. Acciones y ETF solo con la bolsa de Nueva York abierta (lunes a viernes, 9:30–16:00 hora de NY, sin los feriados ni los cierres a la 1:00 p. m. del calendario oficial de la NYSE, cargado hasta 2027 en `lib/market-hours.ts`) y una vez más tras el cierre. Divisas y cripto, siempre. «Actualizar» renueva si el dato tiene más de 30 s.
   - Historial de **5 años** por símbolo, cada 12 h: Twelve Data cobra 1 crédito por consulta sin importar cuántos días traiga. Los rangos 1M, 3M, 6M, YTD, 1A, 3A y 5A se recortan de esa misma caché y miden el rendimiento desde el cierre anterior al inicio (YTD, desde el 31 de diciembre). BCRP y FRED: cada 6 h.
-- **Exportar a Excel:** los botones «CSV» arman el archivo en el navegador (comas, punto decimal y BOM UTF-8, como lo lee Excel con la configuración es-PE). Son los cierres y rendimientos diarios del rango, en la ficha, y las series de Perú y EE. UU., que también ven los amigos.
   - **Freno:** la app gasta como máximo 600 créditos de Twelve Data al día; el resto queda para el conector de Claude. Pasado el freno se muestran los últimos precios guardados.
+- **Exportar a Excel:** los botones «CSV» arman el archivo en el navegador (comas, punto decimal y BOM UTF-8, como lo lee Excel con la configuración es-PE). Son los cierres, rendimientos diarios e indicadores del rango, en la ficha; los cierres alineados y la base 100, en Comparar; y las series de Perú y EE. UU., que también ven los amigos.
+- **Indicadores técnicos (ficha):** medias móviles de 50 y 200 días, bandas de Bollinger (20 días, 2 desviaciones) y RSI de 14 días (suavizado de Wilder) en `lib/indicators.ts`. Se calculan en el servidor con los 5 años guardados y después se recortan al rango, así la MM200 existe desde el primer día de cualquier rango. Se prenden y apagan en la leyenda del gráfico (la elección queda guardada en el navegador).
+- **Comparar:** de 2 a 4 símbolos de la lista en base 100, con rendimiento, volatilidad, mayor caída y la correlación de los rendimientos diarios. Solo cuentan los días en que todos cotizan (la cripto también cotiza los fines de semana). Sale de la misma caché del historial: normalmente no gasta créditos.
+- **Colores de los gráficos con varias líneas:** `--s1` a `--s4` en `styles.css` (cian, magenta, violeta, amarillo), validados para daltonismo sobre el fondo del panel. Cada símbolo conserva su color mientras está elegido. Las líneas solas usan el cian de marca.
 - **Lista de seguimiento:** hasta 8 símbolos (8 créditos por minuto del plan gratis).
 
 ## Quién ve qué
@@ -29,7 +32,7 @@ Claude ─► Worker «mercados-mcp» (OAuth propio) ─────────
 | Dueño | Los correos de `OWNER_EMAILS` | Todo: precios, historial y lista (Twelve Data), Perú y EE. UU. |
 | Amigo | El resto de `ALLOWED_EMAILS` (y de la política de Access) | Solo datos públicos: Perú (BCRP) y EE. UU. (FRED) |
 
-La licencia gratis de Twelve Data no permite mostrar sus datos a otras personas ni compartir la clave (§2.2 y §2.3 de sus [términos](https://twelvedata.com/terms)). Por eso el servidor responde **403** a los amigos en `/api/quotes`, `/api/history` y `/api/watchlist`, y el conector solo les ofrece `peru_bcrp` y `eeuu_fred`; no es solo un ocultamiento en pantalla. Si `OWNER_EMAILS` está vacío, nadie ve los precios (falla cerrado).
+La licencia gratis de Twelve Data no permite mostrar sus datos a otras personas ni compartir la clave (§2.2 y §2.3 de sus [términos](https://twelvedata.com/terms)). Por eso el servidor responde **403** a los amigos en `/api/quotes`, `/api/history`, `/api/compare` y `/api/watchlist`, y el conector solo les ofrece `peru_bcrp` y `eeuu_fred`; no es solo un ocultamiento en pantalla. Si `OWNER_EMAILS` está vacío, nadie ve los precios (falla cerrado).
 
 **Agregar un amigo:** su correo va en la política de Access de la app (regla *Allow* → *Emails*) **y** en `ALLOWED_EMAILS`. Al editar ese secreto hay que volver a escribir toda la lista, incluido tu correo: el panel no muestra el valor anterior.
 
@@ -42,7 +45,8 @@ Todas las rutas exigen sesión de Cloudflare Access. Las marcadas con 🔒 son s
 | GET | `/api/status` | Tu rol. Al dueño además: si cada secreto está cargado y con formato correcto (sin mostrar valores) y créditos usados hoy |
 | GET / PUT | `/api/watchlist` 🔒 | Lee o guarda la lista (`{"symbols": ["BAP", "USD/PEN"]}`) |
 | GET | `/api/quotes` 🔒 | Precios de la lista (`?refresh=1` = botón «Actualizar») y estado de la bolsa |
-| GET | `/api/history?symbol=BAP&range=1A` 🔒 | Cierres diarios del rango (1M, 3M, 6M, YTD, 1A, 3A, 5A) y sus estadísticas |
+| GET | `/api/history?symbol=BAP&range=1A` 🔒 | Cierres diarios del rango (1M, 3M, 6M, YTD, 1A, 3A, 5A) y sus estadísticas. Con `&ind=1`, también MM50, MM200, Bollinger y RSI 14 alineados con los cierres |
+| GET | `/api/compare?symbols=BAP,SPY&range=1A` 🔒 | De 2 a 4 símbolos de la lista: días en común, cierres, base 100, estadísticas y matriz de correlación |
 | GET | `/api/peru` | Dólar interbancario, tasa de referencia e inflación (BCRP) |
 | GET | `/api/usa` | Bono a 10 años, tasa de la Fed e inflación (FRED) |
 | GET | `/conector/identidad?state=…` 🔒 | Paso del login del conector: firma tu correo y vuelve a `mercados-mcp` |
@@ -54,7 +58,8 @@ Vive en un **Worker aparte, `mercados-mcp`** (`src/mcp-worker.ts`, `wrangler.mcp
 | Herramienta | Qué devuelve |
 |---|---|
 | `precios` | Precios de la lista de seguimiento (todos o los símbolos pedidos) |
-| `historial` | Cierres de un símbolo de la lista en el rango pedido (hasta 5 años) y sus estadísticas |
+| `historial` | Cierres de un símbolo de la lista en el rango pedido (hasta 5 años), sus estadísticas y los indicadores técnicos del último cierre |
+| `comparar` | De 2 a 4 símbolos de la lista: rendimiento, volatilidad, mayor caída, correlación y base 100 al cierre de cada mes |
 | `peru_bcrp` | Dólar interbancario, tasa de referencia e inflación de Lima (BCRP) |
 | `eeuu_fred` | Bono del Tesoro a 10 años, tasa de la Fed e inflación (FRED) |
 
@@ -71,7 +76,7 @@ Vive en un **Worker aparte, `mercados-mcp`** (`src/mcp-worker.ts`, `wrangler.mcp
 src/
   index.ts              app: router, validación de Access, cabeceras de seguridad
   mcp-worker.ts         Worker del conector: OAuth propio (permiso, login, tokens) y /mcp
-  mcp.ts                servidor MCP y sus 4 herramientas (lo usa mcp-worker.ts)
+  mcp.ts                servidor MCP y sus 5 herramientas (lo usa mcp-worker.ts)
   lib/signed.ts         mensajes firmados (HMAC) entre la app y el conector
   auth/access.ts        verificación del JWT de Cloudflare Access (jose)
   services/market.ts    caché en KV, freno de créditos y qué símbolos renovar
@@ -80,6 +85,7 @@ src/
   lib/fred.ts           cliente de FRED
   lib/market-hours.ts   horario de la bolsa de Nueva York
   lib/stats.ts          rendimiento, volatilidad, mayor caída, peor/mejor día
+  lib/indicators.ts     medias móviles, Bollinger, RSI, alineación por fecha y correlación
   mock.ts               datos ficticios para desarrollo local
 public/                 index.html, app.js (gráficos en SVG propios), styles.css
 test/                   pruebas con vitest

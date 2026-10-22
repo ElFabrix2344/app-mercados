@@ -24,6 +24,8 @@ App de mercados (Cloudflare Worker + panel web + conector MCP para Claude). El R
 - FRED marca con `"."` los días sin dato.
 - Los feriados y cierres anticipados de la NYSE están cargados hasta 2027 en `lib/market-hours.ts` (`NYSE_CALENDAR_UNTIL`). **Cada año hay que agregar el siguiente** desde nyse.com/markets/hours-calendars; si no, la app gasta créditos en los feriados.
 - El historial guarda 5 años (`hist5:<símbolo>` en KV) por 1 crédito; los rangos se recortan de ahí con `sliceRange`, que empieza en el cierre **anterior** al inicio del rango.
+- Los indicadores (`lib/indicators.ts`) se calculan con los 5 años y **después** se recortan al rango; `/api/history` solo los manda con `&ind=1` (pesan más que los cierres). `compare` alinea las series por fecha **antes** de recortar y carga los símbolos uno por uno: el contador de créditos se lee y escribe en KV y en paralelo se perderían sumas.
+- Colores de los gráficos con varias líneas: `--s1`…`--s4` en `styles.css`, validados para daltonismo con el validador de la skill `dataviz` sobre `#121212`. Si cambias uno, vuelve a validar (parejas vecinas para Comparar; todas las parejas para precio + MM50 + MM200).
 - Si cambias la forma de los datos guardados en KV, lee también el formato anterior (ver `readQuotes`).
 
 ## Estado y próximos pasos

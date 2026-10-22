@@ -3,17 +3,28 @@
 
 import { usMarketOpen } from './lib/market-hours';
 import { addDays, isoDate } from './lib/num';
-import { seriesStats } from './lib/stats';
 import type { DailyPoint, Quote } from './lib/twelvedata';
-import { DEFAULT_RANGE, sliceRange, type Fresh, type HistoryResult, type PeruData, type QuotesData, type Range, type UsaData } from './services/market';
+import {
+  DEFAULT_RANGE,
+  shapeCompare,
+  shapeHistory,
+  type CompareResult,
+  type Fresh,
+  type HistoryResult,
+  type PeruData,
+  type QuotesData,
+  type Range,
+  type UsaData,
+} from './services/market';
 
-const BASE: Record<string, { name: string; exchange: string; currency: string; start: number; vol: number; crypto?: boolean }> = {
-  BAP: { name: 'Credicorp Ltd.', exchange: 'NYSE', currency: 'USD', start: 250, vol: 0.018 },
-  SCCO: { name: 'Southern Copper Corp.', exchange: 'NYSE', currency: 'USD', start: 100, vol: 0.022 },
-  BVN: { name: 'Buenaventura', exchange: 'NYSE', currency: 'USD', start: 15, vol: 0.028 },
-  SPY: { name: 'SPDR S&P 500 ETF', exchange: 'NYSE', currency: 'USD', start: 560, vol: 0.01 },
-  'USD/PEN': { name: 'Dólar / Sol', exchange: 'Forex', currency: 'PEN', start: 3.7, vol: 0.003 },
-  'BTC/USD': { name: 'Bitcoin / Dólar', exchange: 'Binance', currency: 'USD', start: 65000, vol: 0.03, crypto: true },
+// beta: cuánto sigue cada símbolo a un «mercado» común, para que las correlaciones de prueba sean creíbles.
+const BASE: Record<string, { name: string; exchange: string; currency: string; start: number; vol: number; beta: number; crypto?: boolean }> = {
+  BAP: { name: 'Credicorp Ltd.', exchange: 'NYSE', currency: 'USD', start: 250, vol: 0.018, beta: 0.6 },
+  SCCO: { name: 'Southern Copper Corp.', exchange: 'NYSE', currency: 'USD', start: 100, vol: 0.022, beta: 0.65 },
+  BVN: { name: 'Buenaventura', exchange: 'NYSE', currency: 'USD', start: 15, vol: 0.028, beta: 0.45 },
+  SPY: { name: 'SPDR S&P 500 ETF', exchange: 'NYSE', currency: 'USD', start: 560, vol: 0.01, beta: 0.95 },
+  'USD/PEN': { name: 'Dólar / Sol', exchange: 'Forex', currency: 'PEN', start: 3.7, vol: 0.003, beta: -0.35 },
+  'BTC/USD': { name: 'Bitcoin / Dólar', exchange: 'Binance', currency: 'USD', start: 65000, vol: 0.03, beta: 0.35, crypto: true },
 };
 
 function seedOf(s: string): number {
@@ -33,12 +44,16 @@ function rng(seed: number): () => number {
 }
 
 function info(symbol: string) {
-  return BASE[symbol] ?? { name: symbol, exchange: 'NYSE', currency: 'USD', start: 50, vol: 0.02 };
+  return BASE[symbol] ?? { name: symbol, exchange: 'NYSE', currency: 'USD', start: 50, vol: 0.02, beta: 0.5 };
 }
+
+/** Ruido con media 0 y desviación ~1. */
+const noise = (rand: () => number) => (rand() + rand() + rand() - 1.5) * 2;
 
 function walk(symbol: string, now: Date): DailyPoint[] {
   const meta = info(symbol);
   const rand = rng(seedOf(symbol));
+  const idio = Math.sqrt(1 - meta.beta ** 2);
   const today = isoDate(now);
   const pts: DailyPoint[] = [];
   let price = meta.start;
@@ -46,12 +61,15 @@ function walk(symbol: string, now: Date): DailyPoint[] {
   for (let d = addDays(today, -1840); d < today; d = addDays(d, 1)) {
     const dow = new Date(`${d}T12:00:00Z`).getUTCDay();
     if (!meta.crypto && (dow === 0 || dow === 6)) continue;
-    const shock = (rand() + rand() + rand() - 1.5) * 2 * meta.vol + meta.vol * 0.06;
+    const market = noise(rng(seedOf(`mercado${d}`)));
+    const shock = (meta.beta * market + idio * noise(rand)) * meta.vol + meta.vol * 0.06;
     price = Math.max(price * (1 + shock), meta.start * 0.2);
     pts.push({ date: d, close: Number(price.toPrecision(6)) });
   }
   return pts;
 }
+
+const mockPoints = (symbol: string, now: Date) => walk(symbol, now).map((p) => [p.date, p.close] as [string, number]);
 
 function fresh<T>(data: T, now: Date): Fresh<T> {
   return { data, fetchedAt: now.toISOString(), stale: false, note: 'Datos de prueba' };
@@ -84,14 +102,16 @@ export function mockQuotes(symbols: string[], now: Date): Fresh<QuotesData> & { 
 }
 
 export function mockHistory(symbol: string, now: Date, range: Range = DEFAULT_RANGE): HistoryResult {
-  const all = walk(symbol, now).map((p) => [p.date, p.close] as [string, number]);
-  const points = sliceRange(all, range, isoDate(now));
-  return {
-    ...fresh({ symbol, points }, now),
-    stats: seriesStats(points.map(([date, close]) => ({ date, close }))),
+  return shapeHistory(fresh({ symbol, points: mockPoints(symbol, now) }, now), range, isoDate(now));
+}
+
+export function mockCompare(symbols: string[], now: Date, range: Range = DEFAULT_RANGE): CompareResult {
+  const data = shapeCompare(
+    symbols.map((symbol) => ({ symbol, points: mockPoints(symbol, now) })),
     range,
-    available: { from: all[0]?.[0] ?? null, to: all.at(-1)?.[0] ?? null },
-  };
+    isoDate(now),
+  );
+  return { ...data, fetchedAt: now.toISOString(), stale: false, notes: ['Datos de prueba'], errors: {} };
 }
 
 export function mockPeru(now: Date): Fresh<PeruData> {

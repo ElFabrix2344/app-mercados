@@ -5,6 +5,10 @@
   --bg:#0A0A0A; --panel:#121212; --raise:#1A1A1A; --ink:#E8E8E8; --muted:#8F8F8F; --line:#2A2A2A; --hair:#1C1C1C;
   --accent:#45C8E6; --accent-soft:rgba(69,200,230,.10);
   --up:#3FB950; --down:#F85149; --down-soft:rgba(248,81,73,.10);
+  /* Series de los gráficos con varias líneas (ficha con indicadores y Comparar), en este orden.
+     Validadas para daltonismo sobre #121212: parejas vecinas ΔE ≥ 9,2; precio+MM50+MM200 en todas las parejas.
+     Las líneas solas (minigráficos, Perú, EE. UU.) siguen con el cian de marca. */
+  --s1:#259CB9; --s2:#D55181; --s3:#9085E9; --s4:#C98500;
   --f-mono:"IBM Plex Mono", ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
   --r:4px;
   color-scheme:dark;
@@ -111,20 +115,40 @@ button[disabled]{opacity:.6;cursor:default}
 .chart-head{display:flex;align-items:baseline;justify-content:space-between;gap:8px}
 .chart-head .hint{margin:0}
 
+/* Leyendas y selectores con clave de color: una línea corta del color de la serie; el texto nunca va de color. */
+.s1{--c:var(--s1)} .s2{--c:var(--s2)} .s3{--c:var(--s3)} .s4{--c:var(--s4)}
+.legend{display:flex;flex-wrap:wrap;align-items:center;gap:4px}
+.legend-item{display:inline-flex;align-items:center;gap:6px;font-size:.78rem;color:var(--muted);padding:3px 6px}
+.tog{padding:3px 9px;font-size:.78rem;color:var(--muted)}
+.tog[aria-pressed="true"]{color:var(--ink);border-color:var(--muted)}
+.tog[aria-pressed="false"] .key{opacity:.35}
+.key{display:inline-block;flex:none;width:14px;height:2px;border-radius:1px;background:var(--c,var(--accent))}
+.key.band{height:8px;border-radius:0;background:rgba(232,232,232,.10);border-top:1px solid var(--muted);border-bottom:1px solid var(--muted)}
+.sym{display:inline-flex;align-items:center;gap:6px;white-space:nowrap}
+
 .chart{position:relative;width:100%}
 .chart svg{display:block;overflow:visible;touch-action:pan-y}
-.chart .line{fill:none;stroke:var(--accent);stroke-width:2;stroke-linejoin:round;stroke-linecap:round}
+.chart .line{fill:none;stroke:var(--c,var(--accent));stroke-width:2;stroke-linejoin:round;stroke-linecap:round}
 .c-spark .line{stroke-width:1.5}
 .chart .grid{stroke:var(--hair);stroke-width:1}
+.chart .ref{stroke:var(--line);stroke-width:1}
+.chart .band{fill:var(--ink);fill-opacity:.06;stroke:none}
+.chart .band-edge{fill:none;stroke:var(--muted);stroke-width:1;stroke-opacity:.5}
 .chart .tick{fill:var(--muted);font-size:11px;font-family:var(--f-mono)}
-.chart .end-dot{fill:var(--accent);stroke:var(--panel);stroke-width:2}
+.chart .end-dot{fill:var(--c,var(--accent));stroke:var(--panel);stroke-width:2}
 .chart .end-label{fill:var(--ink);font-size:12px;font-weight:500;font-family:var(--f-mono)}
+.chart .end-label.alt{fill:var(--muted);font-weight:400}
 .chart .cross{stroke:var(--muted);stroke-width:1}
-.chart .hover-dot{fill:var(--accent);stroke:var(--panel);stroke-width:2}
+.chart .hover-dot{fill:var(--c,var(--accent));stroke:var(--panel);stroke-width:2}
+/* Mientras llegan otros datos, el gráfico anterior queda atenuado (sin saltos). */
+.is-loading .chart,.is-loading .stats,.is-loading .cmp-grid{opacity:.45;transition:opacity .2s}
 
 .tooltip{position:fixed;z-index:10;pointer-events:none;background:var(--raise);color:var(--muted);border:1px solid var(--line);
-  border-radius:var(--r);padding:5px 9px;font-size:.78rem;line-height:1.35;max-width:220px}
+  border-radius:var(--r);padding:5px 9px;font-size:.78rem;line-height:1.35;max-width:300px}
 .tooltip strong{display:block;font-weight:500;color:var(--ink);font-size:.9rem}
+.tooltip .tt-date{display:block;margin-bottom:3px}
+.tooltip .tt-row{display:flex;align-items:center;gap:6px;white-space:nowrap}
+.tooltip .tt-row strong{display:inline;font-size:.85rem}
 
 /* ---------- ficha ---------- */
 .stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:10px 18px;margin:14px 0 0;border-top:1px solid var(--line);padding-top:12px}
@@ -139,6 +163,34 @@ button[disabled]{opacity:.6;cursor:default}
 .table-view th{color:var(--muted);font-weight:400;text-transform:uppercase;font-size:.72rem;letter-spacing:.05em}
 .table-view th,.table-view td{text-align:right;padding:3px 8px;border-bottom:1px solid var(--hair)}
 .table-view th:first-child,.table-view td:first-child{text-align:left}
+
+/* ---------- comparar ---------- */
+.cmp-grid{display:grid;gap:14px 28px;grid-template-columns:minmax(0,1fr);margin-top:14px;border-top:1px solid var(--line);padding-top:12px}
+@media (min-width:900px){.cmp-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
+.cmp-grid .hint{margin:0 0 6px}
+.cmp-stats{border-collapse:collapse;font-size:.85rem;width:100%}
+.cmp-stats th,.cmp-stats td{text-align:right;padding:4px 8px;border-bottom:1px solid var(--hair);white-space:nowrap}
+.cmp-stats th:first-child{text-align:left;padding-left:0}
+.cmp-stats thead th{color:var(--muted);font-weight:400;text-transform:uppercase;font-size:.72rem;letter-spacing:.05em}
+.cmp-stats tbody th{font-weight:500}
+/* Matriz de correlación: divergente (magenta − · cian +) con el número siempre escrito. */
+.corr{border-collapse:separate;border-spacing:2px;font-size:.85rem}
+.corr th{font-weight:500;padding:4px 8px 4px 0;text-align:left}
+.corr thead th{font-weight:400;color:var(--muted);font-size:.72rem;text-align:center;padding:0 4px 2px}
+.corr thead th .sym{flex-direction:column;gap:3px}
+.corr td{min-width:58px;padding:6px 8px;text-align:center;border-radius:2px;color:var(--ink)}
+.corr td.diag{color:var(--muted)}
+.corr td[tabindex]{cursor:default}
+.corr td[tabindex]:hover,.corr td[tabindex]:focus-visible{outline:1px solid var(--ink);outline-offset:-1px}
+.corr-scale{display:flex;flex-wrap:wrap;align-items:center;gap:4px 8px;font-size:.72rem;color:var(--muted);margin-top:8px}
+.corr-scale .bar{width:96px;height:8px;border-radius:2px;
+  background:linear-gradient(90deg,rgba(213,81,129,.5),rgba(213,81,129,0) 50%,rgba(69,200,230,0) 50%,rgba(69,200,230,.5))}
+@media (max-width:720px){
+  .corr td{min-width:48px;padding:6px 4px}
+  .cmp-stats{font-size:.8rem}
+  .cmp-stats th,.cmp-stats td{padding:4px 3px}
+  .cmp-stats thead th{white-space:normal;letter-spacing:0;font-size:.66rem;vertical-align:bottom}
+}
 
 /* ---------- Perú / EE. UU. ---------- */
 .macro{display:grid;gap:16px;grid-template-columns:minmax(0,1fr)}

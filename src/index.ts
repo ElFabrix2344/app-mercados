@@ -3,12 +3,14 @@ import { isLocalDev, isMock, trimSecrets, type Env } from './env';
 import { ApiError, errorResponse, escapeHtml, htmlPage, json } from './lib/http';
 import { NYSE_CALENDAR_UNTIL } from './lib/market-hours';
 import { signPayload } from './lib/signed';
-import { mockHistory, mockPeru, mockQuotes, mockUsa } from './mock';
+import { mockCompare, mockHistory, mockPeru, mockQuotes, mockUsa } from './mock';
 import {
   DAILY_CREDIT_CAP,
   DEFAULT_RANGE,
   MAX_SYMBOLS,
   RANGES,
+  compare,
+  compareSymbols,
   creditsUsed,
   getWatchlist,
   history,
@@ -19,6 +21,7 @@ import {
   usa,
   validateWatchlist,
   type Deps,
+  type Range,
 } from './services/market';
 
 const CSP = [
@@ -63,7 +66,7 @@ export default {
 } satisfies ExportedHandler<Env>;
 
 /** Precios de Twelve Data: su licencia gratis no permite mostrarlos a otras personas. */
-const OWNER_ONLY = new Set(['/api/watchlist', '/api/quotes', '/api/history']);
+const OWNER_ONLY = new Set(['/api/watchlist', '/api/quotes', '/api/history', '/api/compare']);
 
 async function route(req: Request, env: Env, url: URL, role: Role, email: string | null): Promise<Response | null> {
   const p = url.pathname;
@@ -112,9 +115,19 @@ async function route(req: Request, env: Env, url: URL, role: Role, email: string
         if (!(await getWatchlist(env.CACHE)).includes(symbol)) {
           throw new ApiError('bad_request', 400, 'Solo se piden historiales de la lista de seguimiento.');
         }
-        const range = url.searchParams.get('range') ?? DEFAULT_RANGE;
-        if (!isRange(range)) throw new ApiError('bad_request', 400, `Rango no válido. Usa uno de: ${RANGES.join(', ')}.`);
-        return json(mock ? mockHistory(symbol, now, range) : await history(deps, symbol, range));
+        const range = rangeParam(url);
+        const r = mock ? mockHistory(symbol, now, range) : await history(deps, symbol, range);
+        // Los indicadores pesan más que los cierres: van solo si se piden (la ficha sí, los minigráficos no).
+        return json(url.searchParams.get('ind') === '1' ? r : { ...r, indicators: undefined });
+      }
+
+      case '/api/compare': {
+        const list = await getWatchlist(env.CACHE);
+        const symbols = compareSymbols((url.searchParams.get('symbols') ?? '').split(','));
+        const outside = symbols.filter((s) => !list.includes(s));
+        if (outside.length) throw new ApiError('bad_request', 400, `${outside.join(', ')} no está en la lista de seguimiento.`);
+        const range = rangeParam(url);
+        return json(mock ? mockCompare(symbols, now, range) : await compare(deps, symbols, range));
       }
 
       case '/api/peru':
@@ -156,6 +169,12 @@ async function connectorIdentity(url: URL, env: Env, role: Role, email: string |
   target.searchParams.set('state', state);
   target.searchParams.set('identidad', await signPayload({ state, email, exp: Date.now() + 2 * 60_000 }, env.LOGIN_LINK_SECRET));
   return new Response(null, { status: 302, headers: { Location: target.toString(), 'Cache-Control': 'no-store' } });
+}
+
+function rangeParam(url: URL): Range {
+  const range = url.searchParams.get('range') ?? DEFAULT_RANGE;
+  if (!isRange(range)) throw new ApiError('bad_request', 400, `Rango no válido. Usa uno de: ${RANGES.join(', ')}.`);
+  return range;
 }
 
 /** Las escrituras solo se aceptan desde la propia app (además de Access). */

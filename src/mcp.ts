@@ -1,14 +1,30 @@
-// Conector de Claude: servidor MCP remoto en /mcp (Streamable HTTP, sin estado).
+// Conector de Claude: servidor MCP remoto en /mcp (Streamable HTTP, sin estado), dentro del Worker mercados-mcp.
 // Usa las mismas fuentes, la misma caché en KV y el mismo freno de créditos que el panel.
-// No autentica por su cuenta: Cloudflare Access (Managed OAuth) le da el token a Claude
-// e index.ts valida el JWT de Access y el correo antes de llegar aquí.
+// No autentica por su cuenta: mcp-worker.ts valida el token OAuth y el rol antes de llegar aquí.
 
 import { createMcpHandler, McpServer, type CallToolResult } from '@modelcontextprotocol/server';
 import * as z from 'zod';
 import type { Role } from './auth/access';
 import { ApiError } from './lib/http';
-import { mockHistory, mockPeru, mockQuotes, mockUsa } from './mock';
-import { DAILY_CREDIT_CAP, DEFAULT_RANGE, MAX_SYMBOLS, RANGES, creditsUsed, getWatchlist, history, peru, quotes, usa, type Deps } from './services/market';
+import { mockCompare, mockHistory, mockPeru, mockQuotes, mockUsa } from './mock';
+import {
+  COMPARE_MAX,
+  DAILY_CREDIT_CAP,
+  DEFAULT_RANGE,
+  MAX_SYMBOLS,
+  RANGES,
+  compare,
+  compareSymbols,
+  creditsUsed,
+  getWatchlist,
+  history,
+  peru,
+  quotes,
+  usa,
+  type CompareResult,
+  type Deps,
+  type HistoryResult,
+} from './services/market';
 
 export interface McpContext {
   deps: Deps;
@@ -21,7 +37,8 @@ export interface McpContext {
 }
 
 const INSTRUCTIONS =
-  'Datos del panel personal «Mercados» del usuario: precios e historial de su lista de seguimiento (Twelve Data), ' +
+  'Datos del panel personal «Mercados» del usuario: precios, historial con indicadores técnicos y comparación de los ' +
+  'símbolos de su lista de seguimiento (Twelve Data), ' +
   'Perú (BCRP) y EE. UU. (FRED). Los datos pueden venir de la caché del panel: al responder, di la hora de «actualizado» ' +
   'y avisa si «dato_guardado» es true. Para símbolos fuera de la lista usa otra fuente (por ejemplo, el conector de Twelve Data).';
 
@@ -40,7 +57,7 @@ export function handleMcp(req: Request, c: McpContext): Promise<Response> {
 
 export function buildServer(c: McpContext): McpServer {
   const owner = c.role === 'owner';
-  const server = new McpServer({ name: 'mercados', version: '0.3.0' }, { instructions: owner ? INSTRUCTIONS : INSTRUCTIONS_FRIEND });
+  const server = new McpServer({ name: 'mercados', version: '0.4.0' }, { instructions: owner ? INSTRUCTIONS : INSTRUCTIONS_FRIEND });
   const when: When = (iso) => localTime(iso, c.timeZone);
 
   // Precios e historial (Twelve Data): solo para el dueño, por la licencia del plan gratis.
@@ -119,7 +136,10 @@ function registerMarketTools(server: McpServer, c: McpContext, when: When): void
         'Cierres diarios de un símbolo de la lista de seguimiento en el rango pedido (1M, 3M, 6M, YTD, 1A, 3A o 5A; Twelve Data, ' +
         'guardados hasta 12 h) y sus estadísticas para ese rango: rendimiento total (medido desde el cierre anterior al inicio), ' +
         'volatilidad anualizada de los rendimientos diarios, máxima caída desde un pico previo, mejor y peor día, y cierres ' +
-        'máximo y mínimo. Los porcentajes vienen en puntos porcentuales (12.5 = +12,5 %).',
+        'máximo y mínimo. También los indicadores técnicos del último cierre, calculados con los 5 años guardados: medias ' +
+        'móviles simples de 50 y 200 días (y la distancia del cierre a cada una), RSI de 14 días (Wilder) y bandas de ' +
+        'Bollinger de 20 días y 2 desviaciones (posicion_pct: 0 = banda inferior, 100 = banda superior). ' +
+        'Los porcentajes vienen en puntos porcentuales (12.5 = +12,5 %).',
       inputSchema: z.object({
         simbolo: z.string().max(20).describe('Símbolo de la lista, p. ej. "BAP" o "USD/PEN".'),
         rango: z.enum(RANGES).default(DEFAULT_RANGE).describe('Periodo: 1M, 3M, 6M, YTD (año en curso), 1A (por defecto), 3A o 5A.'),
@@ -161,6 +181,7 @@ function registerMarketTools(server: McpServer, c: McpContext, when: When): void
             cierre_maximo: { fecha: st.maxClose.date, valor: st.maxClose.value },
             cierre_minimo: { fecha: st.minClose.date, valor: st.minClose.value },
           },
+          indicadores_ultimo_cierre: indicatorSnapshot(r),
           ...(cierres === 'ninguno' ? {} : { cierres: cierres === 'diario' ? pts : monthEnds(pts) }),
           actualizado: when(r.fetchedAt),
           dato_guardado: r.stale,
@@ -168,6 +189,93 @@ function registerMarketTools(server: McpServer, c: McpContext, when: When): void
         };
       }),
   );
+
+  server.registerTool(
+    'comparar',
+    {
+      title: 'Comparar símbolos (rendimiento y correlación)',
+      description:
+        `Compara de 2 a ${COMPARE_MAX} símbolos de la lista de seguimiento en un rango (1M, 3M, 6M, YTD, 1A, 3A o 5A): ` +
+        'rendimiento total, volatilidad anualizada y máxima caída de cada uno, y la correlación de sus rendimientos diarios ' +
+        '(de −1 a 1). Usa solo los días en que todos tienen cierre (la cripto también cotiza los fines de semana), así que ' +
+        'las cifras pueden diferir un poco de las de historial. Incluye la evolución en base 100 (100 = primer día común) ' +
+        'al cierre de cada mes. Los porcentajes vienen en puntos porcentuales (12.5 = +12,5 %).',
+      inputSchema: z.object({
+        simbolos: z
+          .array(z.string().max(20))
+          .min(2)
+          .max(COMPARE_MAX)
+          .describe('De 2 a 4 símbolos de la lista, p. ej. ["BAP", "SPY"].'),
+        rango: z.enum(RANGES).default(DEFAULT_RANGE).describe('Periodo: 1M, 3M, 6M, YTD (año en curso), 1A (por defecto), 3A o 5A.'),
+      }),
+      annotations: { readOnlyHint: true, openWorldHint: true },
+    },
+    ({ simbolos, rango }) =>
+      run(async () => {
+        const list = await getWatchlist(deps.kv);
+        const symbols = compareSymbols(simbolos);
+        const outside = symbols.filter((s) => !list.includes(s));
+        if (outside.length) throw notInList(outside, list);
+
+        const r = c.mock ? mockCompare(symbols, deps.now, rango) : await compare(deps, symbols, rango);
+        const names = r.series.map((s) => s.symbol);
+        return {
+          fuente: 'Twelve Data (cierres diarios)',
+          rango: r.range,
+          desde: r.dates[0] ?? null,
+          hasta: r.dates.at(-1) ?? null,
+          dias_en_comun: r.dates.length,
+          simbolos: r.series.map((s) => ({
+            simbolo: s.symbol,
+            primer_cierre: s.closes[0] ?? null,
+            ultimo_cierre: s.closes.at(-1) ?? null,
+            rendimiento_total_pct: s.stats && pct(s.stats.totalReturn),
+            volatilidad_anual_pct: s.stats?.annualVol == null ? null : pct(s.stats.annualVol),
+            maxima_caida_pct: s.stats?.maxDrawdown == null ? null : pct(s.stats.maxDrawdown),
+          })),
+          correlacion_rendimientos_diarios: { simbolos: names, matriz: r.correlation },
+          base_100_cierre_de_mes: { columnas: ['fecha', ...names], filas: rebasedMonthEnds(r) },
+          ...(Object.keys(r.errors).length ? { errores: r.errors } : {}),
+          actualizado: when(r.fetchedAt),
+          dato_guardado: r.stale,
+          nota: r.notes.join(' ') || null,
+        };
+      }),
+  );
+}
+
+/** Indicadores técnicos del último cierre (el mismo en cualquier rango). */
+function indicatorSnapshot(r: HistoryResult) {
+  const last = r.data.points.at(-1);
+  if (!last) return null;
+  const [fecha, cierre] = last;
+  const at = (xs: (number | null)[]) => xs.at(-1) ?? null;
+  const mm50 = at(r.indicators.sma50);
+  const mm200 = at(r.indicators.sma200);
+  const sup = at(r.indicators.bbUpper);
+  const inf = at(r.indicators.bbLower);
+  const vs = (m: number | null) => (m ? pct(cierre / m - 1) : null);
+  return {
+    fecha,
+    cierre,
+    mm50,
+    mm200,
+    cierre_vs_mm50_pct: vs(mm50),
+    cierre_vs_mm200_pct: vs(mm200),
+    rsi14: round(at(r.indicators.rsi14)),
+    bollinger:
+      sup !== null && inf !== null
+        ? { superior: sup, inferior: inf, posicion_pct: sup > inf ? Math.round(((cierre - inf) / (sup - inf)) * 1000) / 10 : null }
+        : null,
+  };
+}
+
+/** Base 100 del primer día común y del último día de cada mes. */
+function rebasedMonthEnds(r: CompareResult): (string | number | null)[][] {
+  const byMonth = new Map<string, number>();
+  r.dates.forEach((d, i) => byMonth.set(d.slice(0, 7), i));
+  const idx = [...new Set([0, ...byMonth.values()])].filter((i) => i < r.dates.length);
+  return idx.map((i) => [r.dates[i]!, ...r.series.map((s) => round(s.rebased[i] ?? null))]);
 }
 
 function registerPublicTools(server: McpServer, c: McpContext, when: When): void {

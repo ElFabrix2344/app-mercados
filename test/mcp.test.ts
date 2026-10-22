@@ -58,12 +58,12 @@ async function callTool(c: McpContext, name: string, args: Record<string, unknow
 }
 
 describe('servidor MCP', () => {
-  it('responde a initialize y lista 4 herramientas de solo lectura', async () => {
+  it('responde a initialize y lista 5 herramientas de solo lectura', async () => {
     const { c } = ctx();
     const init = await rpc(c, 'initialize', { protocolVersion: '2025-06-18', capabilities: {}, clientInfo: { name: 'test', version: '0' } });
     expect(init.result.serverInfo.name).toBe('mercados');
     const { result } = await rpc(c, 'tools/list');
-    expect(result.tools.map((t: { name: string }) => t.name)).toEqual(['precios', 'historial', 'peru_bcrp', 'eeuu_fred']);
+    expect(result.tools.map((t: { name: string }) => t.name)).toEqual(['precios', 'historial', 'comparar', 'peru_bcrp', 'eeuu_fred']);
     for (const t of result.tools) expect(t.annotations.readOnlyHint).toBe(true);
   });
 
@@ -153,6 +153,32 @@ describe('herramienta historial', () => {
     expect(r.data.estadisticas.maxima_caida).toEqual({ pct: -25, desde_el_pico_del: '2026-09-15', hasta_el: '2026-09-30' });
     expect(r.data.cierres).toEqual([['2025-10-15', 100], ['2026-09-30', 90], ['2026-10-14', 110]]);
     expect(JSON.parse(mem.store.get('budget')!)).toEqual({ day: '2026-10-15', used: 1 });
+    // Con 4 cierres no alcanza para ningún indicador: van en null, no inventados.
+    expect(r.data.indicadores_ultimo_cierre).toEqual({
+      fecha: '2026-10-14',
+      cierre: 110,
+      mm50: null,
+      mm200: null,
+      cierre_vs_mm50_pct: null,
+      cierre_vs_mm200_pct: null,
+      rsi14: null,
+      bollinger: null,
+    });
+  });
+
+  it('da los indicadores del último cierre cuando hay historia suficiente', async () => {
+    // 260 cierres subiendo 1 por día hasta el 14 oct 2026.
+    const values = Array.from({ length: 260 }, (_, i) => ({
+      datetime: new Date(Date.UTC(2026, 9, 14) - i * 86_400_000).toISOString().slice(0, 10),
+      close: String(359 - i),
+    }));
+    const { f } = fakeFetch(() => ({ body: { values, status: 'ok' } }));
+    const { c } = ctx({}, f);
+    const r = await callTool(c, 'historial', { simbolo: 'BAP', rango: '1M', cierres: 'ninguno' });
+    const ind = r.data.indicadores_ultimo_cierre;
+    expect(ind).toMatchObject({ fecha: '2026-10-14', cierre: 359, mm50: 334.5, mm200: 259.5, rsi14: 100 });
+    expect(ind.cierre_vs_mm200_pct).toBe(38.34); // 359 / 259,5 − 1
+    expect(ind.bollinger.posicion_pct).toBeGreaterThan(50);
   });
 
   it('puede omitir los cierres', async () => {
@@ -167,6 +193,41 @@ describe('herramienta historial', () => {
     const { c } = ctx({}, f);
     const r = await callTool(c, 'historial', { simbolo: 'NVDA' });
     expect(r.isError).toBe(true);
+    expect(calls).toHaveLength(0);
+  });
+});
+
+describe('herramienta comparar', () => {
+  const days = ['2026-10-08', '2026-10-09', '2026-10-12', '2026-10-13', '2026-10-14'];
+  const seriesFor = (sym: string) =>
+    days.map((datetime, i) => ({ datetime, close: String(sym === 'SPY' ? 500 + i * 5 : 100 + (i % 2) * 3) })).reverse();
+  const fetchSeries = () => fakeFetch((url) => ({ body: { status: 'ok', values: seriesFor(url.searchParams.get('symbol')!) } }));
+
+  it('da rendimiento, volatilidad, correlación y base 100 al cierre de cada mes', async () => {
+    const { f, calls } = fetchSeries();
+    const { c } = ctx({}, f);
+    const r = await callTool(c, 'comparar', { simbolos: ['bap', 'SPY'], rango: '1M' });
+    expect(calls).toHaveLength(2);
+    expect(r.data.dias_en_comun).toBe(5);
+    expect(r.data.simbolos.map((s: { simbolo: string }) => s.simbolo)).toEqual(['BAP', 'SPY']);
+    expect(r.data.simbolos[1].rendimiento_total_pct).toBe(4);
+    expect(r.data.correlacion_rendimientos_diarios.simbolos).toEqual(['BAP', 'SPY']);
+    expect(r.data.correlacion_rendimientos_diarios.matriz[0][0]).toBe(1);
+    expect(r.data.base_100_cierre_de_mes).toEqual({
+      columnas: ['fecha', 'BAP', 'SPY'],
+      filas: [
+        ['2026-10-08', 100, 100],
+        ['2026-10-14', 100, 104],
+      ],
+    });
+  });
+
+  it('no compara símbolos fuera de la lista ni gasta créditos', async () => {
+    const { f, calls } = fetchSeries();
+    const { c } = ctx({}, f);
+    const r = await callTool(c, 'comparar', { simbolos: ['BAP', 'NVDA'] });
+    expect(r.isError).toBe(true);
+    expect(r.text).toContain('NVDA no está en la lista');
     expect(calls).toHaveLength(0);
   });
 });

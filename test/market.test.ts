@@ -1,7 +1,18 @@
 import { describe, expect, it } from 'vitest';
 import { verifyAccess } from '../src/auth/access';
 import type { Env } from '../src/env';
-import { DAILY_CREDIT_CAP, history, quotes, rangeStart, sliceRange, validateWatchlist } from '../src/services/market';
+import {
+  DAILY_CREDIT_CAP,
+  compare,
+  compareSymbols,
+  history,
+  quotes,
+  rangeStart,
+  rangeStartIndex,
+  shapeCompare,
+  sliceRange,
+  validateWatchlist,
+} from '../src/services/market';
 import { fakeFetch, memoryKV } from './helpers';
 
 const quoteBody = (symbol: string) => ({ symbol, name: symbol, exchange: 'NYSE', currency: 'USD', close: '10', last_quote_at: 1792162380 });
@@ -192,6 +203,93 @@ describe('rangos', () => {
     const pts: [string, number][] = [['2026-09-14', 1], ['2026-09-17', 2], ['2026-10-15', 3]];
     expect(sliceRange(pts, '1M', '2026-10-16')).toEqual(pts); // base: 14 sep (el 16 no hubo cierre)
     expect(sliceRange(pts.slice(1), '5A', '2026-10-16')).toEqual(pts.slice(1));
+    expect(rangeStartIndex(['2026-01-02', '2026-01-05'], '1M', '2026-10-16')).toBe(1); // nada en el rango: el último
+    expect(rangeStartIndex([], '1A', '2026-10-16')).toBe(0);
+  });
+});
+
+describe('history con indicadores', () => {
+  it('calcula los indicadores con los 5 años y los recorta igual que los cierres', async () => {
+    // 300 días hábiles subiendo 1 por día: la media de 200 del último cierre es conocida.
+    const values = Array.from({ length: 300 }, (_, i) => {
+      const d = new Date(Date.UTC(2025, 7, 1) + i * 86_400_000).toISOString().slice(0, 10);
+      return { datetime: d, close: String(100 + i) };
+    }).reverse();
+    const { kv } = memoryKV();
+    const { f } = fakeFetch(() => ({ body: { values, status: 'ok' } }));
+    const r = await history({ kv, now: new Date('2026-05-28T15:00:00Z'), fetch: f, twelveKey: 'k' }, 'BAP', '1M');
+    const n = r.data.points.length;
+    expect(n).toBeGreaterThan(20);
+    expect(r.indicators.sma200).toHaveLength(n);
+    expect(r.indicators.sma200.at(-1)).toBeCloseTo(399 - 99.5, 6); // media de 200..399
+    expect(r.indicators.sma50.at(-1)).toBeCloseTo(399 - 24.5, 6);
+    expect(r.indicators.rsi14.at(-1)).toBe(100);
+  });
+});
+
+describe('comparar', () => {
+  // Acción L–V y cripto todos los días, del 1 al 14 de octubre de 2026.
+  const days = Array.from({ length: 14 }, (_, i) => `2026-10-${String(i + 1).padStart(2, '0')}`);
+  const weekday = (d: string) => ![0, 6].includes(new Date(`${d}T12:00:00Z`).getUTCDay());
+  const stock: [string, number][] = days.filter(weekday).map((d, i) => [d, 100 + (i % 2 ? 2 : -1) * i]);
+  const crypto: [string, number][] = days.map((d, i) => [d, 50 + i]);
+
+  it('alinea por fecha, recorta el rango y mide todo con los mismos días', () => {
+    const r = shapeCompare(
+      [
+        { symbol: 'BAP', points: stock },
+        { symbol: 'BTC/USD', points: crypto },
+      ],
+      '5A',
+      '2026-10-15',
+    );
+    expect(r.dates).toEqual(days.filter(weekday));
+    expect(r.series[1]!.closes).toEqual(r.dates.map((d) => crypto.find(([x]) => x === d)![1]));
+    expect(r.series.map((s) => s.rebased[0])).toEqual([100, 100]);
+    expect(r.series[0]!.stats!.totalReturn).toBeCloseTo(stock.at(-1)![1] / stock[0]![1] - 1, 10);
+    expect(r.correlation[0]![0]).toBe(1);
+    expect(r.correlation[0]![1]).toBe(r.correlation[1]![0]);
+    expect(Math.abs(r.correlation[0]![1]!)).toBeLessThanOrEqual(1);
+  });
+
+  it('una serie contra sí misma escalada tiene correlación 1', () => {
+    const doubled: [string, number][] = stock.map(([d, v]) => [d, v * 2]);
+    const r = shapeCompare(
+      [
+        { symbol: 'A', points: stock },
+        { symbol: 'B', points: doubled },
+      ],
+      '5A',
+      '2026-10-15',
+    );
+    expect(r.correlation[0]![1]).toBe(1);
+  });
+
+  it('pide cada símbolo una vez (1 crédito cada uno) y compara el resto si uno falla', async () => {
+    const { kv } = memoryKV();
+    const { f, calls } = fakeFetch((url) => {
+      const sym = url.searchParams.get('symbol');
+      if (sym === 'BVN') return { status: 200, body: { status: 'error', code: 404, message: 'symbol not found' } };
+      const pts = sym === 'BTC/USD' ? crypto : stock;
+      return { body: { status: 'ok', values: [...pts].reverse().map(([datetime, close]) => ({ datetime, close: String(close) })) } };
+    });
+    const d = { kv, now: new Date('2026-10-15T15:00:00Z'), fetch: f, twelveKey: 'k' };
+    const r = await compare(d, ['BAP', 'BTC/USD', 'BVN'], '1M');
+    expect(calls).toHaveLength(3);
+    expect(r.series.map((s) => s.symbol)).toEqual(['BAP', 'BTC/USD']);
+    expect(Object.keys(r.errors)).toEqual(['BVN']);
+    expect(await kv.get('budget', 'json')).toEqual({ day: '2026-10-15', used: 2 });
+
+    // La segunda vez sale de la caché: no pide ni gasta.
+    await compare(d, ['BAP', 'BTC/USD'], '1A');
+    expect(calls).toHaveLength(3);
+    await expect(compare(d, ['BVN', 'NADA'], '1A')).rejects.toThrow();
+  });
+
+  it('valida la selección', () => {
+    expect(compareSymbols([' bap', 'SPY', 'BAP'])).toEqual(['BAP', 'SPY']);
+    expect(() => compareSymbols(['BAP'])).toThrow(/de 2 a 4/);
+    expect(() => compareSymbols(['A', 'B', 'C', 'D', 'E'])).toThrow(/de 2 a 4/);
   });
 });
 

@@ -73,14 +73,44 @@
     </div>
     <div class="d-tools">
       <div class="ranges" id="d-ranges" role="group" aria-label="Periodo del gráfico"></div>
-      <button type="button" id="d-csv" class="csv-btn" title="Cierres y rendimientos diarios del periodo, para Excel">⤓ CSV</button>
+      <div class="legend" id="d-ind" role="group" aria-label="Indicadores técnicos"></div>
+      <button type="button" id="d-csv" class="csv-btn" title="Cierres, rendimientos diarios e indicadores del periodo, para Excel">⤓ CSV</button>
     </div>
     <div class="chart" id="d-chart"></div>
+    <div id="d-rsi-wrap" hidden>
+      <p class="hint">RSI de 14 días: sobre 70 suele leerse como sobrecompra; bajo 30, como sobreventa.</p>
+      <div class="chart" id="d-rsi"></div>
+    </div>
     <dl class="stats" id="d-stats"></dl>
     <details class="table-view">
       <summary>Ver tabla (cierre de cada mes)</summary>
       <table id="d-table"><thead><tr><th scope="col">Mes</th><th scope="col">Cierre</th><th scope="col">Variación</th></tr></thead><tbody></tbody></table>
     </details>
+  </section>
+
+  <section class="screen owner-only" id="compare" aria-labelledby="cmp-h">
+    <div class="screen-head">
+      <h2 id="cmp-h">Comparar</h2>
+      <span class="src">Base 100</span>
+    </div>
+    <div class="d-tools">
+      <div class="ranges" id="cmp-ranges" role="group" aria-label="Periodo de la comparación"></div>
+      <div class="legend" id="cmp-chips" role="group" aria-label="Símbolos a comparar (de 2 a 4)"></div>
+      <button type="button" id="cmp-csv" class="csv-btn" title="Cierres alineados y base 100, para Excel" disabled>⤓ CSV</button>
+    </div>
+    <div class="chart" id="cmp-chart"></div>
+    <div class="cmp-grid" id="cmp-grid" hidden>
+      <div>
+        <p class="hint">Resumen del periodo</p>
+        <table class="cmp-stats" id="cmp-stats"><thead><tr><th scope="col">Símbolo</th><th scope="col">Rendimiento</th><th scope="col">Volatilidad</th><th scope="col">Mayor caída</th></tr></thead><tbody></tbody></table>
+      </div>
+      <div>
+        <p class="hint">Correlación de los rendimientos diarios</p>
+        <table class="corr" id="cmp-corr"></table>
+        <div class="corr-scale" aria-hidden="true"><span>−1</span><span class="bar"></span><span>+1</span><span>· cian: se mueven juntos · magenta: en contra</span></div>
+      </div>
+    </div>
+    <p class="hint" id="cmp-note"></p>
   </section>
 
   <div class="macro">
