@@ -6,6 +6,7 @@ import { NYSE_CALENDAR_UNTIL, usMarketOpen } from './lib/market-hours';
 import { isoDate } from './lib/num';
 import { signPayload } from './lib/signed';
 import {
+  mockCompany,
   mockCompanyCalendar,
   mockCompare,
   mockHistory,
@@ -17,6 +18,7 @@ import {
   mockSymbolNews,
   mockUsa,
 } from './mock';
+import { companyData } from './services/company';
 import { companyCalendar } from './services/earnings';
 import { marketNews, quoteName, symbolNews } from './services/news';
 import { addTrade, deleteTrade, kvSource, readTrades, valuePortfolio } from './services/portfolio';
@@ -83,7 +85,7 @@ export default {
 } satisfies ExportedHandler<Env>;
 
 /** Precios de Twelve Data: su licencia gratis no permite mostrarlos a otras personas. */
-const OWNER_ONLY = new Set(['/api/watchlist', '/api/quotes', '/api/history', '/api/compare', '/api/portfolio', '/api/news/symbol']);
+const OWNER_ONLY = new Set(['/api/watchlist', '/api/quotes', '/api/history', '/api/compare', '/api/portfolio', '/api/news/symbol', '/api/company']);
 
 async function route(req: Request, env: Env, url: URL, role: Role, email: string | null): Promise<Response | null> {
   const p = url.pathname;
@@ -166,6 +168,15 @@ async function route(req: Request, env: Env, url: URL, role: Role, email: string
         }
         const items = mock ? mockSymbolNews(symbol, now) : await symbolNews(deps, symbol, await quoteName(env.CACHE, symbol));
         return json({ symbol, items, fetchedAt: now.toISOString() });
+      }
+
+      // Datos de la empresa (Finnhub: solo el dueño, por sus términos). Sin clave responde `enabled: false`.
+      case '/api/company': {
+        const symbol = (url.searchParams.get('symbol') ?? '').trim().toUpperCase();
+        if (!(await getWatchlist(env.CACHE)).includes(symbol)) {
+          throw new ApiError('bad_request', 400, 'Solo hay datos de empresa para los símbolos de la lista.');
+        }
+        return json(mock ? mockCompany(symbol, now) : await companyData(deps, symbol));
       }
 
       case '/api/peru':

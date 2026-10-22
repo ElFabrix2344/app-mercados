@@ -10,6 +10,7 @@ import type { EarningsRelease } from './lib/finnhub';
 import { ApiError } from './lib/http';
 import { isoDate } from './lib/num';
 import {
+  mockCompany,
   mockCompanyCalendar,
   mockCompare,
   mockHistory,
@@ -21,6 +22,7 @@ import {
   mockSymbolNews,
   mockUsa,
 } from './mock';
+import { companyData } from './services/company';
 import { companyCalendar, epsSurprise, MOMENT, quarterLabel } from './services/earnings';
 import { marketNews, newsQuery, quoteName, symbolNews, type NewsItem } from './services/news';
 import { kvSource, readTrades, valuePortfolio } from './services/portfolio';
@@ -60,7 +62,7 @@ export interface McpContext {
 
 const INSTRUCTIONS =
   'Datos del panel personal «Rueda» del usuario: precios, historial con indicadores técnicos y comparación de los ' +
-  'símbolos de su lista de seguimiento (Twelve Data), ' +
+  'símbolos de su lista de seguimiento (Twelve Data), datos de sus empresas (Finnhub), ' +
   'Perú (BCRP), EE. UU. (FRED) y el calendario económico. Los datos pueden venir de la caché del panel: al responder, di ' +
   'la hora de «actualizado» y avisa si «dato_guardado» es true. Para símbolos fuera de la lista usa otra fuente (por ' +
   'ejemplo, el conector de Twelve Data).';
@@ -80,7 +82,7 @@ export function handleMcp(req: Request, c: McpContext): Promise<Response> {
 
 export function buildServer(c: McpContext): McpServer {
   const owner = c.role === 'owner';
-  const server = new McpServer({ name: 'rueda', version: '0.6.0' }, { instructions: owner ? INSTRUCTIONS : INSTRUCTIONS_FRIEND });
+  const server = new McpServer({ name: 'rueda', version: '0.7.0' }, { instructions: owner ? INSTRUCTIONS : INSTRUCTIONS_FRIEND });
   const when: When = (iso) => localTime(iso, c.timeZone);
 
   // Precios e historial (Twelve Data): solo para el dueño, por la licencia del plan gratis.
@@ -320,6 +322,80 @@ function registerMarketTools(server: McpServer, c: McpContext, when: When): void
               : null,
           precios_de: when(p.pricesAt),
           notas: p.notes,
+        };
+      }),
+  );
+
+  server.registerTool(
+    'empresa',
+    {
+      title: 'Datos de una empresa de la lista',
+      description:
+        'Datos de Finnhub (guardados hasta 24 h) de una acción de la lista: perfil, capitalización (en millones), PER y BPA de ' +
+        'los últimos 12 meses, precio/valor contable, precio/ventas, beta, dividendo, márgenes, ROE, crecimiento de ingresos ' +
+        'y del BPA, máximo y mínimo de 52 semanas, recomendaciones de los analistas de los últimos meses, sorpresas del BPA ' +
+        'de los últimos 4 trimestres y empresas comparables. Porcentajes en puntos porcentuales (12.5 = 12,5 %); montos en ' +
+        'la moneda en que reporta la empresa. Los ETF casi no traen datos; las divisas y la cripto, ninguno.',
+      inputSchema: z.object({ simbolo: z.string().max(20).describe('Símbolo de la lista, p. ej. "BAP".') }),
+      annotations: { readOnlyHint: true, openWorldHint: true },
+    },
+    ({ simbolo }) =>
+      run(async () => {
+        const list = await getWatchlist(deps.kv);
+        const symbol = normalize(simbolo);
+        if (!list.includes(symbol)) throw notInList([symbol], list);
+        const r = c.mock ? mockCompany(symbol, deps.now) : await companyData(deps, symbol);
+        if (!r.enabled || !r.applicable) return { simbolo: symbol, nota: r.note };
+        const { profile: p, metrics: m } = r.data;
+        return {
+          fuente: 'Finnhub',
+          simbolo: symbol,
+          perfil: p && {
+            nombre: p.name,
+            sector: p.industry,
+            pais: p.country,
+            moneda: p.currency,
+            bolsa: p.exchange,
+            salida_a_bolsa: p.ipo,
+            web: p.weburl,
+            capitalizacion_millones: p.marketCap,
+            acciones_en_circulacion_millones: p.sharesOutstanding,
+          },
+          indicadores: m && {
+            per_12m: m.pe,
+            precio_valor_contable: m.pb,
+            precio_ventas: m.ps,
+            beta: m.beta,
+            dividendo_pct: m.dividendYield,
+            bpa_12m: m.eps,
+            margen_neto_pct: m.netMargin,
+            margen_operativo_pct: m.operatingMargin,
+            roe_pct: m.roe,
+            crecimiento_ingresos_pct: m.revenueGrowth,
+            crecimiento_bpa_pct: m.epsGrowth,
+            maximo_52s: m.high52 !== null ? { valor: m.high52, fecha: m.high52Date } : null,
+            minimo_52s: m.low52 !== null ? { valor: m.low52, fecha: m.low52Date } : null,
+          },
+          analistas: r.data.recommendations.map((x) => ({
+            mes: x.period.slice(0, 7),
+            compra_fuerte: x.strongBuy,
+            compra: x.buy,
+            mantener: x.hold,
+            venta: x.sell,
+            venta_fuerte: x.strongSell,
+          })),
+          sorpresas_bpa: r.data.surprises.map((x) => ({
+            trimestre_fiscal: x.quarter && x.year ? `${x.quarter}T ${x.year}` : null,
+            cierre_del_periodo: x.period,
+            bpa_real: x.actual,
+            bpa_esperado: x.estimate,
+            sorpresa_pct: x.surprisePct === null ? null : round(x.surprisePct),
+          })),
+          comparables: r.data.peers,
+          ...(Object.keys(r.data.errors).length ? { partes_con_error: r.data.errors } : {}),
+          actualizado: when(r.fetchedAt),
+          dato_guardado: r.stale,
+          nota: r.note,
         };
       }),
   );

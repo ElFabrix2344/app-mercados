@@ -30,6 +30,7 @@
     newsGroup: 'todas',
     newsShown: 6,
     symbolNews: new Map(), // símbolo → { items } | { error } | 'cargando' (se piden al abrir la ficha)
+    company: new Map(), // símbolo → respuesta de /api/company | { error } | 'cargando' (al abrir la ficha)
     marketOpen: null, // ¿la bolsa de Nueva York está en sesión? (de /api/status y de cada pedido de precios)
     calendar: null, // respuesta de /api/calendar
     notes: new Map(), // clave → { text, kind }
@@ -900,6 +901,7 @@
     renderIndicatorToggles();
     renderSymbolNews();
     renderEarnings(sym);
+    renderCompany();
     const q = quoteFor(sym);
     const hist = detailHistory(sym, state.range);
     $('d-title').textContent = q?.name ? `${sym} · ${q.name}` : sym;
@@ -1340,6 +1342,149 @@
     if (!r) list.replaceChildren(h('li', { class: 'muted' }, 'Buscando titulares…'));
     else if (r.error) list.replaceChildren(h('li', { class: 'err' }, r.error));
     else list.replaceChildren(...(r.items.length ? r.items.slice(0, 4).map(newsItem) : [h('li', { class: 'muted' }, 'No hay titulares recientes.')]));
+  }
+
+  // ---------- datos de la empresa (Finnhub, solo el dueño) ----------
+  /** Se piden una vez por sesión, al abrir la ficha (el servidor los guarda 24 h). */
+  function companyFor(sym) {
+    const c = state.company.get(sym);
+    if (c) return c === 'cargando' ? undefined : c;
+    state.company.set(sym, 'cargando');
+    api(`/api/company?symbol=${encodeURIComponent(sym)}`)
+      .then((r) => state.company.set(sym, r))
+      .catch((e) => state.company.set(sym, { error: e.message }))
+      .finally(() => {
+        if (state.selected === sym) renderCompany();
+      });
+    return undefined;
+  }
+
+  const regionName = (() => {
+    try {
+      const dn = new Intl.DisplayNames([LOCALE], { type: 'region' });
+      return (code) => (code ? dn.of(code) ?? code : null);
+    } catch {
+      return (code) => code;
+    }
+  })();
+  const moneyPrefix = (cur) => (cur === 'USD' ? 'US$ ' : cur === 'PEN' ? 'S/ ' : cur ? `${cur} ` : '');
+  /** Millones → «21.5 mil millones» o «850 millones». */
+  const millions = (v) => (Math.abs(v) >= 1000 ? `${nf(1).format(v / 1000)} mil millones` : `${nf(0).format(v)} millones`);
+  const signedRate = (v, dec = 1) => `${sign(v)}${nf(dec).format(Math.abs(v))}%`;
+  /** «NEW YORK STOCK EXCHANGE, INC.» → «NYSE». */
+  const exchangeName = (x) => (!x ? null : /new york/i.test(x) ? 'NYSE' : /nasdaq/i.test(x) ? 'Nasdaq' : x);
+
+  function renderCompany() {
+    const sym = state.selected;
+    const wrap = $('d-co');
+    const r = sym ? companyFor(sym) : null;
+    // Divisas y cripto no tienen datos de empresa.
+    if (!sym || r?.applicable === false) {
+      wrap.hidden = true;
+      return;
+    }
+    wrap.hidden = false;
+    const meta = $('d-co-meta');
+    const statsEl = $('d-co-stats');
+    const an = $('d-co-analysts');
+    const su = $('d-co-surprises');
+    const note = $('d-co-note');
+    for (const el of [meta, statsEl, an, su]) el.replaceChildren();
+    note.className = 'hint';
+    if (!r) {
+      note.textContent = 'Cargando datos de la empresa…';
+      return;
+    }
+    if (r.error) {
+      note.className = 'err';
+      note.textContent = r.error;
+      return;
+    }
+    if (!r.enabled) {
+      note.textContent = 'Para ver el PER, la capitalización, los analistas y las sorpresas del BPA, carga la clave gratis de Finnhub (FINNHUB_API_KEY).';
+      return;
+    }
+    const { profile: p, metrics: m, recommendations: recs, surprises, peers, errors } = r.data;
+    if (!p && !m && !recs.length && !surprises.length) {
+      note.textContent = `Finnhub no tiene datos de empresa para ${sym} (pasa con los ETF).`;
+      return;
+    }
+
+    // Perfil en una línea: sector · país · bolsa · moneda · web.
+    if (p) {
+      const host = p.weburl ? p.weburl.replace(/^https?:\/\/(www\.)?/i, '').replace(/\/.*$/, '') : null;
+      meta.append(`· ${[p.industry, regionName(p.country), exchangeName(p.exchange), p.currency ? `reporta en ${p.currency}` : null].filter(Boolean).join(' · ')}`);
+      if (host) meta.append(' · ', h('a', { href: p.weburl, target: '_blank', rel: 'noopener noreferrer' }, host));
+    }
+
+    const items = [];
+    if (p?.marketCap != null) items.push(stat('Capitalización', `${moneyPrefix(p.currency)}${millions(p.marketCap)}`));
+    if (m) {
+      if (m.pe != null) items.push(stat('PER (12 meses)', m.pe > 0 ? nf(1).format(m.pe) : '—', m.pe > 0 ? null : 'Con pérdidas'));
+      if (m.pb != null) items.push(stat('Precio / valor contable', nf(2).format(m.pb)));
+      if (m.beta != null) {
+        const vs = m.beta > 1.05 ? 'Se mueve más que el mercado' : m.beta < 0.95 ? 'Se mueve menos que el mercado' : 'Se mueve como el mercado';
+        items.push(stat('Beta', nf(2).format(m.beta), vs));
+      }
+      if (m.dividendYield != null) items.push(stat('Dividendo (rendimiento)', rate(m.dividendYield)));
+      if (m.netMargin != null) items.push(stat('Margen neto', rate(m.netMargin, 1)));
+      if (m.roe != null) items.push(stat('ROE', rate(m.roe, 1)));
+      if (m.revenueGrowth != null) items.push(stat('Crecimiento de ingresos', signedRate(m.revenueGrowth), 'Últimos 12 meses frente al año anterior'));
+      if (m.eps != null) items.push(stat('BPA (12 meses)', nf(2).format(m.eps), 'En la moneda en que reporta'));
+      if (m.high52 != null && m.low52 != null) items.push(stat('Rango de 52 semanas', `${fmtPrice(m.low52)} – ${fmtPrice(m.high52)}`));
+    }
+    statsEl.append(...items);
+
+    // Analistas: el mes más reciente y cómo estaba en el más viejo que dé Finnhub.
+    const buyShare = (x) => {
+      const total = x.strongBuy + x.buy + x.hold + x.sell + x.strongSell;
+      return total ? { share: (x.strongBuy + x.buy) / total, total } : null;
+    };
+    const rec = recs[0];
+    const latest = rec ? buyShare(rec) : null;
+    if (latest) {
+      const old = recs.length > 1 ? recs.at(-1) : null;
+      const before = old ? buyShare(old) : null;
+      an.append(
+        h('p', { class: 'co-h' }, `Analistas · ${fMonthYear.format(day(rec.period))}`),
+        h('p', {}, h('strong', {}, `${nf(0).format(latest.share * 100)}% recomienda comprar`), ` (${latest.total} analistas)`),
+        h('p', { class: 'muted' }, `Compra fuerte ${rec.strongBuy} · Compra ${rec.buy} · Mantener ${rec.hold} · Venta ${rec.sell} · Venta fuerte ${rec.strongSell}`),
+        before ? h('p', { class: 'muted' }, `En ${fMonthYear.format(day(old.period))}: ${nf(0).format(before.share * 100)}% recomendaba comprar`) : null,
+      );
+    }
+
+    if (surprises.length) {
+      su.append(
+        h('p', { class: 'co-h' }, 'BPA: real frente a lo esperado'),
+        h(
+          'table',
+          { class: 'co-table' },
+          h('thead', {}, h('tr', {}, ...['Trimestre', 'Real', 'Esperado', 'Sorpresa'].map((t) => h('th', { scope: 'col' }, t)))),
+          h(
+            'tbody',
+            {},
+            ...surprises.map((x) =>
+              h(
+                'tr',
+                {},
+                h('td', {}, x.quarter && x.year ? `${x.quarter}T ${x.year}` : fMonthYear.format(day(x.period))),
+                h('td', {}, x.actual != null ? nf(2).format(x.actual) : '—'),
+                h('td', {}, x.estimate != null ? nf(2).format(x.estimate) : '—'),
+                h('td', { class: x.surprisePct == null ? 'flat' : trend(x.surprisePct) }, x.surprisePct == null ? '—' : `${arrowOf(x.surprisePct)} ${signedRate(x.surprisePct)}`),
+              ),
+            ),
+          ),
+        ),
+      );
+    }
+
+    const notes = [];
+    if (peers.length) notes.push(`Comparables según Finnhub: ${peers.join(', ')}.`);
+    notes.push(`Fuente: Finnhub, ${r.stale ? 'guardado' : 'actualizado'} ${ago(r.fetchedAt)}.`);
+    const errs = Object.keys(errors);
+    if (errs.length) notes.push(`Sin respuesta para ${listJoin(errs)}.`);
+    if (r.note) notes.push(r.note);
+    note.textContent = notes.join(' ');
   }
 
   // ---------- cartera simulada ----------

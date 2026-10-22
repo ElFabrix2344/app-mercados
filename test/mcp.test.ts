@@ -69,7 +69,7 @@ describe('servidor MCP', () => {
     const init = await rpc(c, 'initialize', { protocolVersion: '2025-06-18', capabilities: {}, clientInfo: { name: 'test', version: '0' } });
     expect(init.result.serverInfo.name).toBe('rueda');
     const { result } = await rpc(c, 'tools/list');
-    expect(result.tools.map((t: { name: string }) => t.name)).toEqual(['precios', 'historial', 'comparar', 'cartera', 'peru_bcrp', 'eeuu_fred', 'noticias', ...CALENDAR_TOOL]);
+    expect(result.tools.map((t: { name: string }) => t.name)).toEqual(['precios', 'historial', 'comparar', 'cartera', 'empresa', 'peru_bcrp', 'eeuu_fred', 'noticias', ...CALENDAR_TOOL]);
     for (const t of result.tools) expect(t.annotations.readOnlyHint).toBe(true);
   });
 
@@ -287,6 +287,35 @@ describe('herramienta calendario', () => {
     expect(calls).toHaveLength(0);
     expect(r.data.resultados_empresas).toMatchObject({ activo: false });
     expect(r.data.eventos.some((e: { simbolo?: string }) => e.simbolo)).toBe(false);
+  });
+});
+
+describe('herramienta empresa', () => {
+  it('trae perfil, indicadores, analistas y sorpresas de un símbolo de la lista', async () => {
+    const bodies: Record<string, unknown> = {
+      '/api/v1/stock/profile2': { name: 'Credicorp Ltd', country: 'PE', currency: 'USD', finnhubIndustry: 'Banking', marketCapitalization: 21486.3 },
+      '/api/v1/stock/metric': { metric: { peTTM: 11.2, netProfitMarginTTM: 28.4, '52WeekHigh': 250.4, '52WeekLow': 180.2 } },
+      '/api/v1/stock/recommendation': [{ period: '2026-10-01', strongBuy: 5, buy: 7, hold: 2, sell: 0, strongSell: 0 }],
+      '/api/v1/stock/earnings': [{ period: '2026-06-30', quarter: 2, year: 2026, actual: 6.12, estimate: 5.7, surprisePercent: 7.3684 }],
+      '/api/v1/stock/peers': ['BAP', 'IFS'],
+    };
+    const { f } = fakeFetch((url) => ({ body: bodies[url.pathname] ?? {} }));
+    const { c } = ctx({}, f, { twelveKey: 'k', fredKey: 'f', finnhubKey: 'h' });
+    const r = await callTool(c, 'empresa', { simbolo: 'bap' });
+    expect(r.data.perfil).toMatchObject({ nombre: 'Credicorp Ltd', sector: 'Banking', capitalizacion_millones: 21486.3 });
+    expect(r.data.indicadores).toMatchObject({ per_12m: 11.2, margen_neto_pct: 28.4, maximo_52s: { valor: 250.4, fecha: null } });
+    expect(r.data.analistas[0]).toEqual({ mes: '2026-10', compra_fuerte: 5, compra: 7, mantener: 2, venta: 0, venta_fuerte: 0 });
+    expect(r.data.sorpresas_bpa[0]).toMatchObject({ trimestre_fiscal: '2T 2026', bpa_real: 6.12, sorpresa_pct: 7.37 });
+    expect(r.data.comparables).toEqual(['IFS']);
+  });
+
+  it('sin clave lo dice, y fuera de la lista no responde', async () => {
+    const { f, calls } = quotesFetch();
+    const sinClave = await callTool(ctx({}, f).c, 'empresa', { simbolo: 'BAP' });
+    expect(sinClave.data.nota).toContain('FINNHUB_API_KEY');
+    const fuera = await callTool(ctx({}, f, { twelveKey: 'k', fredKey: 'f', finnhubKey: 'h' }).c, 'empresa', { simbolo: 'NVDA' });
+    expect(fuera.isError).toBe(true);
+    expect(calls).toHaveLength(0);
   });
 });
 

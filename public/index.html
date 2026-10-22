@@ -81,6 +81,7 @@
         <div class="help-body">
           <p>Arrastra sobre el gráfico para ver la variación entre dos días. En el celular, con dos dedos; con el teclado, Mayús + flechas.</p>
           <p>Las medias móviles, las bandas de Bollinger y el RSI se calculan con 5 años de historia. Un RSI sobre 70 suele leerse como sobrecompra; bajo 30, como sobreventa.</p>
+          <p>Los datos de la empresa vienen de Finnhub, solo los ves tú y se guardan 24 horas. El PER y el BPA son de los últimos 12 meses; los montos van en la moneda en que reporta la empresa.</p>
         </div>
       </details>
       <button type="button" id="d-close">Cerrar</button>
@@ -97,6 +98,15 @@
       <div class="chart" id="d-rsi"></div>
     </div>
     <dl class="stats" id="d-stats"></dl>
+    <div class="d-co" id="d-co" hidden>
+      <p class="hint">Datos de la empresa <span id="d-co-meta"></span></p>
+      <dl class="stats" id="d-co-stats"></dl>
+      <div class="d-co-cols">
+        <div id="d-co-analysts"></div>
+        <div id="d-co-surprises"></div>
+      </div>
+      <p class="hint" id="d-co-note"></p>
+    </div>
     <div class="d-news" id="d-news" hidden>
       <p class="hint">Noticias de <span id="d-news-sym"></span> (Yahoo Finance y Google News)</p>
       <ol class="news" id="d-news-list"></ol>

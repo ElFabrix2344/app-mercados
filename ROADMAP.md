@@ -105,8 +105,25 @@ Elegidos por el usuario el 22 de octubre, antes de abrir la app a los amigos:
 - [x] **Más Perú:** bonos del Perú a 10 años en soles y en dólares, y un riesgo país aproximado (el EMBIG del BCRP está detenido desde setiembre).
 - [x] **Resultados de tus empresas:** fechas de resultados trimestrales de la lista en el calendario, en la ficha y en la lista, con Finnhub. Twelve Data los cobra (plan Grow o mayor); Finnhub los da gratis con clave propia, pero sus términos no permiten mostrarlos a terceros: son solo para el dueño. Queda apagado hasta cargar `FINNHUB_API_KEY` (sección 4). Para comprobarlo: Credicorp confirmó sus resultados del 3T26 para el lunes 9 de noviembre de 2026.
 
-## 8. Ideas para después
+## 8. Lo elegido tras comparar Rueda con otras apps — en curso
 
+El 22 de octubre se comparó Rueda con Yahoo Finance, Google Finance, TradingView, Investing.com, Koyfin, Delta, Stock Events y lo que hay en el Perú (Trii, la app de la SMV, TuCambista, Rextie).
+
+- **Lo propio de Rueda:** el Perú en una pantalla con fuentes oficiales (BCRP), el conector para Claude con tus datos, el calendario con fechas del Perú en hora de Lima, exportar a Excel gratis (Yahoo lo cobra), la matriz de correlación, y nada de anuncios.
+- **Elegido por el usuario:**
+  - [x] **Datos de la empresa** en la ficha (Finnhub, solo el dueño): PER, capitalización, beta, dividendo, márgenes, recomendación de analistas, sorpresas de BPA de los últimos 4 trimestres y comparables. Al cargar la clave, comparar el PER y la capitalización de BAP con Yahoo o Google: Credicorp reporta en soles y Finnhub podría mezclar monedas en las ADR.
+  - [ ] **Velas, volumen y MACD** en la ficha.
+  - [ ] **Lista ampliada** de más de 8 símbolos, actualizada una vez al día después del cierre (1 crédito por símbolo al día).
+- **No elegido por ahora** (queda en ideas): alertas al celular por Telegram, pronósticos del grupo (juego sin plata con datos públicos, para los amigos), gráfico del día (1D y 5D), reportes oficiales de la SEC y la SMV, dividendos en la cartera simulada.
+- **Descartado:** buscador de acciones, mapa de calor y lo que más sube o baja (necesitan datos de todo el mercado, que no entran en ningún plan gratis); IA dentro de la app (el conector ya lo hace); widgets del celular (necesitan una app nativa).
+
+## 9. Ideas para después
+
+- **Alertas al celular por Telegram:** precio, % del día, dólar, MM200/RSI y «mañana presenta resultados». Tarea programada cada 15 min con la bolsa abierta, unos 100–150 créditos al día. Es lo que tienen todas las apps comparadas y Rueda no.
+- **Pronósticos del grupo:** cada amigo pronostica, sin plata, la tasa del BCRP, la inflación o el dólar del viernes, con ranking. Solo datos públicos, así que los amigos pueden jugar.
+- **Gráfico del día** (1D y 5D): 1 crédito cada 5 min, solo con la ficha abierta.
+- **Reportes oficiales:** SEC (6-K, 10-Q), gratis y públicos; hechos de importancia de la SMV, falta probar si su web deja leerse.
+- **Dividendos en la cartera simulada:** anotados a mano (Finnhub los cobra).
 - Que cada amigo use su propia clave gratis de Twelve Data (lista y caché por persona) para que también vea precios.
 - Reportes financieros de empresas de EE. UU. (SEC EDGAR).
 - **Valor cuota de las AFP:** la SBS lo muestra detrás de una verificación anti-robots (Imperva) y no se puede leer desde el Worker. Queda el archivo mensual de la SBS (xlsx de ~1 MB), sin probar.
@@ -114,7 +131,7 @@ Elegidos por el usuario el 22 de octubre, antes de abrir la app a los amigos:
 - Decidir si el repositorio sigue público (hoy lo está) o pasa a privado.
 - Herramienta `precios` del conector: aceptar los símbolos también como texto («BAP, SPY»).
 
-## 9. Mantenimiento con fecha fija
+## 10. Mantenimiento con fecha fija
 
 - **Cada diciembre:** agregar los feriados y cierres anticipados de la NYSE del año siguiente en `lib/market-hours.ts` (hoy están hasta 2027). Si no se hace, la app gasta créditos en los feriados.
 - **Cada año:** cargar el calendario económico del año siguiente cuando las fuentes lo publiquen. El BCRP suele publicar su cronograma en diciembre.

@@ -283,6 +283,18 @@ a.news-title:hover{color:var(--accent);text-decoration:underline}
 }
 .news-foot{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-top:8px}
 .news-foot .hint{margin:0}
+/* Ficha: datos de la empresa (Finnhub, solo el dueño). */
+.d-co{margin-top:14px;border-top:1px solid var(--line);padding-top:10px}
+.d-co > .hint:first-child{margin:0}
+.d-co .stats{border-top:0;margin-top:8px;padding-top:0}
+.d-co-cols{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:12px 28px;margin-top:12px}
+.d-co-cols:empty,.d-co-cols > div:empty{display:none}
+.d-co-cols p{margin:0 0 4px;font-family:var(--f-sans)}
+.co-h{font-size:.85rem;color:var(--muted)}
+.co-table{border-collapse:collapse;font-size:.9rem;width:100%;max-width:440px}
+.co-table th{font-family:var(--f-sans);color:var(--muted);font-weight:400;font-size:.82rem}
+.co-table th,.co-table td{text-align:right;padding:3px 8px;border-bottom:1px solid var(--hair)}
+.co-table th:first-child,.co-table td:first-child{text-align:left}
 .d-news{margin-top:14px;border-top:1px solid var(--line);padding-top:10px}
 .d-news > .hint{margin:0 0 4px}
 /* Ficha: próximos resultados y el último del mes (Finnhub, solo el dueño). */

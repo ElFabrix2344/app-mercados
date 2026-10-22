@@ -5,6 +5,7 @@ import type { EarningsRelease } from './lib/finnhub';
 import { usMarketOpen } from './lib/market-hours';
 import { addDays, isoDate } from './lib/num';
 import type { DailyPoint, Quote } from './lib/twelvedata';
+import type { CompanyResult } from './services/company';
 import { EARNINGS_AHEAD_DAYS, shapeCompanies, type CompanyCalendar } from './services/earnings';
 import type { NewsData, NewsGroup, NewsItem } from './services/news';
 import type { PriceSource } from './services/portfolio';
@@ -248,4 +249,66 @@ export function mockCompanyCalendar(list: string[], now: Date, today: string): C
   });
   releases.sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : 0));
   return shapeCompanies(fresh({ releases, errors: {}, from: addDays(today, -30), to: addDays(today, EARNINGS_AHEAD_DAYS) }, now), today);
+}
+
+/** Datos de empresa de prueba (inventados): múltiplos, analistas, sorpresas del BPA y comparables. */
+export function mockCompany(symbol: string, now: Date): CompanyResult {
+  if (symbol.includes('/')) return { enabled: true, applicable: false, note: 'Las divisas y las criptomonedas no tienen datos de empresa.' };
+  const etf = MOCK_ETFS.has(symbol);
+  const rand = rng(seedOf(`empresa${symbol}`));
+  const between = (lo: number, hi: number, dec = 2) => Number((lo + rand() * (hi - lo)).toFixed(dec));
+  const today = isoDate(now);
+  const pts = walk(symbol, now).slice(-252).map((p) => p.close);
+  const months = [0, 1, 2, 3].map((i) => `${addDays(today, -31 * i).slice(0, 7)}-01`);
+  // Los últimos 4 trimestres ya cerrados, del más nuevo al más viejo.
+  let year = Number(today.slice(0, 4));
+  let quarter = Math.floor((Number(today.slice(5, 7)) - 1) / 3);
+  const surprises = [0, 1, 2, 3].map(() => {
+    if (quarter === 0) {
+      quarter = 4;
+      year -= 1;
+    }
+    const estimate = between(1, 5);
+    const actual = Number((estimate * between(0.9, 1.15, 3)).toFixed(2));
+    const period = `${year}-${String(quarter * 3).padStart(2, '0')}-${quarter === 1 || quarter === 4 ? 31 : 30}`;
+    const item = { period, year, quarter, actual, estimate, surprisePct: Number(((actual / estimate - 1) * 100).toFixed(2)) };
+    quarter -= 1;
+    return item;
+  });
+  return {
+    enabled: true,
+    applicable: true,
+    ...fresh(
+      {
+        symbol,
+        profile: etf
+          ? null
+          : { name: info(symbol).name, country: symbol === 'SCCO' ? 'US' : 'PE', currency: 'USD', exchange: 'NEW YORK STOCK EXCHANGE, INC.', industry: symbol === 'BAP' ? 'Banking' : 'Metals & Mining', ipo: '1995-10-25', weburl: 'https://example.com/', marketCap: between(2000, 90000, 0), sharesOutstanding: between(70, 800, 1) },
+        metrics: etf
+          ? null
+          : {
+              pe: between(8, 30, 1),
+              pb: between(1, 6, 2),
+              ps: between(1, 8, 2),
+              beta: between(0.6, 1.6),
+              dividendYield: between(0, 6),
+              eps: between(1, 25),
+              netMargin: between(5, 40, 1),
+              operatingMargin: between(10, 50, 1),
+              roe: between(5, 30, 1),
+              revenueGrowth: between(-10, 25, 1),
+              epsGrowth: between(-20, 40, 1),
+              high52: Math.max(...pts),
+              high52Date: addDays(today, -120),
+              low52: Math.min(...pts),
+              low52Date: addDays(today, -260),
+            },
+        recommendations: etf ? [] : months.map((period) => ({ period, strongBuy: between(2, 6, 0), buy: between(3, 9, 0), hold: between(1, 6, 0), sell: between(0, 2, 0), strongSell: 0 })),
+        surprises: etf ? [] : surprises,
+        peers: etf ? [] : ['FCX', 'TECK', 'RIO', 'BHP'].filter((s) => s !== symbol),
+        errors: {},
+      },
+      now,
+    ),
+  };
 }

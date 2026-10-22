@@ -54,7 +54,7 @@ describe('rutas según el rol (local, con datos de prueba)', () => {
   });
 
   it('un amigo no puede ver precios, historial, comparaciones, la cartera ni la lista', async () => {
-    for (const path of ['/api/quotes', '/api/history?symbol=BAP', '/api/compare?symbols=BAP,SPY', '/api/portfolio', '/api/watchlist']) {
+    for (const path of ['/api/quotes', '/api/history?symbol=BAP', '/api/compare?symbols=BAP,SPY', '/api/portfolio', '/api/watchlist', '/api/company?symbol=BAP']) {
       const res = await get(path, 'friend');
       expect(res.status).toBe(403);
       expect(await res.text()).toContain('Twelve Data');
@@ -104,6 +104,16 @@ describe('rutas según el rol (local, con datos de prueba)', () => {
     const r = (await (await worker.fetch(new Request('http://localhost/api/calendar'), e, {} as ExecutionContext)).json()) as Record<string, any>;
     expect(r.companies).toMatchObject({ enabled: false });
     expect(r.events.length).toBeGreaterThan(0);
+  });
+
+  it('los datos de la empresa: de prueba para el dueño, nada para divisas ni ETF, y solo símbolos de la lista', async () => {
+    const bap = (await (await get('/api/company?symbol=BAP')).json()) as Record<string, any>;
+    expect(bap).toMatchObject({ enabled: true, applicable: true });
+    expect(bap.data.metrics.pe).toEqual(expect.any(Number));
+    expect(bap.data.surprises).toHaveLength(4);
+    expect(((await (await get('/api/company?symbol=USD/PEN')).json()) as Record<string, any>).applicable).toBe(false);
+    expect(((await (await get('/api/company?symbol=SPY')).json()) as Record<string, any>).data.profile).toBeNull();
+    expect((await get('/api/company?symbol=NVDA')).status).toBe(400);
   });
 
   it('el dueño ve todo', async () => {
