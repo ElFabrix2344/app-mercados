@@ -125,7 +125,11 @@ button[disabled]{opacity:.6;cursor:default}
 .row:focus-visible{outline:2px solid var(--accent);outline-offset:-2px}
 .row[aria-pressed="true"]{background:var(--raise);border-left-color:var(--accent)}
 .c-sym{color:var(--accent);font-weight:500;white-space:nowrap}
-.c-name{font-family:var(--f-sans);color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.c-name{display:flex;align-items:center;gap:8px;min-width:0;font-family:var(--f-sans);color:var(--muted)}
+.c-name-text{min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+/* Señales del último cierre junto al nombre: precio frente a la MM200 y RSI en zona extrema. */
+.sig{flex:none;font-family:var(--f-mono);font-size:.8rem;line-height:1.3;border:1px solid var(--line);border-radius:var(--r);padding:0 5px;color:var(--muted)}
+.sig.up{color:var(--up)} .sig.down{color:var(--down)}
 .c-price{text-align:right;font-weight:500}
 .c-chg,.c-ret,.c-time{text-align:right;white-space:nowrap}
 .c-time{color:var(--muted)}
@@ -139,6 +143,7 @@ button[disabled]{opacity:.6;cursor:default}
   .row{grid-template-columns:minmax(7ch,1fr) 76px auto;grid-template-areas:"sym spark price" "name ret chg";gap:1px 12px;padding:8px 6px 8px 8px}
   .c-sym{grid-area:sym;overflow:hidden;text-overflow:ellipsis}
   .c-name{grid-area:name;font-size:.82rem}
+  .sig{display:none}
   .c-spark{grid-area:spark;width:76px;height:20px}
   .c-ret{grid-area:ret;font-size:.8rem;text-align:center}
   .c-price{grid-area:price}
@@ -183,6 +188,11 @@ button[disabled]{opacity:.6;cursor:default}
 /* Medición entre dos días: franja suave detrás de las líneas y bordes finos. */
 .chart .sel-band{fill:var(--accent);fill-opacity:.08}
 .chart .sel-edge{stroke:var(--muted);stroke-width:1}
+/* Operaciones de la cartera simulada: ▲ compra, ▼ venta. */
+.chart .trade{stroke:var(--panel);stroke-width:1.5}
+.chart .trade.buy{fill:var(--up)}
+.chart .trade.sell{fill:var(--down)}
+.key.none{display:none}
 /* Mientras llegan otros datos, el gráfico anterior queda atenuado (sin saltos). */
 .is-loading .chart,.is-loading .stats,.is-loading .cmp-grid{opacity:.45;transition:opacity .2s}
 

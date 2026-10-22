@@ -224,6 +224,7 @@
       spec.band.upper.forEach(take);
       spec.band.lower.forEach(take);
     }
+    for (const m of spec.markers || []) take(m.v);
     if (n < 2 || lo === Infinity) {
       host.append(h('p', { class: 'muted' }, 'Sin datos suficientes.'));
       return;
@@ -293,6 +294,14 @@
     // La serie principal se dibuja al final para quedar encima.
     const drawOrder = [...series.slice(1), series[0]];
     for (const sr of drawOrder) svg.append(s('path', { class: `line ${sr.cls || ''}`, d: linePath(sr.values, xy) }));
+    // Operaciones de la cartera: ▲ compra y ▼ venta, a su precio.
+    for (const m of spec.markers || []) {
+      const x = X(m.i);
+      const y = Y(m.v);
+      const k = 6;
+      const d = m.kind === 'buy' ? `M${x},${y - k}L${x + k},${y + k}L${x - k},${y + k}Z` : `M${x},${y + k}L${x + k},${y - k}L${x - k},${y - k}Z`;
+      svg.append(s('path', { class: `trade ${m.kind}`, d }));
+    }
     for (const sr of drawOrder) {
       const i = lastIndex(sr.values);
       if (i >= 0) svg.append(s('circle', { class: `end-dot ${sr.cls || ''}`, cx: X(i), cy: Y(sr.values[i]), r: spec.axis ? 4 : 2.5 }));
@@ -336,7 +345,7 @@
     if (spec.extraTip) rows.push(...spec.extraTip(i));
     return [
       h('span', { class: 'tt-date' }, date),
-      ...rows.map((r) => h('span', { class: `tt-row ${r.cls || ''}` }, h('span', { class: `key ${r.keyCls || ''}` }), h('strong', {}, r.value), r.label)),
+      ...rows.map((r) => h('span', { class: `tt-row ${r.cls || ''}` }, h('span', { class: `key ${r.keyCls || ''}` }), h('strong', { class: r.dir || null }, r.value), r.label)),
     ];
   }
 
@@ -621,7 +630,12 @@
       const row = h('button', { type: 'button', class: q ? 'row' : 'row error', 'aria-pressed': String(state.selected === sym) });
       row.append(
         h('span', { class: 'c-sym' }, sym),
-        h('span', { class: 'c-name' }, q?.name ?? (err ? `Sin dato: ${err}` : state.quotes ? 'Sin dato' : 'Cargando…')),
+        h(
+          'span',
+          { class: 'c-name' },
+          h('span', { class: 'c-name-text' }, q?.name ?? (err ? `Sin dato: ${err}` : state.quotes ? 'Sin dato' : 'Cargando…')),
+          ...signalChips(hist?.latest),
+        ),
         h('span', { class: 'c-price' }, q ? fmtPrice(q.price) : '—'),
         q ? changeEl(q) : h('span', { class: 'c-chg flat' }, '—'),
         spark,
@@ -635,6 +649,22 @@
       }
     }
     renderMarket();
+  }
+
+  /** Señales rápidas del último cierre: precio frente a la media de 200 días y, solo en zona extrema, el RSI. */
+  function signalChips(l) {
+    if (!l) return [];
+    const chips = [];
+    if (l.sma200 != null) {
+      const above = l.close >= l.sma200;
+      chips.push(
+        h('span', { class: `sig ${above ? 'up' : 'down'}`, title: `${above ? 'Sobre' : 'Bajo'} su media de 200 días (${fmtPrice(l.sma200)})` }, `${above ? '▲' : '▼'} MM200`),
+      );
+    }
+    if (l.rsi14 != null && (l.rsi14 >= 70 || l.rsi14 <= 30)) {
+      chips.push(h('span', { class: 'sig', title: l.rsi14 >= 70 ? 'RSI sobre 70: zona de sobrecompra' : 'RSI bajo 30: zona de sobreventa' }, `RSI ${nf(0).format(l.rsi14)}`));
+    }
+    return chips;
   }
 
   /** «Rueda abierta / cerrada»: la sesión de la bolsa de Nueva York, con el mismo criterio con el que el servidor decide qué renovar. */
@@ -756,7 +786,7 @@
       if (state.hist.has(sym)) continue;
       try {
         const r = await api(`/api/history?symbol=${encodeURIComponent(sym)}`);
-        state.hist.set(sym, { points: r.data.points, stats: r.stats });
+        state.hist.set(sym, { points: r.data.points, stats: r.stats, latest: r.latest });
       } catch (e) {
         if (e.status === 429) {
           waiting = true;
@@ -900,6 +930,18 @@
     if (on('sma50')) series.push({ name: 'MM50', values: ind.sma50, cls: 's4' });
     if (on('sma200')) series.push({ name: 'MM200', values: ind.sma200, cls: 's2' });
     const extras = [on('sma50') && 'la media de 50 días', on('sma200') && 'la media de 200 días', on('bb') && 'las bandas de Bollinger'].filter(Boolean);
+    // Tus operaciones de la cartera simulada en este rango (si cayeron en un día sin rueda, van al día hábil anterior).
+    const markers = (state.portfolio?.trades ?? [])
+      .filter((t) => t.symbol === sym && t.date >= dates[0] && t.date <= dates[dates.length - 1])
+      .map((t) => {
+        let i = dates.length - 1;
+        while (i > 0 && dates[i] > t.date) i--;
+        return { i, v: t.price, kind: t.side, t };
+      });
+    const tradeRows = (i) =>
+      markers
+        .filter((m) => m.i === i)
+        .map((m) => ({ keyCls: 'none', dir: m.kind === 'buy' ? 'up' : 'down', value: m.kind === 'buy' ? '▲ Compra' : '▼ Venta', label: `${qtyFmt.format(m.t.qty)} a ${fmtPrice(m.t.price)}` }));
     const short = state.range === '1M' || state.range === '3M';
     drawChart(chart, {
       dates,
@@ -912,16 +954,19 @@
       axisDateFmt: short ? fDay : fAxisMonth,
       aria: `Cierre diario de ${sym} en ${RANGE_NAMES[state.range]}${extras.length ? `, con ${listJoin(extras)}` : ''}`,
       endLabel: (sr, v) => (sr.cls === 's1' ? fmtPrice(v) : sr.name),
+      markers,
       extraTip:
-        on('bb') || on('rsi')
+        on('bb') || on('rsi') || markers.length
           ? (i) => [
               ...(on('bb') && ind.bbUpper[i] != null
                 ? [{ keyCls: 'band', value: `${fmtPrice(ind.bbLower[i])} – ${fmtPrice(ind.bbUpper[i])}`, label: 'Bollinger' }]
                 : []),
               ...(on('rsi') && ind.rsi14[i] != null ? [{ cls: 's3', value: nf(1).format(ind.rsi14[i]), label: 'RSI 14' }] : []),
+              ...tradeRows(i),
             ]
           : null,
     });
+    if (markers.length) $('d-ind').append(h('span', { class: 'legend-item' }, '▲▼ tus operaciones'));
     rsiWrap.hidden = !on('rsi');
     if (on('rsi')) {
       drawChart(rsiHost, {
@@ -1351,6 +1396,8 @@
     const host = $('pf-body');
     $('pf-csv').disabled = !p?.trades?.length;
     if (!p) return;
+    // Si la ficha está abierta, sus marcas de compras y ventas se actualizan.
+    if (state.selected) renderDetail();
     if (!p.trades.length) {
       host.replaceChildren(h('p', { class: 'muted' }, 'Todavía no hay operaciones. Agrega una compra para empezar.'));
       return;

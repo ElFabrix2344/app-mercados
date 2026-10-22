@@ -294,6 +294,8 @@ export type HistoryResult = Fresh<HistoryData> & {
    * de cualquier rango.
    */
   indicators: Indicators;
+  /** Lectura del último cierre (la misma en cualquier rango): va siempre, para las señales de la lista. */
+  latest: { date: string; close: number; sma50: number | null; sma200: number | null; rsi14: number | null } | null;
 };
 
 /** Los 5 años guardados de un símbolo (1 crédito cuando hay que pedirlos de nuevo). */
@@ -317,13 +319,18 @@ export function shapeHistory(stored: Fresh<HistoryData>, range: Range, today: st
   const all = stored.data.points;
   const start = rangeStartIndex(all.map(([date]) => date), range, today);
   const points = all.slice(start);
+  const ind = sliceIndicators(indicators(all.map(([, close]) => close)), start);
+  const last = all.at(-1);
   return {
     ...stored,
     data: { symbol: stored.data.symbol, points },
     stats: seriesStats(points.map(([date, close]) => ({ date, close }))),
     range,
-    available: { from: all[0]?.[0] ?? null, to: all.at(-1)?.[0] ?? null },
-    indicators: sliceIndicators(indicators(all.map(([, close]) => close)), start),
+    available: { from: all[0]?.[0] ?? null, to: last?.[0] ?? null },
+    indicators: ind,
+    latest: last
+      ? { date: last[0], close: last[1], sma50: ind.sma50.at(-1) ?? null, sma200: ind.sma200.at(-1) ?? null, rsi14: ind.rsi14.at(-1) ?? null }
+      : null,
   };
 }
 

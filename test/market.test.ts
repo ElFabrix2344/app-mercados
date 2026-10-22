@@ -226,6 +226,8 @@ describe('history con indicadores', () => {
     expect(r.indicators.sma200.at(-1)).toBeCloseTo(399 - 99.5, 6); // media de 200..399
     expect(r.indicators.sma50.at(-1)).toBeCloseTo(399 - 24.5, 6);
     expect(r.indicators.rsi14.at(-1)).toBe(100);
+    // La lectura del último cierre va siempre (la usan las señales de la lista).
+    expect(r.latest).toEqual({ date: r.data.points.at(-1)![0], close: 399, sma50: 374.5, sma200: 299.5, rsi14: 100 });
   });
 });
 
