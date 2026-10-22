@@ -297,22 +297,30 @@ describe('comparar', () => {
   });
 });
 
-describe('Perú: cobre, oro, reservas y BVL', () => {
-  it('pide las 4 series en un solo pedido, pasa el cobre a US$ por libra y calcula variaciones', async () => {
-    // BCRPData responde ordenado por código: reservas, cobre (centavos), oro, BVL.
+describe('Perú: cobre, oro, reservas, BVL, bonos y riesgo país', () => {
+  it('pide las 7 series en un solo pedido, pasa el cobre a US$ por libra y calcula variaciones', async () => {
+    // BCRPData responde ordenado por código: reservas, cobre (centavos), oro, Tesoro EE. UU. 10A, bono S/, bono US$, BVL.
     const { f, calls } = fakeFetch(() => ({
       body: {
         periods: [
-          { name: '10.Oct.25', values: ['80000', '450', '2500', '30000'] },
-          { name: '15.Set.26', values: ['95000', '640', '4000', 'n.d.'] },
-          { name: '16.Oct.26', values: ['96654.60272427', '662.018070575889', '4165.58', '59870.67'] },
+          { name: '10.Oct.25', values: ['80000', '450', '2500', '4.0', '6.5', '5.0', '30000'] },
+          { name: '15.Set.26', values: ['95000', '640', '4000', '4.9', '6.6', '6.0', 'n.d.'] },
+          { name: '16.Oct.26', values: ['96654.60272427', '662.018070575889', '4165.58', 'n.d.', '6.72', '6.106', '59870.67'] },
         ],
       },
     }));
     const { kv } = memoryKV();
     const r = await peruMarkets({ kv, now: new Date('2026-10-17T15:00:00Z'), fetch: f });
     expect(calls).toHaveLength(1);
-    expect(calls[0]!.pathname).toContain('/PD04650MD-PD04701XD-PD04704XD-PD38026MD/json/');
+    expect(calls[0]!.pathname).toContain('/PD04650MD-PD04701XD-PD04704XD-PD04719XD-PD31893DD-PD31894DD-PD38026MD/json/');
+    // Tasas: la variación que importa es la diferencia (puntos porcentuales), no el %.
+    expect(r.data.bond10pen.summary.last).toEqual({ date: '2026-10-16', value: 6.72 });
+    expect(r.data.bond10pen.summary.y1!.diff).toBeCloseTo(0.22, 10);
+    // Riesgo país aproximado: bono en US$ menos Tesoro, en pb, solo los días con los dos datos.
+    expect(r.data.spread10.points).toEqual([
+      ['2025-10-10', 100],
+      ['2026-09-15', 110],
+    ]);
     const m = r.data;
     expect(m.copper.points.at(-1)).toEqual(['2026-10-16', 6.6202]);
     expect(m.reserves.summary.last).toEqual({ date: '2026-10-16', value: 96654.6027 });

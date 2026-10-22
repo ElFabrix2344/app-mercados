@@ -462,12 +462,15 @@ export async function peru(d: Deps): Promise<Fresh<PeruData>> {
   });
 }
 
-// ---------- Perú: cobre, oro, reservas y BVL (BCRP) ----------
+// ---------- Perú: cobre, oro, reservas, BVL, bonos y riesgo país (BCRP) ----------
 
 export interface PointChange {
   date: string;
   value: number;
+  /** Variación porcentual (para precios e índices). */
   pct: number;
+  /** Diferencia en la unidad de la serie (para tasas: puntos porcentuales; para el spread: puntos básicos). */
+  diff: number;
 }
 
 export interface SeriesSummary {
@@ -491,6 +494,15 @@ export interface PeruMarkets {
   reserves: MarketSeries;
   /** Índice general de la Bolsa de Valores de Lima. */
   bvl: MarketSeries;
+  /** Rendimiento del bono del gobierno peruano a 10 años en soles, %. */
+  bond10pen: MarketSeries;
+  /** Rendimiento del bono del gobierno peruano a 10 años en dólares, %. */
+  bond10usd: MarketSeries;
+  /**
+   * Riesgo país aproximado, en puntos básicos: bono peruano en dólares a 10 años menos el del Tesoro de EE. UU.
+   * a 10 años, los días en que hay los dos. No es el EMBIG: el BCRP dejó de actualizarlo el 3 de setiembre de 2026.
+   */
+  spread10: MarketSeries;
 }
 
 /** Último dato y sus variaciones a 1 y 12 meses; null donde no hay historia suficiente. */
@@ -503,28 +515,48 @@ export function summarize(points: [string, number][]): SeriesSummary {
     const base = points[rangeStartIndex(dates, range, last[0])]!;
     // Sin historia suficiente, o con un hueco largo justo antes del inicio, la variación no sería la del periodo.
     if (base[0] > start || base[0] < addDays(start, -15) || base[0] === last[0]) return null;
-    return { date: base[0], value: base[1], pct: last[1] / base[1] - 1 };
+    return { date: base[0], value: base[1], pct: last[1] / base[1] - 1, diff: Math.round((last[1] - base[1]) * 1e4) / 1e4 };
   };
   return { last: { date: last[0], value: last[1] }, m1: change('1M'), y1: change('1A') };
 }
 
-const MARKET_CODES = [BCRP_SERIES.copper, BCRP_SERIES.gold, BCRP_SERIES.reserves, BCRP_SERIES.bvl];
+const MARKET_CODES = [
+  BCRP_SERIES.copper,
+  BCRP_SERIES.gold,
+  BCRP_SERIES.reserves,
+  BCRP_SERIES.bvl,
+  BCRP_SERIES.bond10pen,
+  BCRP_SERIES.bond10usd,
+  BCRP_SERIES.ust10,
+];
 
 /** Columnas del pedido (en el orden de MARKET_CODES) → series sin los días sin dato. */
 export function shapeMarkets(points: BcrpPoint[]): PeruMarkets {
-  const column = (i: number, scale = 1): MarketSeries => {
-    const pts = points
-      .filter((p) => p.values[i] != null)
-      .map((p) => [p.date, Math.round(p.values[i]! * scale * 1e4) / 1e4] as [string, number]);
-    return { points: pts, summary: summarize(pts) };
+  const series = (pts: [string, number][]): MarketSeries => ({ points: pts, summary: summarize(pts) });
+  const column = (i: number, scale = 1) =>
+    series(points.filter((p) => p.values[i] != null).map((p) => [p.date, Math.round(p.values[i]! * scale * 1e4) / 1e4] as [string, number]));
+  // Bono en US$ menos Tesoro de EE. UU., en puntos básicos, solo los días con los dos datos.
+  const spread = series(
+    points
+      .filter((p) => p.values[5] != null && p.values[6] != null)
+      .map((p) => [p.date, Math.round((p.values[5]! - p.values[6]!) * 1000) / 10] as [string, number]),
+  );
+  return {
+    copper: column(0, 0.01),
+    gold: column(1),
+    reserves: column(2),
+    bvl: column(3),
+    bond10pen: column(4),
+    bond10usd: column(5),
+    spread10: spread,
   };
-  return { copper: column(0, 0.01), gold: column(1), reserves: column(2), bvl: column(3) };
 }
 
 /** Un año y algo de datos diarios (para la variación a 12 meses). Datos públicos: también los ven los amigos. */
 export async function peruMarkets(d: Deps): Promise<Fresh<PeruMarkets>> {
   const today = isoDate(d.now);
-  return cached<PeruMarkets>(d, 'peru-markets', MACRO_TTL_MS, async () =>
+  // «peru-markets2»: desde que se sumaron los bonos y el riesgo país (el registro anterior no los tenía).
+  return cached<PeruMarkets>(d, 'peru-markets2', MACRO_TTL_MS, async () =>
     shapeMarkets(await getBcrp(MARKET_CODES, addDays(today, -400), today, d.fetch)),
   );
 }

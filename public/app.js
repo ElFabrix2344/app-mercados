@@ -697,8 +697,10 @@
       const pts = pm?.[key]?.points;
       if (pts?.length) items.push({ sym: label, value: nf(2).format(pts.at(-1)[1]), ch: lastChange(pts) });
     }
+    const pe10 = pm?.bond10pen?.points;
+    if (pe10?.length) items.push({ sym: 'Bono Perú 10A', value: rate(pe10.at(-1)[1]), pp: pe10.length > 1 ? pe10.at(-1)[1] - pe10.at(-2)[1] : null });
     const t10 = state.usaData?.treasury10y;
-    if (t10?.length) items.push({ sym: 'Bono 10A', value: rate(t10.at(-1).value), pp: t10.length > 1 ? t10.at(-1).value - t10.at(-2).value : null });
+    if (t10?.length) items.push({ sym: 'Bono EE. UU. 10A', value: rate(t10.at(-1).value), pp: t10.length > 1 ? t10.at(-1).value - t10.at(-2).value : null });
     return items;
   }
 
@@ -1604,12 +1606,24 @@
     { key: 'gold', label: 'Oro (Londres)', unit: 'US$ por onza troy', dec: 2, csv: 'oro_usd_onza' },
     { key: 'bvl', label: 'Índice general BVL', unit: 'puntos', dec: 2, csv: 'indice_general_bvl' },
     { key: 'reserves', label: 'Reservas internacionales netas', unit: 'millones de US$', dec: 0, csv: 'reservas_millones_usd' },
+    // Tasas: su variación va en puntos porcentuales (pp); el riesgo país, en puntos básicos (pb).
+    { key: 'bond10pen', label: 'Bono del Perú a 10 años (S/)', unit: '% anual', dec: 2, csv: 'bono_peru_10a_soles_pct', kind: 'pp' },
+    { key: 'bond10usd', label: 'Bono del Perú a 10 años (US$)', unit: '% anual', dec: 2, csv: 'bono_peru_10a_dolares_pct', kind: 'pp' },
+    { key: 'spread10', label: 'Riesgo país (aprox.)', unit: 'puntos básicos', dec: 0, csv: 'riesgo_pais_aprox_pb', kind: 'pb' },
   ];
 
+  /** Cambio en la unidad que corresponde: % para precios e índices, pp para tasas, pb para el riesgo país. */
+  function changeText(ch, kind) {
+    if (kind === 'pp') return `${arrowOf(ch.diff)} ${sign(ch.diff)}${nf(2).format(Math.abs(ch.diff))} pp`;
+    if (kind === 'pb') return `${arrowOf(ch.diff)} ${sign(ch.diff)}${nf(0).format(Math.abs(ch.diff))} pb`;
+    return `${arrowOf(ch.pct)} ${pctFrac(ch.pct)}`;
+  }
+
   /** «1 mes ▲ +3.4%» con el color de la dirección; nada si no hay historia suficiente. */
-  function changeChip(label, ch) {
+  function changeChip(label, ch, kind) {
     if (!ch) return null;
-    return h('span', { class: 'pm-chg' }, `${label} `, h('span', { class: trend(ch.pct) }, `${arrowOf(ch.pct)} ${pctFrac(ch.pct)}`));
+    const d = kind ? ch.diff : ch.pct;
+    return h('span', { class: 'pm-chg' }, `${label} `, h('span', { class: trend(d) }, changeText(ch, kind)));
   }
 
   async function loadPeruMarkets() {
@@ -1624,10 +1638,16 @@
         const last = s?.summary?.last;
         if (!last) return h('div', { class: 'pm-card' }, metric(m.label, '—', 'Sin datos del BCRP'));
         const fmt = (v) => nf(m.dec).format(v);
+        const pbRow = (sr, v0, v1) => ({ value: `${arrowOf(v1 - v0)} ${sign(v1 - v0)}${nf(0).format(Math.abs(v1 - v0))} pb`, label: `${fmt(v0)} → ${fmt(v1)}` });
         const block = chartBlock(
           'Último año',
           s.points.map(([date, v]) => ({ date, v })),
-          { fmt, height: 120, aria: `${m.label}, último año (${m.unit})` },
+          {
+            fmt,
+            height: 120,
+            aria: `${m.label}, último año (${m.unit})`,
+            ...(m.kind === 'pp' ? { measureRow: measureRowPoints } : m.kind === 'pb' ? { measureRow: pbRow } : {}),
+          },
           { filename: `bcrp_${m.csv}_${today()}.csv`, header: ['fecha', m.csv], rows: s.points },
         );
         draws.push(block.draw);
@@ -1635,7 +1655,7 @@
           'div',
           { class: 'pm-card' },
           metric(m.label, fmt(last.value), `${m.unit} · ${fDay.format(day(last.date))}`),
-          h('div', { class: 'pm-chgs' }, changeChip('1 mes', s.summary.m1), changeChip('12 meses', s.summary.y1)),
+          h('div', { class: 'pm-chgs' }, changeChip('1 mes', s.summary.m1, m.kind), changeChip('12 meses', s.summary.y1, m.kind)),
           block.wrap,
         );
       });

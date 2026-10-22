@@ -266,9 +266,17 @@ describe('herramientas de Perú y EE. UU.', () => {
     const copper: [string, number][] = [['2025-10-10', 4.5], ['2026-09-11', 6.3], ['2026-09-14', 6.4], ['2026-10-14', 6.62]];
     const markets = {
       fetchedAt: '2026-10-15T12:00:00.000Z',
-      data: { copper: serie(copper), gold: serie([['2026-10-14', 4165.58]]), reserves: serie([['2026-10-14', 96654.6]]), bvl: serie([['2026-10-14', 59870.67]]) },
+      data: {
+        copper: serie(copper),
+        gold: serie([['2026-10-14', 4165.58]]),
+        reserves: serie([['2026-10-14', 96654.6]]),
+        bvl: serie([['2026-10-14', 59870.67]]),
+        bond10pen: serie([['2025-10-10', 6.5], ['2026-10-14', 6.72]]),
+        bond10usd: serie([['2026-10-14', 6.106]]),
+        spread10: serie([['2025-10-10', 120], ['2026-10-14', 101.3]]),
+      },
     };
-    const { c } = ctx({ peru, 'peru-markets': markets }, f);
+    const { c } = ctx({ peru, 'peru-markets2': markets }, f);
     const r = await callTool(c, 'peru_bcrp');
     expect(calls).toHaveLength(0);
     expect(r.data.dolar_interbancario).toEqual({ fecha: '2026-10-14', compra: 3.4372, venta: 3.4391 });
@@ -283,6 +291,9 @@ describe('herramientas de Perú y EE. UU.', () => {
       cierres_mensuales: [['2025-10-10', 4.5], ['2026-09-14', 6.4], ['2026-10-14', 6.62]],
     });
     expect(r.data.mercados.indice_general_bvl.variacion_12_meses_pct).toBeNull();
+    // Tasas en puntos porcentuales y riesgo país en puntos básicos.
+    expect(r.data.mercados.bono_peru_10_anios_soles_pct).toMatchObject({ valor: 6.72, variacion_12_meses_pp: 0.22 });
+    expect(r.data.mercados.riesgo_pais_aproximado_pb).toMatchObject({ valor: 101.3, variacion_12_meses_pb: -19 });
   });
 
   it('peru_bcrp entrega lo demás aunque fallen los mercados del BCRP', async () => {

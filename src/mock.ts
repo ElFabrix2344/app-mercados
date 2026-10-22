@@ -35,6 +35,10 @@ const BASE: Record<string, { name: string; exchange: string; currency: string; s
   'BCRP:ORO': { name: 'Oro', exchange: 'BCRP', currency: 'USD', start: 2900, vol: 0.009, beta: -0.1 },
   'BCRP:RIN': { name: 'Reservas', exchange: 'BCRP', currency: 'USD', start: 80000, vol: 0.002, beta: 0.1 },
   'BCRP:BVL': { name: 'BVL', exchange: 'BCRP', currency: 'PEN', start: 30000, vol: 0.011, beta: 0.5 },
+  // Tasas (%): bono peruano a 10 años en soles y en dólares, y Tesoro de EE. UU. a 10 años.
+  'BCRP:BONO10PEN': { name: 'Bono 10 años S/', exchange: 'BCRP', currency: 'PEN', start: 6.6, vol: 0.004, beta: 0.2 },
+  'BCRP:BONO10USD': { name: 'Bono 10 años US$', exchange: 'BCRP', currency: 'USD', start: 6.0, vol: 0.004, beta: 0.2 },
+  'BCRP:UST10': { name: 'Tesoro 10 años', exchange: 'BCRP', currency: 'USD', start: 4.8, vol: 0.004, beta: 0.1 },
 };
 
 function seedOf(s: string): number {
@@ -182,7 +186,23 @@ export function mockPeruMarkets(now: Date): Fresh<PeruMarkets> {
     const points = mockPoints(symbol, now).slice(-280);
     return { points, summary: summarize(points) };
   };
-  return fresh({ copper: series('BCRP:COBRE'), gold: series('BCRP:ORO'), reserves: series('BCRP:RIN'), bvl: series('BCRP:BVL') }, now);
+  const usd = new Map(mockPoints('BCRP:BONO10USD', now));
+  const spread = mockPoints('BCRP:UST10', now)
+    .slice(-280)
+    .filter(([d]) => usd.has(d))
+    .map(([d, ust]) => [d, Math.round((usd.get(d)! - ust) * 1000) / 10] as [string, number]);
+  return fresh(
+    {
+      copper: series('BCRP:COBRE'),
+      gold: series('BCRP:ORO'),
+      reserves: series('BCRP:RIN'),
+      bvl: series('BCRP:BVL'),
+      bond10pen: series('BCRP:BONO10PEN'),
+      bond10usd: series('BCRP:BONO10USD'),
+      spread10: { points: spread, summary: summarize(spread) },
+    },
+    now,
+  );
 }
 
 export function mockUsa(now: Date): Fresh<UsaData> {

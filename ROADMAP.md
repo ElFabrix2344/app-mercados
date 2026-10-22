@@ -100,6 +100,8 @@ Pasos:
 
 - Que cada amigo use su propia clave gratis de Twelve Data (lista y caché por persona) para que también vea precios.
 - Reportes financieros de empresas de EE. UU. (SEC EDGAR).
+- **Resultados trimestrales de tu lista en el calendario:** Twelve Data los cobra (plan Grow o mayor). Finnhub los da gratis con una clave propia, pero sus términos prohíben mostrarlos a terceros: serían solo para el dueño. Credicorp ya confirmó sus resultados del 3T26 para el lunes 9 de noviembre de 2026.
+- **Valor cuota de las AFP:** la SBS lo muestra detrás de una verificación anti-robots (Imperva) y no se puede leer desde el Worker. Queda el archivo mensual de la SBS (xlsx de ~1 MB), sin probar.
 - Medir el gasto de créditos de Twelve Data en un día normal y ajustar el freno si hace falta.
 - Decidir si el repositorio sigue público (hoy lo está) o pasa a privado.
 - Herramienta `precios` del conector: aceptar los símbolos también como texto («BAP, SPY»).

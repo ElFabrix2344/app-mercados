@@ -31,6 +31,7 @@ import {
   type HistoryResult,
   type MarketSeries,
   type PeruMarkets,
+  type PointChange,
 } from './services/market';
 
 export interface McpContext {
@@ -336,14 +337,18 @@ function indicatorSnapshot(r: HistoryResult) {
   };
 }
 
-/** Una serie de mercado del BCRP para Claude: último dato, variaciones y cierre de cada mes. */
-function marketOut(s: MarketSeries) {
+/**
+ * Una serie de mercado del BCRP para Claude: último dato, variaciones y cierre de cada mes. Las variaciones van en %
+ * (precios e índices), en puntos porcentuales (tasas) o en puntos básicos (el spread).
+ */
+function marketOut(s: MarketSeries, unit: 'pct' | 'pp' | 'pb' = 'pct') {
   const { last, m1, y1 } = s.summary;
+  const change = (c: PointChange | null) => c && (unit === 'pct' ? pct(c.pct) : unit === 'pp' ? round(c.diff) : Math.round(c.diff));
   return {
     fecha: last?.date ?? null,
     valor: last?.value ?? null,
-    variacion_1_mes_pct: m1 && pct(m1.pct),
-    variacion_12_meses_pct: y1 && pct(y1.pct),
+    [`variacion_1_mes_${unit}`]: change(m1),
+    [`variacion_12_meses_${unit}`]: change(y1),
     cierres_mensuales: monthEnds(s.points),
   };
 }
@@ -367,8 +372,11 @@ function registerPublicTools(server: McpServer, c: McpContext, when: When): void
         'Datos del Banco Central de Reserva del Perú (BCRPData, guardados hasta 6 h): tipo de cambio interbancario del dólar ' +
         '(compra y venta en soles, últimos ~30 días hábiles), tasa de referencia de política monetaria (%), inflación de Lima ' +
         'Metropolitana a 12 meses (%, últimos 13 meses) y, en «mercados», cobre y oro en Londres, reservas internacionales ' +
-        'netas e índice general de la Bolsa de Valores de Lima: último dato, variación a 1 y 12 meses (en puntos ' +
-        'porcentuales: 12.5 = +12,5 %) y el cierre de cada mes del último año.',
+        'netas, índice general de la Bolsa de Valores de Lima, rendimiento del bono del gobierno peruano a 10 años (en soles ' +
+        'y en dólares) y un riesgo país aproximado (bono peruano en dólares menos Tesoro de EE. UU., ambos a 10 años, en ' +
+        'puntos básicos; no es el EMBIG, que el BCRP no actualiza desde el 3 de setiembre de 2026). Para cada uno: último ' +
+        'dato, variación a 1 y 12 meses (_pct en % con 12.5 = +12,5 %; _pp en puntos porcentuales; _pb en puntos básicos) y ' +
+        'el cierre de cada mes del último año.',
       inputSchema: z.object({}),
       annotations: { readOnlyHint: true, openWorldHint: true },
     },
@@ -396,6 +404,9 @@ function registerPublicTools(server: McpServer, c: McpContext, when: When): void
             oro_usd_por_onza_troy: marketOut(mk.data.gold),
             reservas_internacionales_netas_millones_usd: marketOut(mk.data.reserves),
             indice_general_bvl: marketOut(mk.data.bvl),
+            bono_peru_10_anios_soles_pct: marketOut(mk.data.bond10pen, 'pp'),
+            bono_peru_10_anios_dolares_pct: marketOut(mk.data.bond10usd, 'pp'),
+            riesgo_pais_aproximado_pb: marketOut(mk.data.spread10, 'pb'),
             actualizado: when(mk.fetchedAt),
             dato_guardado: mk.stale,
           },
@@ -409,6 +420,9 @@ function registerPublicTools(server: McpServer, c: McpContext, when: When): void
             oro: 'PD04704XD',
             reservas: 'PD04650MD',
             bvl: 'PD38026MD',
+            bono_soles: 'PD31893DD',
+            bono_dolares: 'PD31894DD',
+            riesgo_pais_aproximado: 'PD31894DD − PD04719XD (Tesoro de EE. UU. a 10 años)',
           },
           actualizado: when(r.fetchedAt),
           dato_guardado: r.stale,

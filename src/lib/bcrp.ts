@@ -16,6 +16,9 @@ export const BCRP_SERIES = {
   copper: 'PD04701XD', // cobre en Londres, centavos de US$ por libra (diario)
   gold: 'PD04704XD', // oro en Londres, US$ por onza troy (diario)
   bvl: 'PD38026MD', // índice general de la Bolsa de Valores de Lima (diario)
+  bond10pen: 'PD31893DD', // rendimiento del bono del gobierno peruano a 10 años en soles, % (diario, un día de atraso)
+  bond10usd: 'PD31894DD', // rendimiento del bono del gobierno peruano a 10 años en dólares, % (diario)
+  ust10: 'PD04719XD', // bono del Tesoro de EE. UU. a 10 años, % (diario, ~3 días de atraso)
 } as const;
 
 export interface BcrpPoint {
