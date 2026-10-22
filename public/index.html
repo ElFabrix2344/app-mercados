@@ -34,8 +34,11 @@
     </div>
   </header>
 
-  <!-- Cinta de precios, como la pizarra de la bolsa. Repite datos que están más abajo: los lectores de pantalla la saltan. -->
-  <div class="tape" id="tape" aria-hidden="true" hidden><div class="tape-track" id="tape-track"></div></div>
+  <!-- Cinta de precios, como la pizarra de la bolsa. Repite datos que están más abajo: los lectores de pantalla saltan los precios. -->
+  <div class="tape" id="tape" hidden>
+    <button type="button" class="tape-toggle" id="tape-toggle"></button>
+    <div class="tape-view" aria-hidden="true"><div class="tape-track" id="tape-track"></div></div>
+  </div>
 
   <div class="banner" id="banner" role="status" hidden></div>
 

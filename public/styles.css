@@ -63,19 +63,21 @@ button[disabled]{opacity:.6;cursor:default}
 @keyframes spin{to{transform:rotate(360deg)}}
 
 /* ---------- cinta de precios ---------- */
-.tape{overflow:hidden;white-space:nowrap;border:1px solid var(--line);border-radius:var(--r);background:var(--panel);font-size:.8rem;margin-top:-6px}
+.tape{display:flex;align-items:stretch;border:1px solid var(--line);border-radius:var(--r);background:var(--panel);font-size:.8rem;margin-top:-6px}
+/* Botón ▶/⏸ al inicio: la cinta se mueve o queda quieta según lo que elijas (sin elegir, lo que pida el sistema). */
+.tape-toggle{flex:none;border:0;border-right:1px solid var(--line);border-radius:0;background:transparent;color:var(--muted);padding:0 10px;font-size:.75rem}
+.tape-toggle:hover{color:var(--accent);border-color:var(--line)}
+.tape-view{flex:1;min-width:0;overflow:hidden;white-space:nowrap}
 .tape-track{display:inline-flex;padding:6px 0;animation:tape 60s linear infinite}
-.tape:hover .tape-track{animation-play-state:paused}
+.tape-view:hover .tape-track{animation-play-state:paused}
 .tape-half{display:inline-flex;gap:28px;padding:0 14px}
 .tape-item{display:inline-flex;gap:8px}
 .tape-sym{color:var(--accent);text-transform:uppercase}
 @keyframes tape{to{transform:translateX(-50%)}}
-/* Si el sistema pide menos movimiento, la cinta queda quieta y se recorre a mano. */
-@media (prefers-reduced-motion:reduce){
-  .tape{overflow-x:auto}
-  .tape-track{animation:none}
-  .tape-half + .tape-half{display:none}
-}
+/* Quieta: se recorre deslizándola y basta una copia de los datos. */
+.tape.still .tape-view{overflow-x:auto}
+.tape.still .tape-track{animation:none}
+.tape.still .tape-half + .tape-half{display:none}
 
 .banner{padding:8px 12px;border:1px dashed var(--accent);color:var(--accent);background:var(--accent-soft);border-radius:var(--r);font-size:.85rem}
 .banner.crit{border:1px solid var(--down);color:var(--down);background:var(--down-soft)}

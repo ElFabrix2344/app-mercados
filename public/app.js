@@ -668,6 +668,22 @@
     return items;
   }
 
+  /** ¿La cinta se mueve? Lo que elegiste en este navegador o, si no, lo que pide el sistema («menos movimiento» = quieta). */
+  function tapeMoving() {
+    const saved = prefs.get('mercados.cinta', null);
+    if (saved === 'mover' || saved === 'quieta') return saved === 'mover';
+    return !window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
+  }
+
+  function applyTapeMotion() {
+    const moving = tapeMoving();
+    $('tape').classList.toggle('still', !moving);
+    const b = $('tape-toggle');
+    b.textContent = moving ? '⏸' : '▶';
+    b.setAttribute('aria-label', moving ? 'Detener la cinta de precios' : 'Mover la cinta de precios');
+    b.title = b.getAttribute('aria-label');
+  }
+
   function renderTape() {
     const items = tapeItems();
     $('tape').hidden = !items.length;
@@ -1607,6 +1623,11 @@
     $('wl-form').addEventListener('submit', saveList);
     $('d-close').addEventListener('click', () => select(state.selected));
     $('pf-form').addEventListener('submit', submitTrade);
+    $('tape-toggle').addEventListener('click', () => {
+      prefs.set('mercados.cinta', tapeMoving() ? 'quieta' : 'mover');
+      applyTapeMotion();
+    });
+    applyTapeMotion();
 
     // Amigos: solo datos públicos (BCRP y FRED). El servidor igual les niega los precios de Twelve Data.
     let role = 'owner';
