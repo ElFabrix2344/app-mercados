@@ -69,15 +69,40 @@ Solo cuando las secciones 1 a 4 estén terminadas.
 - [ ] **Probar la vista de amigo** con el correo de uno de ellos: debe ver solo los datos públicos (Perú, EE. UU., cobre, oro, BVL, reservas, calendario y la cinta pública).
 - [ ] **Pasarles la dirección** y avisarles que entran con su correo y un código.
 
-## 6. Ideas para después
+## 6. Noticias (después de abrir la app a los amigos)
+
+Primero el mercado en general, después cada acción. Fuentes probadas el 22 de octubre: todas respondieron con titulares del día, gratis y sin claves.
+
+- **Mercado en general:**
+  - Bloomberg: `feeds.bloomberg.com/markets/news.rss`.
+  - WSJ: `feeds.content.dowjones.io/public/rss/RSSMarketsMain`.
+  - MarketWatch: `feeds.content.dowjones.io/public/rss/mw_topstories`.
+  - CNBC: `cnbc.com/id/100003114/device/rss/rss.html`.
+- **En español y del Perú:**
+  - Bloomberg Línea: `bloomberglinea.com/arc/outboundfeeds/rss/?outputType=xml`.
+  - Gestión: `gestion.pe/arc/outboundfeeds/rss/?outputType=xml`.
+- **Por acción:**
+  - Yahoo Finance, por símbolo: `feeds.finance.yahoo.com/rss/2.0/headline?s=BAP&region=US&lang=en-US`.
+  - Google News, por nombre de empresa y en español: `news.google.com/rss/search?q=Credicorp&hl=es-419&gl=PE&ceid=PE:es-419`.
+- **No sirve:** las noticias de Twelve Data. Para BAP devolvieron un comunicado genérico de la NYSE, de hace un año, que no trataba de BAP.
+
+Pasos:
+- [ ] **Mercado en general:** una sección «Noticias» con lo último de las fuentes elegidas y filtros Perú, EE. UU. y mundo.
+  - Muestra titular, medio, hora y enlace, nunca la nota completa (Bloomberg y WSJ tienen muro de pago).
+  - El servidor lee los RSS cada 30 minutos y guarda todo en un solo registro de KV: unas 48 escrituras al día.
+  - Es pública: también la ven los amigos.
+- [ ] **Por acción:** en la ficha de cada símbolo, los titulares de Yahoo y Google News sobre esa empresa, filtrados por medios confiables. Más adelante, las fuentes oficiales: hechos de importancia de la SMV y reportes 8-K de la SEC.
+- [ ] **Conector:** una herramienta `noticias` para preguntarle a Claude qué movió al mercado o a una acción, cruzando titulares con precios.
+
+## 7. Ideas para después
 
 - Que cada amigo use su propia clave gratis de Twelve Data (lista y caché por persona) para que también vea precios.
-- Reportes de empresas de EE. UU. (SEC EDGAR) y noticias.
+- Reportes financieros de empresas de EE. UU. (SEC EDGAR).
 - Medir el gasto de créditos de Twelve Data en un día normal y ajustar el freno si hace falta.
 - Decidir si el repositorio sigue público (hoy lo está) o pasa a privado.
 - Herramienta `precios` del conector: aceptar los símbolos también como texto («BAP, SPY»).
 
-## 7. Mantenimiento con fecha fija
+## 8. Mantenimiento con fecha fija
 
 - **Cada diciembre:** agregar los feriados y cierres anticipados de la NYSE del año siguiente en `lib/market-hours.ts` (hoy están hasta 2027). Si no se hace, la app gasta créditos en los feriados.
 - **Cada año:** cargar el calendario económico del año siguiente cuando las fuentes lo publiquen. El BCRP suele publicar su cronograma en diciembre.
