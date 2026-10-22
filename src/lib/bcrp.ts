@@ -1,5 +1,6 @@
 // API de BCRPData: https://estadisticas.bcrp.gob.pe/estadisticas/series/ayuda/api
 // Formato: /api/{codigo1-codigo2}/json/{inicio}/{fin}/esp. Sin clave. Los días sin dato vienen como "n.d.".
+// Ojo: devuelve las series ordenadas por código, no en el orden pedido (`getBcrp` las reordena).
 
 import { ApiError } from './http';
 import { num } from './num';
@@ -11,6 +12,10 @@ export const BCRP_SERIES = {
   fxSell: 'PD04638PD', // TC interbancario, venta (diario)
   policyRate: 'PD12301MD', // tasa de referencia (diario)
   inflation12m: 'PN01273PM', // IPC Lima Metropolitana, var% 12 meses (mensual)
+  reserves: 'PD04650MD', // reservas internacionales netas, millones de US$ (diario, aunque el código termine en MD)
+  copper: 'PD04701XD', // cobre en Londres, centavos de US$ por libra (diario)
+  gold: 'PD04704XD', // oro en Londres, US$ por onza troy (diario)
+  bvl: 'PD38026MD', // índice general de la Bolsa de Valores de Lima (diario)
 } as const;
 
 export interface BcrpPoint {
@@ -81,9 +86,15 @@ export function parseBcrp(raw: unknown, seriesCount: number): BcrpPoint[] {
   return out;
 }
 
-/** start/end: YYYY-MM-DD para series diarias, YYYY-MM para mensuales. */
+/**
+ * start/end: YYYY-MM-DD para series diarias, YYYY-MM para mensuales. Los valores vuelven en el orden
+ * de `codes`: BCRPData responde con las series ordenadas por código (pedí cobre-oro-reservas y llegó
+ * reservas-cobre-oro), así que se piden ordenadas y se reacomodan. Probado con códigos del mismo prefijo
+ * (PD…); no mezcles prefijos (PD/PN) en un mismo pedido.
+ */
 export async function getBcrp(codes: string[], start: string, end: string, f: typeof fetch = fetch): Promise<BcrpPoint[]> {
-  const url = `${BASE}/${codes.join('-')}/json/${start}/${end}/esp`;
+  const sorted = [...codes].sort();
+  const url = `${BASE}/${sorted.join('-')}/json/${start}/${end}/esp`;
   let res: Response;
   try {
     res = await f(url, { headers: { Accept: 'application/json', 'User-Agent': 'mercados-panel-personal' } });
@@ -91,7 +102,9 @@ export async function getBcrp(codes: string[], start: string, end: string, f: ty
     throw new ApiError('upstream_error', 502, `BCRP no respondió: ${(e as Error).message}`, 'bcrp');
   }
   if (!res.ok) throw new ApiError('upstream_error', 502, `BCRP: HTTP ${res.status}`, 'bcrp');
-  return parseBcrp(extractJson(await res.text()), codes.length);
+  const points = parseBcrp(extractJson(await res.text()), sorted.length);
+  const pos = codes.map((c) => sorted.indexOf(c));
+  return points.map((p) => ({ date: p.date, values: pos.map((i) => p.values[i] ?? null) }));
 }
 
 /** Último punto con dato en la columna i. */

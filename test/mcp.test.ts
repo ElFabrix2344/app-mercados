@@ -2,8 +2,12 @@ import { describe, expect, it } from 'vitest';
 import type { Env } from '../src/env';
 import worker from '../src/index';
 import { handleMcp, localTime, monthEnds, type McpContext } from '../src/mcp';
-import { DAILY_CREDIT_CAP, DEFAULT_WATCHLIST } from '../src/services/market';
+import { EVENTS } from '../src/lib/calendar';
+import { DAILY_CREDIT_CAP, DEFAULT_WATCHLIST, summarize } from '../src/services/market';
 import { fakeFetch, memoryKV } from './helpers';
+
+/** La herramienta de calendario solo aparece cuando hay fechas cargadas. */
+const CALENDAR_TOOL = EVENTS.length ? ['calendario'] : [];
 
 // Jueves 15 oct 2026, 11:00 en Nueva York (bolsa abierta) = 10:00 en Lima.
 const NOW = new Date('2026-10-15T15:00:00Z');
@@ -58,12 +62,12 @@ async function callTool(c: McpContext, name: string, args: Record<string, unknow
 }
 
 describe('servidor MCP', () => {
-  it('responde a initialize y lista 5 herramientas de solo lectura', async () => {
+  it('responde a initialize y lista sus herramientas de solo lectura', async () => {
     const { c } = ctx();
     const init = await rpc(c, 'initialize', { protocolVersion: '2025-06-18', capabilities: {}, clientInfo: { name: 'test', version: '0' } });
     expect(init.result.serverInfo.name).toBe('mercados');
     const { result } = await rpc(c, 'tools/list');
-    expect(result.tools.map((t: { name: string }) => t.name)).toEqual(['precios', 'historial', 'comparar', 'peru_bcrp', 'eeuu_fred']);
+    expect(result.tools.map((t: { name: string }) => t.name)).toEqual(['precios', 'historial', 'comparar', 'peru_bcrp', 'eeuu_fred', ...CALENDAR_TOOL]);
     for (const t of result.tools) expect(t.annotations.readOnlyHint).toBe(true);
   });
 
@@ -71,7 +75,7 @@ describe('servidor MCP', () => {
     const { f, calls } = quotesFetch();
     const { c } = ctx({ quotes: storedQuotes(LONG_AGO) }, f, undefined, 'friend');
     const { result } = await rpc(c, 'tools/list');
-    expect(result.tools.map((t: { name: string }) => t.name)).toEqual(['peru_bcrp', 'eeuu_fred']);
+    expect(result.tools.map((t: { name: string }) => t.name)).toEqual(['peru_bcrp', 'eeuu_fred', ...CALENDAR_TOOL]);
     const intento = await rpc(c, 'tools/call', { name: 'precios', arguments: {} });
     expect(JSON.stringify(intento)).not.toContain('"precio"');
     expect(calls).toHaveLength(0);
@@ -243,13 +247,38 @@ describe('herramientas de Perú y EE. UU.', () => {
         inflation: [{ date: '2026-09-01', value: 1.54865469481509 }],
       },
     };
-    const { c } = ctx({ peru }, f);
+    const serie = (pts: [string, number][]) => ({ points: pts, summary: summarize(pts) });
+    const copper: [string, number][] = [['2025-10-10', 4.5], ['2026-09-11', 6.3], ['2026-09-14', 6.4], ['2026-10-14', 6.62]];
+    const markets = {
+      fetchedAt: '2026-10-15T12:00:00.000Z',
+      data: { copper: serie(copper), gold: serie([['2026-10-14', 4165.58]]), reserves: serie([['2026-10-14', 96654.6]]), bvl: serie([['2026-10-14', 59870.67]]) },
+    };
+    const { c } = ctx({ peru, 'peru-markets': markets }, f);
     const r = await callTool(c, 'peru_bcrp');
     expect(calls).toHaveLength(0);
     expect(r.data.dolar_interbancario).toEqual({ fecha: '2026-10-14', compra: 3.4372, venta: 3.4391 });
     expect(r.data.tasa_de_referencia_pct).toEqual({ fecha: '2026-10-14', valor: 4.25 });
     expect(r.data.inflacion_lima_12_meses_pct).toEqual([['2026-09', 1.55]]);
     expect(r.data.actualizado).toBe('2026-10-15 07:00');
+    expect(r.data.mercados.cobre_usd_por_libra).toEqual({
+      fecha: '2026-10-14',
+      valor: 6.62,
+      variacion_1_mes_pct: 5.08, // frente al 11 set (el cierre anterior al 14 set)
+      variacion_12_meses_pct: 47.11,
+      cierres_mensuales: [['2025-10-10', 4.5], ['2026-09-14', 6.4], ['2026-10-14', 6.62]],
+    });
+    expect(r.data.mercados.indice_general_bvl.variacion_12_meses_pct).toBeNull();
+  });
+
+  it('peru_bcrp entrega lo demás aunque fallen los mercados del BCRP', async () => {
+    const f = (async () => new Response('caído', { status: 503 })) as typeof fetch;
+    const peru = { fetchedAt: '2026-10-15T12:00:00.000Z', data: { fx: [], policyRate: { date: '2026-10-14', value: 4.25 }, inflation: [] } };
+    const { c } = ctx({ peru }, f);
+    const r = await callTool(c, 'peru_bcrp');
+    expect(r.isError).toBe(false);
+    expect(r.data.tasa_de_referencia_pct.valor).toBe(4.25);
+    expect(r.data.mercados).toBeNull();
+    expect(r.data.mercados_error).toContain('BCRP');
   });
 
   it('eeuu_fred avisa qué falta si no hay clave ni caché', async () => {

@@ -5,8 +5,9 @@
 import { createMcpHandler, McpServer, type CallToolResult } from '@modelcontextprotocol/server';
 import * as z from 'zod';
 import type { Role } from './auth/access';
+import { CALENDAR_UNTIL, EVENTS, SOURCES, upcoming } from './lib/calendar';
 import { ApiError } from './lib/http';
-import { mockCompare, mockHistory, mockPeru, mockQuotes, mockUsa } from './mock';
+import { mockCompare, mockHistory, mockPeru, mockPeruMarkets, mockQuotes, mockUsa } from './mock';
 import {
   COMPARE_MAX,
   DAILY_CREDIT_CAP,
@@ -19,11 +20,15 @@ import {
   getWatchlist,
   history,
   peru,
+  peruMarkets,
   quotes,
   usa,
   type CompareResult,
   type Deps,
+  type Fresh,
   type HistoryResult,
+  type MarketSeries,
+  type PeruMarkets,
 } from './services/market';
 
 export interface McpContext {
@@ -39,13 +44,14 @@ export interface McpContext {
 const INSTRUCTIONS =
   'Datos del panel personal «Mercados» del usuario: precios, historial con indicadores técnicos y comparación de los ' +
   'símbolos de su lista de seguimiento (Twelve Data), ' +
-  'Perú (BCRP) y EE. UU. (FRED). Los datos pueden venir de la caché del panel: al responder, di la hora de «actualizado» ' +
-  'y avisa si «dato_guardado» es true. Para símbolos fuera de la lista usa otra fuente (por ejemplo, el conector de Twelve Data).';
+  'Perú (BCRP), EE. UU. (FRED) y el calendario económico. Los datos pueden venir de la caché del panel: al responder, di ' +
+  'la hora de «actualizado» y avisa si «dato_guardado» es true. Para símbolos fuera de la lista usa otra fuente (por ' +
+  'ejemplo, el conector de Twelve Data).';
 
 const INSTRUCTIONS_FRIEND =
-  'Datos públicos del panel «Mercados»: Perú (BCRP) y EE. UU. (FRED). Los datos pueden venir de la caché del panel: al ' +
-  'responder, di la hora de «actualizado» y avisa si «dato_guardado» es true. Los precios de mercado no están disponibles ' +
-  'en este conector para tu cuenta.';
+  'Datos públicos del panel «Mercados»: Perú (BCRP), EE. UU. (FRED) y el calendario económico. Los datos pueden venir de ' +
+  'la caché del panel: al responder, di la hora de «actualizado» y avisa si «dato_guardado» es true. Los precios de ' +
+  'mercado no están disponibles en este conector para tu cuenta.';
 
 export function handleMcp(req: Request, c: McpContext): Promise<Response> {
   const handler = createMcpHandler(() => buildServer(c), {
@@ -63,6 +69,8 @@ export function buildServer(c: McpContext): McpServer {
   // Precios e historial (Twelve Data): solo para el dueño, por la licencia del plan gratis.
   if (owner) registerMarketTools(server, c, when);
   registerPublicTools(server, c, when);
+  // Sin fechas cargadas, una herramienta de calendario vacía solo confundiría a Claude.
+  if (EVENTS.length) registerCalendarTool(server, c);
   return server;
 }
 
@@ -270,6 +278,18 @@ function indicatorSnapshot(r: HistoryResult) {
   };
 }
 
+/** Una serie de mercado del BCRP para Claude: último dato, variaciones y cierre de cada mes. */
+function marketOut(s: MarketSeries) {
+  const { last, m1, y1 } = s.summary;
+  return {
+    fecha: last?.date ?? null,
+    valor: last?.value ?? null,
+    variacion_1_mes_pct: m1 && pct(m1.pct),
+    variacion_12_meses_pct: y1 && pct(y1.pct),
+    cierres_mensuales: monthEnds(s.points),
+  };
+}
+
 /** Base 100 del primer día común y del último día de cada mes. */
 function rebasedMonthEnds(r: CompareResult): (string | number | null)[][] {
   const byMonth = new Map<string, number>();
@@ -284,17 +304,28 @@ function registerPublicTools(server: McpServer, c: McpContext, when: When): void
   server.registerTool(
     'peru_bcrp',
     {
-      title: 'Perú: dólar, tasa de referencia e inflación (BCRP)',
+      title: 'Perú: dólar, tasas, inflación, cobre, oro, reservas y BVL (BCRP)',
       description:
         'Datos del Banco Central de Reserva del Perú (BCRPData, guardados hasta 6 h): tipo de cambio interbancario del dólar ' +
-        '(compra y venta en soles, últimos ~30 días hábiles), tasa de referencia de política monetaria (%) e inflación de Lima ' +
-        'Metropolitana a 12 meses (%, últimos 13 meses).',
+        '(compra y venta en soles, últimos ~30 días hábiles), tasa de referencia de política monetaria (%), inflación de Lima ' +
+        'Metropolitana a 12 meses (%, últimos 13 meses) y, en «mercados», cobre y oro en Londres, reservas internacionales ' +
+        'netas e índice general de la Bolsa de Valores de Lima: último dato, variación a 1 y 12 meses (en puntos ' +
+        'porcentuales: 12.5 = +12,5 %) y el cierre de cada mes del último año.',
       inputSchema: z.object({}),
       annotations: { readOnlyHint: true, openWorldHint: true },
     },
     () =>
       run(async () => {
         const r = c.mock ? mockPeru(deps.now) : await peru(deps);
+        // Los mercados van aparte: si el BCRP falla con ellos, igual se entrega lo demás.
+        let mk: Fresh<PeruMarkets> | null = null;
+        let mkError: string | null = null;
+        try {
+          mk = c.mock ? mockPeruMarkets(deps.now) : await peruMarkets(deps);
+        } catch (e) {
+          if (!(e instanceof ApiError)) throw e;
+          mkError = e.message;
+        }
         const last = r.data.fx.at(-1);
         return {
           fuente: 'BCRP (BCRPData)',
@@ -302,7 +333,25 @@ function registerPublicTools(server: McpServer, c: McpContext, when: When): void
           dolar_ultimos_dias: { columnas: ['fecha', 'compra', 'venta'], filas: r.data.fx.map((p) => [p.date, p.buy, p.sell]) },
           tasa_de_referencia_pct: r.data.policyRate && { fecha: r.data.policyRate.date, valor: r.data.policyRate.value },
           inflacion_lima_12_meses_pct: r.data.inflation.map((p) => [p.date.slice(0, 7), round(p.value)]),
-          series: { compra: 'PD04637PD', venta: 'PD04638PD', tasa_de_referencia: 'PD12301MD', inflacion: 'PN01273PM' },
+          mercados: mk && {
+            cobre_usd_por_libra: marketOut(mk.data.copper),
+            oro_usd_por_onza_troy: marketOut(mk.data.gold),
+            reservas_internacionales_netas_millones_usd: marketOut(mk.data.reserves),
+            indice_general_bvl: marketOut(mk.data.bvl),
+            actualizado: when(mk.fetchedAt),
+            dato_guardado: mk.stale,
+          },
+          ...(mkError ? { mercados_error: mkError } : {}),
+          series: {
+            compra: 'PD04637PD',
+            venta: 'PD04638PD',
+            tasa_de_referencia: 'PD12301MD',
+            inflacion: 'PN01273PM',
+            cobre: 'PD04701XD (centavos de US$ por libra, aquí convertido a US$)',
+            oro: 'PD04704XD',
+            reservas: 'PD04650MD',
+            bvl: 'PD38026MD',
+          },
           actualizado: when(r.fetchedAt),
           dato_guardado: r.stale,
           nota: r.note,
@@ -336,6 +385,37 @@ function registerPublicTools(server: McpServer, c: McpContext, when: When): void
           nota: r.note,
         };
       }),
+  );
+}
+
+function registerCalendarTool(server: McpServer, c: McpContext): void {
+  server.registerTool(
+    'calendario',
+    {
+      title: 'Calendario económico (BCRP, Fed e inflación de Perú y EE. UU.)',
+      description:
+        'Próximas fechas oficiales: decisiones de tasa del BCRP (Programa Monetario) y de la Reserva Federal (FOMC), y ' +
+        'publicación de la inflación de Lima Metropolitana (INEI) y de EE. UU. (BLS). La hora va en la zona horaria indicada ' +
+        'cuando la fuente la publica. «cobertura» dice hasta qué fecha está cargado cada calendario: más allá no hay datos.',
+      inputSchema: z.object({
+        dias: z.number().int().min(1).max(366).default(60).describe('Cuántos días hacia adelante (por defecto 60).'),
+      }),
+      annotations: { readOnlyHint: true, openWorldHint: false },
+    },
+    ({ dias }) =>
+      run(async () => ({
+        zona_horaria: c.timeZone,
+        eventos: upcoming(EVENTS, c.deps.now, dias, c.timeZone).map((e) => ({
+          fecha: e.date,
+          hora: e.at ? localTime(e.at, c.timeZone)!.slice(11) : null,
+          fuente: SOURCES[e.kind].name,
+          evento: e.title,
+          detalle: e.detail ?? null,
+          ...(e.tentative ? { tentativo: true } : {}),
+        })),
+        cobertura: CALENDAR_UNTIL,
+        fuentes: Object.fromEntries(Object.entries(SOURCES).map(([k, s]) => [k, s.url])),
+      })),
   );
 }
 

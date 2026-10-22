@@ -22,6 +22,9 @@
     cmp: { picks: [], range: '1A' }, // comparar: [{ sym, slot }] (el color sigue al símbolo) y rango
     cmpData: new Map(), // `${símbolos ordenados}|${rango}` → respuesta de /api/compare | 'cargando'
     cmpError: null, // { key, message } del último intento fallido
+    peruData: null, // lo último de /api/peru y /api/usa (el calendario muestra la tasa o la inflación actual)
+    usaData: null,
+    calendar: null, // respuesta de /api/calendar
     notes: new Map(), // clave → { text, kind }
   };
 
@@ -1185,6 +1188,8 @@
     const host = $('peru');
     try {
       const r = await api('/api/peru');
+      state.peruData = r.data;
+      renderCalendar();
       const { fx, policyRate, inflation } = r.data;
       const lastFx = fx.at(-1);
       const lastInf = inflation.at(-1);
@@ -1221,6 +1226,8 @@
     const host = $('usa');
     try {
       const r = await api('/api/usa');
+      state.usaData = r.data;
+      renderCalendar();
       const { treasury10y, fedFunds, cpiYoY } = r.data;
       const t10 = treasury10y.at(-1);
       const cpi = cpiYoY.at(-1);
@@ -1245,6 +1252,112 @@
       cChart.draw();
     } catch (e) {
       host.replaceChildren(h('p', { class: 'err' }, e.message));
+    }
+  }
+
+  // ---------- Perú: cobre, oro, BVL y reservas ----------
+  const PERU_MARKETS = [
+    { key: 'copper', label: 'Cobre (Londres)', unit: 'US$ por libra', dec: 2, csv: 'cobre_usd_libra' },
+    { key: 'gold', label: 'Oro (Londres)', unit: 'US$ por onza troy', dec: 2, csv: 'oro_usd_onza' },
+    { key: 'bvl', label: 'Índice general BVL', unit: 'puntos', dec: 2, csv: 'indice_general_bvl' },
+    { key: 'reserves', label: 'Reservas internacionales netas', unit: 'millones de US$', dec: 0, csv: 'reservas_millones_usd' },
+  ];
+
+  /** «1 mes ▲ +3.4%» con el color de la dirección; nada si no hay historia suficiente. */
+  function changeChip(label, ch) {
+    if (!ch) return null;
+    return h('span', { class: 'pm-chg' }, `${label} `, h('span', { class: trend(ch.pct) }, `${arrowOf(ch.pct)} ${pctFrac(ch.pct)}`));
+  }
+
+  async function loadPeruMarkets() {
+    const host = $('peru-markets');
+    try {
+      const r = await api('/api/peru-markets');
+      const draws = [];
+      const cards = PERU_MARKETS.map((m) => {
+        const s = r.data[m.key];
+        const last = s?.summary?.last;
+        if (!last) return h('div', { class: 'pm-card' }, metric(m.label, '—', 'Sin datos del BCRP'));
+        const fmt = (v) => nf(m.dec).format(v);
+        const block = chartBlock(
+          'Último año',
+          s.points.map(([date, v]) => ({ date, v })),
+          { fmt, height: 120, aria: `${m.label}, último año (${m.unit})` },
+          { filename: `bcrp_${m.csv}_${today()}.csv`, header: ['fecha', m.csv], rows: s.points },
+        );
+        draws.push(block.draw);
+        return h(
+          'div',
+          { class: 'pm-card' },
+          metric(m.label, fmt(last.value), `${m.unit} · ${fDay.format(day(last.date))}`),
+          h('div', { class: 'pm-chgs' }, changeChip('1 mes', s.summary.m1), changeChip('12 meses', s.summary.y1)),
+          block.wrap,
+        );
+      });
+      host.replaceChildren(...cards, ...[staleHint(r)].filter(Boolean));
+      for (const draw of draws) draw();
+    } catch (e) {
+      host.replaceChildren(h('p', { class: 'err' }, e.message));
+    }
+  }
+
+  // ---------- calendario ----------
+  const KIND_LABEL = { bcrp: 'BCRP', fed: 'Fed', inei: 'INEI', bls: 'BLS' };
+  const fCalDay = fmt({ weekday: 'short', day: 'numeric', month: 'short', timeZone: 'UTC' });
+
+  function untilText(date) {
+    const days = Math.round((Date.parse(`${date}T12:00:00Z`) - Date.parse(`${limaDate(new Date())}T12:00:00Z`)) / 86_400_000);
+    return days === 0 ? 'hoy' : days === 1 ? 'mañana' : `en ${days} días`;
+  }
+
+  /** El dato que el evento puede mover, si ya cargaron Perú o EE. UU. */
+  function currentFor(kind) {
+    const pe = state.peruData;
+    const us = state.usaData;
+    if (kind === 'bcrp' && pe?.policyRate) return `Tasa de referencia hoy: ${rate(pe.policyRate.value)}`;
+    if (kind === 'fed' && us?.fedFunds) return `Tasa efectiva hoy: ${rate(us.fedFunds.value)}`;
+    const last = kind === 'inei' ? pe?.inflation?.at(-1) : kind === 'bls' ? us?.cpiYoY?.at(-1) : null;
+    return last ? `Último dato: ${rate(last.value, kind === 'bls' ? 1 : 2)} (${fMonthYear.format(day(last.date))})` : null;
+  }
+
+  function renderCalendar() {
+    const r = state.calendar;
+    if (!r) return;
+    const list = $('calendar');
+    const events = r.events.slice(0, 10);
+    if (!events.length) {
+      list.replaceChildren(h('li', { class: 'muted' }, 'No hay eventos cargados para los próximos meses.'));
+    } else {
+      list.replaceChildren(
+        ...events.map((e) => {
+          const when = [untilText(e.date), e.at ? `${fTime.format(new Date(e.at))} h` : null].filter(Boolean).join(' · ');
+          const sub = [e.detail, currentFor(e.kind)].filter(Boolean).join(' · ');
+          return h(
+            'li',
+            { class: 'cal-row' },
+            h('span', { class: 'cal-date' }, fCalDay.format(day(e.date)).replace(/[.,]/g, '')),
+            h('span', { class: 'cal-src' }, KIND_LABEL[e.kind]),
+            h('span', { class: 'cal-body' }, h('span', {}, e.title, e.tentative ? h('small', {}, ' (tentativa)') : null), sub ? h('small', {}, sub) : null),
+            h('span', { class: 'cal-when' }, when),
+          );
+        }),
+      );
+    }
+    const until = Object.values(r.coverage).sort()[0];
+    $('cal-note').textContent = `Fechas oficiales de cada fuente${until ? `, cargadas hasta el ${fDayYear.format(day(until))}` : ''}. Horas en hora de Lima.`;
+  }
+
+  async function loadCalendar() {
+    const sec = $('calendar').closest('section');
+    try {
+      const r = await api('/api/calendar?days=120');
+      // Sin fechas oficiales cargadas no se muestra la sección (mejor nada que un calendario vacío).
+      sec.hidden = !r.loaded;
+      if (!r.loaded) return;
+      state.calendar = r;
+      renderCalendar();
+    } catch (e) {
+      $('calendar').replaceChildren(h('li', { class: 'err' }, e.message));
     }
   }
 
@@ -1306,6 +1419,8 @@
       $('fresh').textContent = 'Datos públicos';
       loadPeru();
       loadUsa();
+      loadPeruMarkets();
+      loadCalendar();
       setInterval(renderClock, 30_000);
       return;
     }
@@ -1324,6 +1439,8 @@
     renderCompare();
     loadPeru();
     loadUsa();
+    loadPeruMarkets();
+    loadCalendar();
     await loadQuotes(false);
     // La comparación espera a los historiales de las filas: así sale de la caché y no choca con el límite por minuto.
     loadHistories().then(loadCompare);

@@ -54,6 +54,7 @@ describe('rutas según el rol (local, con datos de prueba)', () => {
 
   it('un amigo sí ve Perú y EE. UU., y su estado no muestra configuración ni créditos', async () => {
     expect((await get('/api/peru', 'friend')).status).toBe(200);
+    expect((await get('/api/peru-markets', 'friend')).status).toBe(200);
     expect((await get('/api/usa', 'friend')).status).toBe(200);
     const status = (await (await get('/api/status', 'friend')).json()) as Record<string, unknown>;
     expect(status.role).toBe('friend');

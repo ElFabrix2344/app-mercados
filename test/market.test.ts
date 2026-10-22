@@ -6,11 +6,13 @@ import {
   compare,
   compareSymbols,
   history,
+  peruMarkets,
   quotes,
   rangeStart,
   rangeStartIndex,
   shapeCompare,
   sliceRange,
+  summarize,
   validateWatchlist,
 } from '../src/services/market';
 import { fakeFetch, memoryKV } from './helpers';
@@ -290,6 +292,42 @@ describe('comparar', () => {
     expect(compareSymbols([' bap', 'SPY', 'BAP'])).toEqual(['BAP', 'SPY']);
     expect(() => compareSymbols(['BAP'])).toThrow(/de 2 a 4/);
     expect(() => compareSymbols(['A', 'B', 'C', 'D', 'E'])).toThrow(/de 2 a 4/);
+  });
+});
+
+describe('Perú: cobre, oro, reservas y BVL', () => {
+  it('pide las 4 series en un solo pedido, pasa el cobre a US$ por libra y calcula variaciones', async () => {
+    // BCRPData responde ordenado por código: reservas, cobre (centavos), oro, BVL.
+    const { f, calls } = fakeFetch(() => ({
+      body: {
+        periods: [
+          { name: '10.Oct.25', values: ['80000', '450', '2500', '30000'] },
+          { name: '15.Set.26', values: ['95000', '640', '4000', 'n.d.'] },
+          { name: '16.Oct.26', values: ['96654.60272427', '662.018070575889', '4165.58', '59870.67'] },
+        ],
+      },
+    }));
+    const { kv } = memoryKV();
+    const r = await peruMarkets({ kv, now: new Date('2026-10-17T15:00:00Z'), fetch: f });
+    expect(calls).toHaveLength(1);
+    expect(calls[0]!.pathname).toContain('/PD04650MD-PD04701XD-PD04704XD-PD38026MD/json/');
+    const m = r.data;
+    expect(m.copper.points.at(-1)).toEqual(['2026-10-16', 6.6202]);
+    expect(m.reserves.summary.last).toEqual({ date: '2026-10-16', value: 96654.6027 });
+    expect(m.copper.summary.y1).toMatchObject({ date: '2025-10-10', value: 4.5 });
+    expect(m.copper.summary.y1!.pct).toBeCloseTo(6.6202 / 4.5 - 1, 10);
+    expect(m.copper.summary.m1).toMatchObject({ date: '2026-09-15', value: 6.4 });
+    // La BVL no tiene dato a mediados de setiembre: sin base cercana no se inventa la variación del mes.
+    expect(m.bvl.points).toHaveLength(2);
+    expect(m.bvl.summary.m1).toBeNull();
+    expect(m.bvl.summary.y1!.pct).toBeCloseTo(59870.67 / 30000 - 1, 10);
+  });
+
+  it('sin historia suficiente no hay variación a 12 meses', () => {
+    const s = summarize([['2026-06-01', 10], ['2026-10-15', 12]]);
+    expect(s.last).toEqual({ date: '2026-10-15', value: 12 });
+    expect(s.y1).toBeNull();
+    expect(summarize([])).toEqual({ last: null, m1: null, y1: null });
   });
 });
 

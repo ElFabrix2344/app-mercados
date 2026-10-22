@@ -455,6 +455,73 @@ export async function peru(d: Deps): Promise<Fresh<PeruData>> {
   });
 }
 
+// ---------- Perú: cobre, oro, reservas y BVL (BCRP) ----------
+
+export interface PointChange {
+  date: string;
+  value: number;
+  pct: number;
+}
+
+export interface SeriesSummary {
+  last: { date: string; value: number } | null;
+  /** Variación frente al último dato anterior a hace 1 mes y a hace 12 meses (como los rangos 1M y 1A). */
+  m1: PointChange | null;
+  y1: PointChange | null;
+}
+
+export interface MarketSeries {
+  points: [string, number][];
+  summary: SeriesSummary;
+}
+
+export interface PeruMarkets {
+  /** Cobre en Londres, US$ por libra (el BCRP lo publica en centavos). */
+  copper: MarketSeries;
+  /** Oro en Londres, US$ por onza troy. */
+  gold: MarketSeries;
+  /** Reservas internacionales netas, millones de US$. */
+  reserves: MarketSeries;
+  /** Índice general de la Bolsa de Valores de Lima. */
+  bvl: MarketSeries;
+}
+
+/** Último dato y sus variaciones a 1 y 12 meses; null donde no hay historia suficiente. */
+export function summarize(points: [string, number][]): SeriesSummary {
+  const last = points.at(-1);
+  if (!last) return { last: null, m1: null, y1: null };
+  const dates = points.map(([date]) => date);
+  const change = (range: Range): PointChange | null => {
+    const start = rangeStart(range, last[0]);
+    const base = points[rangeStartIndex(dates, range, last[0])]!;
+    // Sin historia suficiente, o con un hueco largo justo antes del inicio, la variación no sería la del periodo.
+    if (base[0] > start || base[0] < addDays(start, -15) || base[0] === last[0]) return null;
+    return { date: base[0], value: base[1], pct: last[1] / base[1] - 1 };
+  };
+  return { last: { date: last[0], value: last[1] }, m1: change('1M'), y1: change('1A') };
+}
+
+const MARKET_CODES = [BCRP_SERIES.copper, BCRP_SERIES.gold, BCRP_SERIES.reserves, BCRP_SERIES.bvl];
+
+/** Columnas del pedido (en el orden de MARKET_CODES) → series sin los días sin dato. */
+export function shapeMarkets(points: BcrpPoint[]): PeruMarkets {
+  const column = (i: number, scale = 1): MarketSeries => {
+    const pts = points
+      .filter((p) => p.values[i] != null)
+      .map((p) => [p.date, Math.round(p.values[i]! * scale * 1e4) / 1e4] as [string, number]);
+    return { points: pts, summary: summarize(pts) };
+  };
+  return { copper: column(0, 0.01), gold: column(1), reserves: column(2), bvl: column(3) };
+}
+
+/** Un año y algo de datos diarios (para la variación a 12 meses). Datos públicos: también los ven los amigos. */
+export async function peruMarkets(d: Deps): Promise<Fresh<PeruMarkets>> {
+  const today = isoDate(d.now);
+  return cached<PeruMarkets>(d, 'peru-markets', MACRO_TTL_MS, async () =>
+    shapeMarkets(await getBcrp(MARKET_CODES, addDays(today, -400), today, d.fetch)),
+  );
+}
+
 // ---------- EE. UU. (FRED) ----------
 
 export interface UsaData {

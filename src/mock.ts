@@ -8,10 +8,13 @@ import {
   DEFAULT_RANGE,
   shapeCompare,
   shapeHistory,
+  summarize,
   type CompareResult,
   type Fresh,
   type HistoryResult,
+  type MarketSeries,
   type PeruData,
+  type PeruMarkets,
   type QuotesData,
   type Range,
   type UsaData,
@@ -25,6 +28,11 @@ const BASE: Record<string, { name: string; exchange: string; currency: string; s
   SPY: { name: 'SPDR S&P 500 ETF', exchange: 'NYSE', currency: 'USD', start: 560, vol: 0.01, beta: 0.95 },
   'USD/PEN': { name: 'Dólar / Sol', exchange: 'Forex', currency: 'PEN', start: 3.7, vol: 0.003, beta: -0.35 },
   'BTC/USD': { name: 'Bitcoin / Dólar', exchange: 'Binance', currency: 'USD', start: 65000, vol: 0.03, beta: 0.35, crypto: true },
+  // Series del BCRP (cobre en US$/lb, oro en US$/oz, reservas en millones de US$, índice BVL).
+  'BCRP:COBRE': { name: 'Cobre', exchange: 'BCRP', currency: 'USD', start: 4.4, vol: 0.014, beta: 0.4 },
+  'BCRP:ORO': { name: 'Oro', exchange: 'BCRP', currency: 'USD', start: 2900, vol: 0.009, beta: -0.1 },
+  'BCRP:RIN': { name: 'Reservas', exchange: 'BCRP', currency: 'USD', start: 80000, vol: 0.002, beta: 0.1 },
+  'BCRP:BVL': { name: 'BVL', exchange: 'BCRP', currency: 'PEN', start: 30000, vol: 0.011, beta: 0.5 },
 };
 
 function seedOf(s: string): number {
@@ -124,6 +132,14 @@ export function mockPeru(now: Date): Fresh<PeruData> {
     value: Number((2 + Math.sin(i / 2)).toFixed(2)),
   }));
   return fresh({ fx, policyRate: { date: addDays(today, -1), value: 4.5 }, inflation }, now);
+}
+
+export function mockPeruMarkets(now: Date): Fresh<PeruMarkets> {
+  const series = (symbol: string): MarketSeries => {
+    const points = mockPoints(symbol, now).slice(-280);
+    return { points, summary: summarize(points) };
+  };
+  return fresh({ copper: series('BCRP:COBRE'), gold: series('BCRP:ORO'), reserves: series('BCRP:RIN'), bvl: series('BCRP:BVL') }, now);
 }
 
 export function mockUsa(now: Date): Fresh<UsaData> {

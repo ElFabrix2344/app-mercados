@@ -207,5 +207,29 @@ button[disabled]{opacity:.6;cursor:default}
 .metric .value{font-size:1.35rem;font-weight:500}
 .metric .sub{font-size:.75rem;color:var(--muted)}
 
+/* ---------- Perú: cobre, oro, BVL y reservas ---------- */
+.pm-grid{display:grid;gap:18px 24px;grid-template-columns:repeat(auto-fit,minmax(250px,1fr))}
+.pm-grid > .hint{grid-column:1 / -1}
+.pm-card{display:flex;flex-direction:column;gap:6px;min-width:0}
+.pm-chgs{display:flex;flex-wrap:wrap;gap:2px 14px;font-size:.78rem;color:var(--muted);padding-left:12px}
+.pm-chg{white-space:nowrap}
+
+/* ---------- calendario ---------- */
+.cal{list-style:none;margin:0;padding:0;display:flex;flex-direction:column}
+.cal-row{display:grid;grid-template-columns:12ch 6ch minmax(0,1fr) auto;gap:2px 14px;align-items:baseline;padding:8px 0;border-bottom:1px solid var(--hair)}
+.cal-date{text-transform:uppercase;white-space:nowrap}
+.cal-src{font-size:.7rem;color:var(--muted);border:1px solid var(--line);border-radius:var(--r);padding:0 5px;text-align:center;
+  text-transform:uppercase;letter-spacing:.04em;white-space:nowrap}
+.cal-body{display:flex;flex-direction:column;min-width:0}
+.cal-body small{color:var(--muted);font-size:.78rem}
+.cal-when{color:var(--muted);font-size:.8rem;text-align:right;white-space:nowrap}
+@media (max-width:720px){
+  .cal-row{grid-template-columns:auto minmax(0,1fr);grid-template-areas:"date when" "src body";gap:4px 10px}
+  .cal-date{grid-area:date}
+  .cal-when{grid-area:when}
+  .cal-src{grid-area:src;align-self:start}
+  .cal-body{grid-area:body}
+}
+
 .foot{font-size:.75rem;color:var(--muted);border-top:1px solid var(--line);padding-top:10px}
 .foot p{margin:0 0 4px}

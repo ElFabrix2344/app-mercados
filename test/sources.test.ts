@@ -87,6 +87,16 @@ describe('BCRP', () => {
     expect(lastWithValue(pts, 1)).toEqual({ date: '2026-10-14', value: 3.4391 });
   });
 
+  it('pide las series ordenadas por código y devuelve los valores en el orden pedido', async () => {
+    // Como BCRPData: responde ordenado por código (reservas PD04650MD, cobre PD04701XD, oro PD04704XD).
+    const { f, calls } = fakeFetch(() => ({
+      body: { periods: [{ name: '16.Oct.26', values: ['96654.6', '662.0', '4165.58'] }] },
+    }));
+    const pts = await getBcrp(['PD04701XD', 'PD04704XD', 'PD04650MD'], '2026-10-01', '2026-10-16', f);
+    expect(calls[0]!.pathname).toBe('/estadisticas/series/api/PD04650MD-PD04701XD-PD04704XD/json/2026-10-01/2026-10-16/esp');
+    expect(pts).toEqual([{ date: '2026-10-16', values: [662, 4165.58, 96654.6] }]);
+  });
+
   it('ignora el aviso HTML de PHP que el BCRP pega después del JSON', async () => {
     const json = '{\n"config":{"series":[{"name":"IPC {var%}"}]},\n"periods":[{"name":"Sep.2026","values":["4.54865469481509"]}]\n}';
     const f = (async () =>

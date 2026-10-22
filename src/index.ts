@@ -1,9 +1,10 @@
 import { allowedEmails, roleFor, verifyAccess, type Role } from './auth/access';
 import { isLocalDev, isMock, trimSecrets, type Env } from './env';
+import { CALENDAR_UNTIL, EVENTS, SOURCES, upcoming } from './lib/calendar';
 import { ApiError, errorResponse, escapeHtml, htmlPage, json } from './lib/http';
 import { NYSE_CALENDAR_UNTIL } from './lib/market-hours';
 import { signPayload } from './lib/signed';
-import { mockCompare, mockHistory, mockPeru, mockQuotes, mockUsa } from './mock';
+import { mockCompare, mockHistory, mockPeru, mockPeruMarkets, mockQuotes, mockUsa } from './mock';
 import {
   DAILY_CREDIT_CAP,
   DEFAULT_RANGE,
@@ -16,6 +17,7 @@ import {
   history,
   isRange,
   peru,
+  peruMarkets,
   quotes,
   saveWatchlist,
   usa,
@@ -133,8 +135,23 @@ async function route(req: Request, env: Env, url: URL, role: Role, email: string
       case '/api/peru':
         return json(mock ? mockPeru(now) : await peru(deps));
 
+      case '/api/peru-markets':
+        return json(mock ? mockPeruMarkets(now) : await peruMarkets(deps));
+
       case '/api/usa':
         return json(mock ? mockUsa(now) : await usa(deps));
+
+      case '/api/calendar': {
+        // Fechas oficiales cargadas en el código: no llama a ninguna API.
+        const days = Math.min(366, Math.max(1, Math.round(Number(url.searchParams.get('days'))) || 120));
+        return json({
+          loaded: EVENTS.length > 0,
+          events: upcoming(EVENTS, now, days, env.TIMEZONE || 'America/Lima'),
+          coverage: CALENDAR_UNTIL,
+          sources: SOURCES,
+          now: now.toISOString(),
+        });
+      }
     }
   }
 

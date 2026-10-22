@@ -6,8 +6,12 @@ import type { Env } from '../src/env';
 import app from '../src/index';
 import { signPayload } from '../src/lib/signed';
 import worker, { MCP_ORIGIN, MCP_RESOURCE, allowedRedirect, type McpEnv } from '../src/mcp-worker';
+import { EVENTS } from '../src/lib/calendar';
 import { DEFAULT_WATCHLIST } from '../src/services/market';
 import { memoryKV } from './helpers';
+
+/** La herramienta de calendario solo aparece cuando hay fechas cargadas. */
+const CALENDAR_TOOL = EVENTS.length ? ['calendario'] : [];
 
 const SECRET = 'x'.repeat(40);
 const OWNER = 'yo@example.com';
@@ -106,7 +110,7 @@ describe('conector: descubrimiento OAuth', () => {
 });
 
 describe('conector: login completo', () => {
-  it('registro → permiso → app (correo) → código → token → /mcp con las 5 herramientas', async () => {
+  it('registro → permiso → app (correo) → código → token → /mcp con sus herramientas', async () => {
     const env = mcpEnv();
     const jar = new Jar();
     const clientId = await register(env);
@@ -192,7 +196,7 @@ describe('conector: login completo', () => {
       ? text.split('\n').find((l) => l.startsWith('data: '))!.slice(6)
       : text;
     const body = JSON.parse(raw) as { result: { tools: { name: string }[] } };
-    expect(body.result.tools.map((t) => t.name)).toEqual(['precios', 'historial', 'comparar', 'peru_bcrp', 'eeuu_fred']);
+    expect(body.result.tools.map((t) => t.name)).toEqual(['precios', 'historial', 'comparar', 'peru_bcrp', 'eeuu_fred', ...CALENDAR_TOOL]);
 
     // 7. Si el correo deja de ser dueño, el mismo token ya no sirve
     const revoked = await worker.fetch(

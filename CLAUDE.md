@@ -21,6 +21,8 @@ App de mercados (Cloudflare Worker + panel web + conector MCP para Claude). El R
 - La Cache API **no funciona detrás de Access**, así que todo va a KV. El plan gratis permite **1.000 escrituras al día por cuenta**: escribe poco y agrupado.
 - Twelve Data, plan gratis: 800 créditos al día y 8 por minuto, **compartidos con el conector oficial de Twelve Data** que se usa en claude.ai. La app se frena en 600. Además, el volumen intradía del plan gratis viene de una sola parte de las bolsas: no lo muestres como volumen real.
 - El BCRP pega un aviso HTML de PHP después del JSON. `extractJson` lo resuelve: no vuelvas a `res.json()`.
+- La API del BCRP devuelve las series **ordenadas por código**, no en el orden pedido. `getBcrp` las pide ordenadas y las reacomoda; no mezcles prefijos (PD/PN) en un mismo pedido.
+- El calendario económico (`lib/calendar.ts`) se carga a mano, como los feriados de la NYSE: cada fecha se verifica en su fuente oficial. Sin fechas, el panel oculta la sección y el conector no ofrece `calendario`.
 - FRED marca con `"."` los días sin dato.
 - Los feriados y cierres anticipados de la NYSE están cargados hasta 2027 en `lib/market-hours.ts` (`NYSE_CALENDAR_UNTIL`). **Cada año hay que agregar el siguiente** desde nyse.com/markets/hours-calendars; si no, la app gasta créditos en los feriados.
 - El historial guarda 5 años (`hist5:<símbolo>` en KV) por 1 crédito; los rangos se recortan de ahí con `sliceRange`, que empieza en el cierre **anterior** al inicio del rango.
@@ -29,6 +31,8 @@ App de mercados (Cloudflare Worker + panel web + conector MCP para Claude). El R
 - Si cambias la forma de los datos guardados en KV, lee también el formato anterior (ver `readQuotes`).
 
 ## Estado y próximos pasos
+
+**Lo que falta, en orden, está en `ROADMAP.md`**: empieza por ahí en cada sesión nueva.
 
 - **Cuenta propia de Cloudflare** («mercados», `account_id` en `wrangler.jsonc`), con su subdominio y su Zero Trust: la app vive en `https://mercados.mercados.workers.dev`. La cuenta anterior es de otro proyecto del usuario y no se debe tocar. Ahí queda una copia vieja del Worker `mercados` que se borra **solo con confirmación del usuario**.
 - **Conector de Claude:** vive en el Worker aparte `mercados-mcp` (`src/mcp-worker.ts`, `wrangler.mcp.jsonc`), con OAuth propio (`@cloudflare/workers-oauth-provider`). Tu correo se confirma en la app, ruta `/conector/identidad`, detrás de Access. Se descartó *Managed OAuth* de Access porque falla en claude.ai web y móvil (anthropics/claude-ai-mcp#410). Por ahora es solo para el dueño. `mercados-mcp` tiene sus propios secretos (`OWNER_EMAILS`, `LOGIN_LINK_SECRET`, que debe ser igual en ambos Workers, `TWELVE_DATA_API_KEY` y `FRED_API_KEY`). Las pruebas del login completo están en `test/mcp-worker.test.ts`; en Node, `cloudflare:workers` se reemplaza con `test/stubs/`.
