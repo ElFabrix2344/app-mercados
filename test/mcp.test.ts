@@ -3,7 +3,7 @@ import type { Env } from '../src/env';
 import worker from '../src/index';
 import { handleMcp, localTime, monthEnds, type McpContext } from '../src/mcp';
 import { EVENTS } from '../src/lib/calendar';
-import { DAILY_CREDIT_CAP, DEFAULT_WATCHLIST, summarize } from '../src/services/market';
+import { DAILY_CREDIT_CAP, DEFAULT_WATCHLIST, summarize, type Deps } from '../src/services/market';
 import { fakeFetch, memoryKV } from './helpers';
 
 /** La herramienta de calendario solo aparece cuando hay fechas cargadas. */
@@ -31,7 +31,9 @@ const storedQuotes = (at: string, symbols = DEFAULT_WATCHLIST) => ({
   },
 });
 
-function ctx(kvInit: Record<string, unknown> = {}, f?: typeof fetch, keys = { twelveKey: 'k', fredKey: 'f' }, role: McpContext['role'] = 'owner') {
+type Keys = Pick<Deps, 'twelveKey' | 'fredKey' | 'finnhubKey'>;
+
+function ctx(kvInit: Record<string, unknown> = {}, f?: typeof fetch, keys: Keys = { twelveKey: 'k', fredKey: 'f' }, role: McpContext['role'] = 'owner') {
   const mem = memoryKV(kvInit);
   const c: McpContext = { deps: { kv: mem.kv, now: NOW, fetch: f, ...keys }, mock: false, timeZone: 'America/Lima', role };
   return { c, mem };
@@ -248,6 +250,43 @@ describe('herramienta calendario', () => {
     expect(r.data.eventos.find((e: { fecha: string }) => e.fecha === '2026-11-10').hora).toBe('08:30');
     expect(r.data.eventos.find((e: { fecha: string }) => e.fecha === '2026-11-12').hora).toBeNull();
     expect(r.data.cobertura.bcrp).toBe('2026-12-31');
+    // Los resultados de empresas (Finnhub) son solo para el dueño.
+    expect(r.data.resultados_empresas).toBeUndefined();
+    expect(r.data.fuentes.empresa).toBeUndefined();
+  });
+
+  it('al dueño le suma los resultados de su lista y el último del mes, con la sorpresa del BPA', async () => {
+    const bap = [
+      { symbol: 'BAP', date: '2026-10-05', hour: 'bmo', quarter: 2, year: 2026, epsEstimate: 4, epsActual: 4.4, revenueEstimate: 1.4e9, revenueActual: 1.45e9 },
+      { symbol: 'BAP', date: '2026-11-09', hour: 'amc', quarter: 3, year: 2026, epsEstimate: 5.1, epsActual: null, revenueEstimate: 1.5e9, revenueActual: null },
+    ];
+    const { f, calls } = fakeFetch((url) => ({ body: { earningsCalendar: url.searchParams.get('symbol') === 'BAP' ? bap : [] } }));
+    const { c } = ctx({}, f, { twelveKey: 'k', fredKey: 'f', finnhubKey: 'h' });
+    const r = await callTool(c, 'calendario', { dias: 30 });
+    // Solo acciones de la lista: sin USD/PEN ni BTC/USD.
+    expect(calls.map((u) => u.searchParams.get('symbol')).sort()).toEqual(['BAP', 'BVN', 'SCCO', 'SPY']);
+    expect(r.data.eventos.find((e: { simbolo?: string }) => e.simbolo === 'BAP')).toMatchObject({
+      fecha: '2026-11-09',
+      hora: null,
+      fuente: 'Finnhub (resultados de empresas)',
+      evento: 'Resultados de BAP',
+      momento: 'después del cierre',
+      trimestre_fiscal: '3T 2026',
+      bpa_estimado: 5.1,
+      ingresos_estimados: 1.5e9,
+    });
+    expect(r.data.resultados_empresas.recientes).toEqual([
+      expect.objectContaining({ simbolo: 'BAP', fecha: '2026-10-05', bpa_real: 4.4, ingresos_reales: 1.45e9, sorpresa_bpa_pct: 10 }),
+    ]);
+    expect(r.data.fuentes.empresa).toContain('finnhub.io');
+  });
+
+  it('sin clave de Finnhub el dueño recibe el aviso y no se llama a nadie', async () => {
+    const { f, calls } = quotesFetch();
+    const r = await callTool(ctx({}, f).c, 'calendario', { dias: 30 });
+    expect(calls).toHaveLength(0);
+    expect(r.data.resultados_empresas).toMatchObject({ activo: false });
+    expect(r.data.eventos.some((e: { simbolo?: string }) => e.simbolo)).toBe(false);
   });
 });
 

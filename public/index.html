@@ -85,6 +85,7 @@
       </details>
       <button type="button" id="d-close">Cerrar</button>
     </div>
+    <p class="d-earn" id="d-earn" hidden></p>
     <div class="d-tools">
       <div class="ranges" id="d-ranges" role="group" aria-label="Periodo del gráfico"></div>
       <div class="legend" id="d-ind" role="group" aria-label="Indicadores técnicos"></div>
@@ -206,12 +207,13 @@
   <section class="screen" aria-labelledby="cal-h" hidden>
     <div class="screen-head">
       <h2 id="cal-h">Calendario</h2>
-      <span class="src">BCRP · Fed · INEI · BLS</span>
+      <span class="src">BCRP · Fed · INEI · BLS<span id="cal-src-co" hidden> · Finnhub</span></span>
       <details class="help">
         <summary aria-label="De dónde salen las fechas">?</summary>
         <div class="help-body">
           <p>Fechas oficiales de cada fuente: decisiones de tasas del BCRP y de la Fed, e inflación del INEI (Lima) y del BLS (EE. UU.).</p>
           <p>Las que la fuente todavía no confirma aparecen como tentativas. Las horas están en hora de Lima.</p>
+          <p class="owner-only">Los resultados de las acciones de tu lista vienen de Finnhub y solo los ves tú. El trimestre es el fiscal de cada empresa; el BPA (beneficio por acción) estimado es el consenso de analistas, ajustado y en la moneda en que reporta la empresa.</p>
         </div>
       </details>
     </div>

@@ -1,10 +1,23 @@
 import { allowedEmails, roleFor, verifyAccess, type Role } from './auth/access';
 import { isLocalDev, isMock, trimSecrets, type Env } from './env';
-import { CALENDAR_UNTIL, EVENTS, SOURCES, upcoming } from './lib/calendar';
+import { CALENDAR_UNTIL, EVENTS, sourcesFor, upcoming } from './lib/calendar';
 import { ApiError, errorResponse, escapeHtml, htmlPage, json } from './lib/http';
 import { NYSE_CALENDAR_UNTIL, usMarketOpen } from './lib/market-hours';
+import { isoDate } from './lib/num';
 import { signPayload } from './lib/signed';
-import { mockCompare, mockHistory, mockNews, mockPeru, mockPeruMarkets, mockPriceSource, mockQuotes, mockSymbolNews, mockUsa } from './mock';
+import {
+  mockCompanyCalendar,
+  mockCompare,
+  mockHistory,
+  mockNews,
+  mockPeru,
+  mockPeruMarkets,
+  mockPriceSource,
+  mockQuotes,
+  mockSymbolNews,
+  mockUsa,
+} from './mock';
+import { companyCalendar } from './services/earnings';
 import { marketNews, quoteName, symbolNews } from './services/news';
 import { addTrade, deleteTrade, kvSource, readTrades, valuePortfolio } from './services/portfolio';
 import {
@@ -80,7 +93,7 @@ async function route(req: Request, env: Env, url: URL, role: Role, email: string
 
   const now = new Date();
   const mock = isMock(url, env);
-  const deps: Deps = { kv: env.CACHE, now, twelveKey: env.TWELVE_DATA_API_KEY, fredKey: env.FRED_API_KEY };
+  const deps: Deps = { kv: env.CACHE, now, twelveKey: env.TWELVE_DATA_API_KEY, fredKey: env.FRED_API_KEY, finnhubKey: env.FINNHUB_API_KEY };
 
   if (OWNER_ONLY.has(p) && role !== 'owner') {
     throw new ApiError(
@@ -165,13 +178,24 @@ async function route(req: Request, env: Env, url: URL, role: Role, email: string
         return json(mock ? mockUsa(now) : await usa(deps));
 
       case '/api/calendar': {
-        // Fechas oficiales cargadas en el código: no llama a ninguna API.
+        // Fechas oficiales cargadas en el código (sin APIs) y, solo para el dueño, los resultados de las
+        // acciones de su lista (Finnhub: sus términos no permiten mostrarlos a otras personas).
         const days = Math.min(366, Math.max(1, Math.round(Number(url.searchParams.get('days'))) || 120));
+        const tz = env.TIMEZONE || 'America/Lima';
+        const owner = role === 'owner';
+        let companies = null;
+        if (owner) {
+          const list = await getWatchlist(env.CACHE);
+          const today = isoDate(now, tz);
+          companies = mock ? mockCompanyCalendar(list, now, today) : await companyCalendar(deps, list, today);
+        }
+        const { events: companyEvents = [], ...companyInfo } = companies ?? {};
         return json({
           loaded: EVENTS.length > 0,
-          events: upcoming(EVENTS, now, days, env.TIMEZONE || 'America/Lima'),
+          events: upcoming([...EVENTS, ...companyEvents], now, days, tz),
           coverage: CALENDAR_UNTIL,
-          sources: SOURCES,
+          sources: sourcesFor(owner),
+          ...(companies ? { companies: companyInfo } : {}),
           now: now.toISOString(),
         });
       }
@@ -253,6 +277,7 @@ export function configStatus(env: Env): Record<string, SecretInfo | number> {
     LOGIN_LINK_SECRET: info(env.LOGIN_LINK_SECRET, (s) => clean(s) && s.length >= 32),
     TWELVE_DATA_API_KEY: info(env.TWELVE_DATA_API_KEY, (s) => /^[A-Za-z0-9]{16,64}$/.test(s)),
     FRED_API_KEY: info(env.FRED_API_KEY, (s) => /^[a-z0-9]{32}$/.test(s)),
+    FINNHUB_API_KEY: info(env.FINNHUB_API_KEY, (s) => /^[A-Za-z0-9]{10,64}$/.test(s)),
   };
 }
 

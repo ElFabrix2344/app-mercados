@@ -17,6 +17,7 @@ Claude ─► Worker «mercados-mcp» (OAuth propio) ─────────
   - Twelve Data: `/quote` y `/time_series` (1 crédito por símbolo; plan gratis: 800/día y 8/min).
   - BCRP (BCRPData, sin clave): `PD04637PD`/`PD04638PD` (dólar interbancario compra/venta), `PD12301MD` (tasa de referencia), `PN01273PM` (inflación de Lima a 12 meses), `PD04701XD` (cobre en Londres, en centavos de US$ por libra; se muestra en US$), `PD04704XD` (oro en Londres, US$ por onza troy), `PD04650MD` (reservas internacionales netas, millones de US$), `PD38026MD` (índice general de la BVL), `PD31893DD` y `PD31894DD` (bono del gobierno peruano a 10 años en soles y en dólares) y `PD04719XD` (Tesoro de EE. UU. a 10 años). La API devuelve las series ordenadas por código, no en el orden pedido: `getBcrp` las reacomoda.
   - FRED: `DGS10` (bono del Tesoro a 10 años), `DFF` (tasa de la Fed), `CPIAUCSL` con `units=pc1` (inflación anual).
+  - Finnhub (opcional, clave gratis propia): `/calendar/earnings`, fechas de resultados trimestrales. Solo para el dueño.
 - **Caché en KV.** La Cache API no funciona en Workers detrás de Access, así que todo se guarda en KV (plan gratis: 1.000 escrituras/día).
   - Precios: el panel pide cada 10 min y cada símbolo se renueva por separado. Acciones y ETF solo con la bolsa de Nueva York abierta (lunes a viernes, 9:30–16:00 hora de NY, sin los feriados ni los cierres a la 1:00 p. m. del calendario oficial de la NYSE, cargado hasta 2027 en `lib/market-hours.ts`) y una vez más tras el cierre. Divisas y cripto, siempre. «Actualizar» renueva si el dato tiene más de 30 s.
   - Historial de **5 años** por símbolo, cada 12 h: Twelve Data cobra 1 crédito por consulta sin importar cuántos días traiga. Los rangos 1M, 3M, 6M, YTD, 1A, 3A y 5A se recortan de esa misma caché y miden el rendimiento desde el cierre anterior al inicio (YTD, desde el 31 de diciembre). BCRP y FRED: cada 6 h.
@@ -27,6 +28,12 @@ Claude ─► Worker «mercados-mcp» (OAuth propio) ─────────
 - **Mercados y tasas del Perú:** cobre, oro, BVL, reservas, bonos del Perú a 10 años (en soles y en dólares) y un riesgo país aproximado. Cada uno muestra el último dato, la variación a 1 y 12 meses y el gráfico del último año, con datos del BCRP (públicos: también los ven los amigos). Las tasas cambian en puntos porcentuales y el riesgo país en puntos básicos. Se guardan aparte de lo demás de Perú (`peru-markets2` en KV), así que si el BCRP falla con ellas el resto se sigue viendo.
   - **Riesgo país aproximado:** bono peruano en dólares a 10 años menos el Tesoro de EE. UU. a 10 años. El EMBIG del BCRP (`PD04709XD`) está detenido desde el 3 de setiembre de 2026, sin aviso.
 - **Calendario económico:** decisiones de tasas del BCRP y de la Fed, y publicaciones de inflación del INEI y del BLS, en `lib/calendar.ts`. Las fechas se cargan a mano desde cada fuente oficial (`SOURCES`), hoy hasta 2026 para el BCRP y hasta 2027 para las demás (`CALENDAR_UNTIL`). Las horas oficiales se convierten a la hora de Lima, y las fechas que la fuente da como tentativas se marcan así. Si `EVENTS` quedara vacío, el panel oculta la sección y el conector no ofrece la herramienta.
+- **Resultados de tus empresas** (solo el dueño, `services/earnings.ts`, cliente en `lib/finnhub.ts`): fechas de resultados trimestrales de las acciones de la lista, de Finnhub. Sus términos no permiten mostrar los datos a otras personas, así que los amigos nunca los reciben. Sin `FINNHUB_API_KEY` la función queda apagada y el calendario sigue igual.
+  - Se pide un mes hacia atrás (lo que da el plan gratis) y 120 días hacia adelante, un pedido por acción (sin divisas ni cripto; los ETF no traen fechas). Se guarda en KV por lista (`earnings:<símbolos>`) cada 12 h. Si falla una acción se muestran las demás; si fallan todas, lo último guardado o nada, sin romper el calendario.
+  - **Calendario:** cada presentación con el símbolo (abre su ficha), el trimestre fiscal, el momento del día (antes de la apertura, después del cierre o durante la sesión) y el BPA estimado por los analistas.
+  - **Ficha:** próximos resultados y, si hubo en el último mes, el último BPA frente al esperado, con la sorpresa en %.
+  - **Lista:** un aviso «Resultados en N d» cuando faltan 7 días o menos.
+  - El BPA y los ingresos son ajustados (no GAAP) y van en la moneda en que reporta cada empresa; el trimestre es el fiscal.
 - **Encabezado «Rueda»:** logo de rueda (también `icon.svg`), estado «Rueda abierta / cerrada» según el horario de la NYSE (lo da `/api/status`, sin usar Twelve Data) y una cinta de precios. En la cinta, el dueño ve su lista con los precios guardados, sin gastar créditos; todos ven el dólar, el cobre, el oro y la BVL del BCRP, y el bono a 10 años de FRED. Un botón ▶/⏸ al inicio la mueve o la detiene (se recuerda en el navegador); sin elegir, sigue lo que pide el sistema: con «reducir movimiento» o los efectos de animación de Windows apagados, arranca quieta.
 - **Cartera simulada** (solo el dueño, `services/portfolio.ts`): compras y ventas con fecha, cantidad y precio guardadas en KV (`portfolio`). Si no se escribe el precio, se usa el cierre de ese día; si la fecha es hoy, el precio guardado de la lista.
   - Se valoriza con los precios ya guardados, así que no gasta créditos.
@@ -47,10 +54,10 @@ Claude ─► Worker «mercados-mcp» (OAuth propio) ─────────
 
 | Rol | Quién | Qué ve |
 |---|---|---|
-| Dueño | Los correos de `OWNER_EMAILS` | Todo: precios, historial, comparación, cartera simulada y lista (Twelve Data), Perú y EE. UU. |
+| Dueño | Los correos de `OWNER_EMAILS` | Todo: precios, historial, comparación, cartera simulada y lista (Twelve Data), resultados de empresas (Finnhub), Perú y EE. UU. |
 | Amigo | El resto de `ALLOWED_EMAILS` (y de la política de Access) | Solo datos públicos: Perú (BCRP) y EE. UU. (FRED) |
 
-La licencia gratis de Twelve Data no permite mostrar sus datos a otras personas ni compartir la clave (§2.2 y §2.3 de sus [términos](https://twelvedata.com/terms)). Por eso el servidor responde **403** a los amigos en `/api/quotes`, `/api/history`, `/api/compare`, `/api/portfolio`, `/api/news/symbol` y `/api/watchlist`, y el conector solo les ofrece las herramientas de datos públicos (`peru_bcrp`, `eeuu_fred`, `noticias` generales y `calendario`); no es solo un ocultamiento en pantalla. Si `OWNER_EMAILS` está vacío, nadie ve los precios (falla cerrado).
+La licencia gratis de Twelve Data no permite mostrar sus datos a otras personas ni compartir la clave (§2.2 y §2.3 de sus [términos](https://twelvedata.com/terms)). Por eso el servidor responde **403** a los amigos en `/api/quotes`, `/api/history`, `/api/compare`, `/api/portfolio`, `/api/news/symbol` y `/api/watchlist`, y el conector solo les ofrece las herramientas de datos públicos (`peru_bcrp`, `eeuu_fred`, `noticias` generales y `calendario`); no es solo un ocultamiento en pantalla. Si `OWNER_EMAILS` está vacío, nadie ve los precios (falla cerrado). Con Finnhub pasa lo mismo: `/api/calendar` y la herramienta `calendario` solo suman los resultados de empresas cuando quien pide es el dueño.
 
 **Agregar un amigo:** su correo va en la política de Access de la app (regla *Allow* → *Emails*) **y** en `ALLOWED_EMAILS`. Al editar ese secreto hay que volver a escribir toda la lista, incluido tu correo: el panel no muestra el valor anterior.
 
@@ -71,7 +78,7 @@ Todas las rutas exigen sesión de Cloudflare Access. Las marcadas con 🔒 son s
 | GET | `/api/news/symbol?symbol=BAP` 🔒 | Titulares de un símbolo de la lista (Yahoo Finance y Google News), sin guardar |
 | GET | `/api/peru` | Dólar interbancario, tasa de referencia e inflación (BCRP) |
 | GET | `/api/peru-markets` | Cobre, oro, reservas internacionales e índice de la BVL: un año diario, último dato y variaciones a 1 y 12 meses (BCRP) |
-| GET | `/api/calendar?days=120` | Próximos eventos del calendario económico (`loaded: false` mientras no haya fechas cargadas) |
+| GET | `/api/calendar?days=120` | Próximos eventos del calendario económico (`loaded: false` mientras no haya fechas cargadas). Al dueño, además, los resultados de su lista (eventos `empresa` y `companies`: estado, último resultado del mes y notas) |
 | GET | `/api/usa` | Bono a 10 años, tasa de la Fed e inflación (FRED) |
 | GET | `/conector/identidad?state=…` 🔒 | Paso del login del conector: firma tu correo y vuelve a `mercados-mcp` |
 
@@ -87,7 +94,7 @@ Vive en un **Worker aparte, `mercados-mcp`** (`src/mcp-worker.ts`, `wrangler.mcp
 | `cartera` | La cartera simulada valorizada: posiciones, ganancia, totales en US$ y soles y comparación con el SPY (solo lectura) |
 | `noticias` | Titulares generales por grupo y, para el dueño, los de un símbolo de la lista, con medio, hora, enlace y resumen corto |
 | `peru_bcrp` | Dólar interbancario, tasa de referencia, inflación de Lima y, en `mercados`, cobre, oro, reservas y BVL con sus variaciones y cierres mensuales (BCRP) |
-| `calendario` | Próximas decisiones de tasas (BCRP, Fed) y publicaciones de inflación (INEI, BLS). Aparece cuando se carguen las fechas |
+| `calendario` | Próximas decisiones de tasas (BCRP, Fed) y publicaciones de inflación (INEI, BLS). Para el dueño, también los resultados de su lista (Finnhub): fecha, momento, BPA e ingresos esperados y el último resultado del mes con la sorpresa. Aparece mientras haya fechas cargadas |
 | `eeuu_fred` | Bono del Tesoro a 10 años, tasa de la Fed e inflación (FRED) |
 
 - **Mismos datos y reglas que el panel:** lee la misma caché de KV, renueva solo lo vencido con las mismas reglas (acciones solo con la bolsa abierta) y cuenta para el mismo freno de 600 créditos. Solo responde por los símbolos de la lista; para otros, Claude debe usar el conector oficial de Twelve Data.
@@ -95,7 +102,7 @@ Vive en un **Worker aparte, `mercados-mcp`** (`src/mcp-worker.ts`, `wrangler.mcp
 - **Login:** Claude abre `/authorize` → página de permiso (cliente y destino a la vista; solo destinos `claude.ai`/`claude.com` o apps locales) → **Permitir** lleva a la app, `/conector/identidad`, donde Access confirma tu correo → la app lo firma (HMAC con `LOGIN_LINK_SECRET`, 2 min) y vuelve a `/callback` → código → `/token`. El `state` queda atado al navegador que empezó (cookie `__Host-`), así que un enlace robado no sirve en otro.
 - **Quién puede:** por ahora solo el dueño (`OWNER_EMAILS`), en el login y en **cada** pedido a `/mcp`: si sacas un correo de la lista, su token deja de servir.
 - **Agregarlo en Claude:** claude.ai → Customize → Connectors → **+ Add** → **Add custom connector** → URL `https://mercados-mcp.mercados.workers.dev/mcp`. En el plan gratis de Claude solo se permite un conector personalizado.
-- **Secretos de `mercados-mcp`:** `OWNER_EMAILS`, `LOGIN_LINK_SECRET` (**el mismo** que en la app), `TWELVE_DATA_API_KEY` y `FRED_API_KEY`. Si cambias una clave en la app, cámbiala también aquí.
+- **Secretos de `mercados-mcp`:** `OWNER_EMAILS`, `LOGIN_LINK_SECRET` (**el mismo** que en la app), `TWELVE_DATA_API_KEY`, `FRED_API_KEY` y, si la usas, `FINNHUB_API_KEY`. Si cambias una clave en la app, cámbiala también aquí.
 
 ## Estructura
 
@@ -109,6 +116,8 @@ src/
   services/market.ts    caché en KV, freno de créditos y qué símbolos renovar
   services/portfolio.ts cartera simulada: operaciones, costo promedio, valorización y comparación con el SPY
   services/news.ts      noticias: fuentes RSS, caché de las generales y titulares por acción
+  services/earnings.ts  resultados de empresas de la lista (Finnhub, solo el dueño) para el calendario y la ficha
+  lib/finnhub.ts        cliente de Finnhub (calendario de resultados)
   lib/rss.ts            lector de RSS por stream (corta apenas tiene los titulares que necesita)
   lib/twelvedata.ts     cliente de Twelve Data
   lib/bcrp.ts           cliente del BCRP (tolera el aviso HTML que agrega tras el JSON)
@@ -137,7 +146,7 @@ Con `DEV_MODE=true` la validación de Access se salta **solo** si la petición l
 Cada push a `main` ejecuta GitHub Actions: typecheck, pruebas y `wrangler deploy` de los **dos** Workers (`mercados` y `mercados-mcp`). Los pull requests solo ejecutan las pruebas.
 
 - **Secretos del repo** (GitHub → Settings → Secrets and variables → Actions): `CLOUDFLARE_API_TOKEN` (plantilla «Edit Cloudflare Workers») y `CLOUDFLARE_ACCOUNT_ID`.
-- **Secretos de `mercados`** (panel de Cloudflare → Workers → mercados → Settings → Variables and Secrets, tipo **Secret**): `ACCESS_TEAM_DOMAIN`, `ACCESS_AUD`, `ALLOWED_EMAILS`, `OWNER_EMAILS`, `TWELVE_DATA_API_KEY`, `FRED_API_KEY`, `LOGIN_LINK_SECRET`. El despliegue los conserva. Para comprobarlos: `/api/status` → `config`.
+- **Secretos de `mercados`** (panel de Cloudflare → Workers → mercados → Settings → Variables and Secrets, tipo **Secret**): `ACCESS_TEAM_DOMAIN`, `ACCESS_AUD`, `ALLOWED_EMAILS`, `OWNER_EMAILS`, `TWELVE_DATA_API_KEY`, `FRED_API_KEY`, `LOGIN_LINK_SECRET` y, opcional, `FINNHUB_API_KEY` (clave gratis de finnhub.io, para los resultados de empresas). El despliegue los conserva. Para comprobarlos: `/api/status` → `config`.
 - **Secretos de `mercados-mcp`:** ver la sección del conector.
 
 ## Problemas conocidos

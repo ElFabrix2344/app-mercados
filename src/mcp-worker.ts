@@ -36,6 +36,7 @@ export interface McpEnv {
   OWNER_EMAILS?: string;
   TWELVE_DATA_API_KEY?: string;
   FRED_API_KEY?: string;
+  FINNHUB_API_KEY?: string;
   LOGIN_LINK_SECRET?: string;
 }
 
@@ -187,7 +188,7 @@ export const apiHandler = {
       return Response.json({ error: 'forbidden', message: 'Esta cuenta ya no tiene acceso al conector.' }, { status: 403 });
     }
     return handleMcp(request, {
-      deps: { kv: env.CACHE, now: new Date(), twelveKey: secret(env.TWELVE_DATA_API_KEY), fredKey: secret(env.FRED_API_KEY) },
+      deps: { kv: env.CACHE, now: new Date(), twelveKey: secret(env.TWELVE_DATA_API_KEY), fredKey: secret(env.FRED_API_KEY), finnhubKey: secret(env.FINNHUB_API_KEY) },
       mock: false,
       timeZone: env.TIMEZONE || 'America/Lima',
       role: 'owner',

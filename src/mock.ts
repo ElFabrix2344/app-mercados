@@ -1,9 +1,11 @@
 // Datos ficticios para desarrollo local (MOCK_DATA=true y DEV_MODE=true en localhost).
 // Son caminatas aleatorias con semilla fija: sirven para ver el diseño, no son precios reales.
 
+import type { EarningsRelease } from './lib/finnhub';
 import { usMarketOpen } from './lib/market-hours';
 import { addDays, isoDate } from './lib/num';
 import type { DailyPoint, Quote } from './lib/twelvedata';
+import { EARNINGS_AHEAD_DAYS, shapeCompanies, type CompanyCalendar } from './services/earnings';
 import type { NewsData, NewsGroup, NewsItem } from './services/news';
 import type { PriceSource } from './services/portfolio';
 import {
@@ -215,4 +217,35 @@ export function mockUsa(now: Date): Fresh<UsaData> {
     value: Number((2.5 + Math.cos(i / 3) * 0.5).toFixed(2)),
   }));
   return fresh({ treasury10y, fedFunds: { date: addDays(today, -1), value: 4 }, cpiYoY }, now);
+}
+
+/** ETF conocidos: no presentan resultados (en la API real simplemente no traen fechas). */
+const MOCK_ETFS = new Set(['SPY', 'VOO', 'IVV', 'VTI', 'QQQ', 'IWM', 'EEM', 'EPU', 'GLD']);
+
+/** Resultados de prueba (no son fechas reales): el primero ya presentó hace unos días; el segundo presenta en 2 días; los demás, después. */
+export function mockCompanyCalendar(list: string[], now: Date, today: string): CompanyCalendar {
+  const symbols = list.filter((s) => !s.includes('/') && !MOCK_ETFS.has(s));
+  // Trimestre ya cerrado: en octubre se presenta el 3T; en enero, el 4T del año anterior.
+  const y = Number(today.slice(0, 4));
+  const q = Math.floor((Number(today.slice(5, 7)) - 1) / 3);
+  const period = { year: q === 0 ? y - 1 : y, quarter: q === 0 ? 4 : q };
+  const hours = ['amc', 'bmo', 'dmh'] as const;
+  const releases: EarningsRelease[] = symbols.map((symbol, i) => {
+    const rand = rng(seedOf(`resultados${symbol}`));
+    const eps = Number((0.5 + rand() * 4).toFixed(2));
+    const revenue = Math.round((0.5 + rand() * 3) * 1e9);
+    const done = i === 0;
+    return {
+      symbol,
+      date: addDays(today, done ? -6 : 2 + (i - 1) * 9),
+      hour: hours[i % hours.length]!,
+      ...period,
+      epsEstimate: eps,
+      epsActual: done ? Number((eps * 1.08).toFixed(2)) : null,
+      revenueEstimate: revenue,
+      revenueActual: done ? Math.round(revenue * 1.03) : null,
+    };
+  });
+  releases.sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : 0));
+  return shapeCompanies(fresh({ releases, errors: {}, from: addDays(today, -30), to: addDays(today, EARNINGS_AHEAD_DAYS) }, now), today);
 }

@@ -52,7 +52,8 @@ Las tres preguntas pendientes las respondió Claude con la opción más simple, 
 ## 4. Ajustes tuyos que no dependen de los amigos
 
 - [x] **`FRED_API_KEY`** cargada el 22 de octubre. Verificada en el conector: bono a 10 años 5,12 % (20 oct), tasa de la Fed 3,88 % e inflación anual 3,72 % (setiembre).
-- [ ] **Reconectar el conector en claude.ai** para que aparezca `comparar` y, cuando tenga fechas, `calendario`.
+- [ ] **`FINNHUB_API_KEY`:** crear la clave gratis en finnhub.io y cargarla como Secret en `mercados` y en `mercados-mcp`. Sin ella, los resultados de empresas quedan apagados (el resto funciona igual).
+- [ ] **Reconectar el conector en claude.ai** para que aparezcan las herramientas nuevas (`comparar`, `cartera`, `noticias` y `calendario`).
 - [ ] **Probar en el celular** la medición con dos dedos: hasta ahora solo se probó simulada.
 
 ## 5. Al final: abrir la app a los chicos del grupo
@@ -96,17 +97,24 @@ Pasos:
 - [x] **Por acción:** en la ficha de cada símbolo, los titulares de Yahoo y Google News sobre esa empresa, filtrados por medios confiables. Más adelante, las fuentes oficiales: hechos de importancia de la SMV y reportes 8-K de la SEC.
 - [x] **Conector:** una herramienta `noticias` para preguntarle a Claude qué movió al mercado o a una acción, cruzando titulares con precios.
 
-## 7. Ideas para después
+## 7. Después de las noticias — hecho el 22 de octubre
+
+Elegidos por el usuario el 22 de octubre, antes de abrir la app a los amigos:
+
+- [x] **Cartera en los gráficos:** tus compras y ventas marcadas en la ficha, y señales en la lista (MM200 y RSI extremo).
+- [x] **Más Perú:** bonos del Perú a 10 años en soles y en dólares, y un riesgo país aproximado (el EMBIG del BCRP está detenido desde setiembre).
+- [x] **Resultados de tus empresas:** fechas de resultados trimestrales de la lista en el calendario, en la ficha y en la lista, con Finnhub. Twelve Data los cobra (plan Grow o mayor); Finnhub los da gratis con clave propia, pero sus términos no permiten mostrarlos a terceros: son solo para el dueño. Queda apagado hasta cargar `FINNHUB_API_KEY` (sección 4). Para comprobarlo: Credicorp confirmó sus resultados del 3T26 para el lunes 9 de noviembre de 2026.
+
+## 8. Ideas para después
 
 - Que cada amigo use su propia clave gratis de Twelve Data (lista y caché por persona) para que también vea precios.
 - Reportes financieros de empresas de EE. UU. (SEC EDGAR).
-- **Resultados trimestrales de tu lista en el calendario:** Twelve Data los cobra (plan Grow o mayor). Finnhub los da gratis con una clave propia, pero sus términos prohíben mostrarlos a terceros: serían solo para el dueño. Credicorp ya confirmó sus resultados del 3T26 para el lunes 9 de noviembre de 2026.
 - **Valor cuota de las AFP:** la SBS lo muestra detrás de una verificación anti-robots (Imperva) y no se puede leer desde el Worker. Queda el archivo mensual de la SBS (xlsx de ~1 MB), sin probar.
 - Medir el gasto de créditos de Twelve Data en un día normal y ajustar el freno si hace falta.
 - Decidir si el repositorio sigue público (hoy lo está) o pasa a privado.
 - Herramienta `precios` del conector: aceptar los símbolos también como texto («BAP, SPY»).
 
-## 8. Mantenimiento con fecha fija
+## 9. Mantenimiento con fecha fija
 
 - **Cada diciembre:** agregar los feriados y cierres anticipados de la NYSE del año siguiente en `lib/market-hours.ts` (hoy están hasta 2027). Si no se hace, la app gasta créditos en los feriados.
 - **Cada año:** cargar el calendario económico del año siguiente cuando las fuentes lo publiquen. El BCRP suele publicar su cronograma en diciembre.

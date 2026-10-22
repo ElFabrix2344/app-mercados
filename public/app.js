@@ -634,7 +634,8 @@
           'span',
           { class: 'c-name' },
           h('span', { class: 'c-name-text' }, q?.name ?? (err ? `Sin dato: ${err}` : state.quotes ? 'Sin dato' : 'Cargando…')),
-          ...signalChips(hist?.latest),
+          // Primero los resultados próximos (lo más urgente); si no caben todas, las últimas señales se ocultan.
+          h('span', { class: 'c-sigs' }, earningsChip(sym), ...signalChips(hist?.latest)),
         ),
         h('span', { class: 'c-price' }, q ? fmtPrice(q.price) : '—'),
         q ? changeEl(q) : h('span', { class: 'c-chg flat' }, '—'),
@@ -898,6 +899,7 @@
     renderRanges();
     renderIndicatorToggles();
     renderSymbolNews();
+    renderEarnings(sym);
     const q = quoteFor(sym);
     const hist = detailHistory(sym, state.range);
     $('d-title').textContent = q?.name ? `${sym} · ${q.name}` : sym;
@@ -1667,12 +1669,62 @@
   }
 
   // ---------- calendario ----------
-  const KIND_LABEL = { bcrp: 'BCRP', fed: 'Fed', inei: 'INEI', bls: 'BLS' };
+  const KIND_LABEL = { bcrp: 'BCRP', fed: 'Fed', inei: 'INEI', bls: 'BLS', empresa: 'Empresa' };
   const fCalDay = fmt({ weekday: 'short', day: 'numeric', month: 'short', timeZone: 'UTC' });
+  const calDay = (date) => fCalDay.format(day(date)).replace(/[.,]/g, '');
+
+  const daysUntil = (date) => Math.round((Date.parse(`${date}T12:00:00Z`) - Date.parse(`${limaDate(new Date())}T12:00:00Z`)) / 86_400_000);
 
   function untilText(date) {
-    const days = Math.round((Date.parse(`${date}T12:00:00Z`) - Date.parse(`${limaDate(new Date())}T12:00:00Z`)) / 86_400_000);
+    const days = daysUntil(date);
     return days === 0 ? 'hoy' : days === 1 ? 'mañana' : `en ${days} días`;
+  }
+
+  // ---------- resultados de empresas (Finnhub, solo el dueño) ----------
+  const MOMENT = { bmo: 'antes de la apertura', amc: 'después del cierre', dmh: 'durante la sesión' };
+  /** «3T 2026»: trimestre fiscal de la empresa. */
+  const quarterOf = (r) => (r.quarter && r.year ? `${r.quarter}T ${r.year}` : null);
+  /** Próxima presentación de resultados de un símbolo (los eventos del calendario ya vienen en orden). */
+  const nextEarnings = (sym) => state.calendar?.events.find((e) => e.company?.symbol === sym) ?? null;
+  /** Último resultado presentado en el último mes. */
+  const lastEarnings = (sym) => state.calendar?.companies?.recent?.find((r) => r.symbol === sym) ?? null;
+
+  /** En la fila de la lista: la empresa presenta resultados en los próximos 7 días. */
+  function earningsChip(sym) {
+    const e = nextEarnings(sym);
+    const days = e ? daysUntil(e.date) : Infinity;
+    if (days > 7) return null;
+    const label = days === 0 ? 'Resultados hoy' : days === 1 ? 'Resultados mañana' : `Resultados en ${days} d`;
+    const moment = e.company.hour ? `, ${MOMENT[e.company.hour]}` : '';
+    return h('span', { class: 'sig', title: `Presenta resultados el ${calDay(e.date)}${moment}` }, label);
+  }
+
+  /** En la ficha: próximos resultados y, si hubo en el último mes, el último con la sorpresa del BPA. */
+  function renderEarnings(sym) {
+    const el = $('d-earn');
+    const lines = [];
+    const next = nextEarnings(sym);
+    if (next) {
+      const c = next.company;
+      const facts = [`${calDay(next.date)} (${untilText(next.date)})`, c.hour ? MOMENT[c.hour] : null, quarterOf(c), c.epsEstimate != null ? `BPA estimado ${nf(2).format(c.epsEstimate)}` : null];
+      lines.push(h('span', {}, h('strong', {}, 'Próximos resultados: '), facts.filter(Boolean).join(' · ')));
+    }
+    const last = lastEarnings(sym);
+    if (last) {
+      const surprise = last.epsEstimate ? (last.epsActual - last.epsEstimate) / Math.abs(last.epsEstimate) : null;
+      lines.push(
+        h(
+          'span',
+          {},
+          h('strong', {}, 'Último resultado: '),
+          [calDay(last.date), quarterOf(last), `BPA ${nf(2).format(last.epsActual)}`].filter(Boolean).join(' · '),
+          last.epsEstimate != null ? ` frente a ${nf(2).format(last.epsEstimate)} esperado` : '',
+          surprise != null ? h('span', { class: trend(surprise) }, ` (${pctFrac(surprise)})`) : null,
+        ),
+      );
+    }
+    el.hidden = !lines.length;
+    el.replaceChildren(...lines);
   }
 
   /** El dato que el evento puede mover, si ya cargaron Perú o EE. UU. */
@@ -1689,19 +1741,31 @@
     const r = state.calendar;
     if (!r) return;
     const list = $('calendar');
-    const events = r.events.slice(0, 10);
+    const events = r.events.slice(0, 12);
     if (!events.length) {
       list.replaceChildren(h('li', { class: 'muted' }, 'No hay eventos cargados para los próximos meses.'));
     } else {
       list.replaceChildren(
         ...events.map((e) => {
           const when = [untilText(e.date), e.at ? `${fTime.format(new Date(e.at))} h` : null].filter(Boolean).join(' · ');
-          const sub = [e.detail, currentFor(e.kind)].filter(Boolean).join(' · ');
+          const c = e.company;
+          const extra = c ? (c.epsEstimate != null ? `BPA estimado ${nf(2).format(c.epsEstimate)}` : null) : currentFor(e.kind);
+          const sub = [e.detail, extra].filter(Boolean).join(' · ');
+          // Los resultados de una acción de tu lista abren su ficha.
+          const src = c
+            ? h('button', { type: 'button', class: 'cal-src sym', title: `Abrir la ficha de ${c.symbol}` }, c.symbol)
+            : h('span', { class: 'cal-src' }, KIND_LABEL[e.kind]);
+          if (c) {
+            src.addEventListener('click', () => {
+              if (state.selected !== c.symbol) select(c.symbol);
+              else $('detail').scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+            });
+          }
           return h(
             'li',
             { class: 'cal-row' },
-            h('span', { class: 'cal-date' }, fCalDay.format(day(e.date)).replace(/[.,]/g, '')),
-            h('span', { class: 'cal-src' }, KIND_LABEL[e.kind]),
+            h('span', { class: 'cal-date' }, calDay(e.date)),
+            src,
             h('span', { class: 'cal-body' }, h('span', {}, e.title, e.tentative ? h('small', {}, ' (tentativa)') : null), sub ? h('small', {}, sub) : null),
             h('span', { class: 'cal-when' }, when),
           );
@@ -1709,7 +1773,17 @@
       );
     }
     const until = Object.values(r.coverage).sort()[0];
-    $('cal-note').textContent = until ? `Cargado hasta el ${fDayYear.format(day(until))}.` : '';
+    const notes = [until ? `Cargado hasta el ${fDayYear.format(day(until))}.` : null];
+    const co = r.companies; // solo llega al dueño
+    $('cal-src-co').hidden = !co?.enabled;
+    if (co) {
+      notes.push(
+        co.enabled
+          ? `Resultados de tu lista: Finnhub, solo para ti${co.note ? ` (${co.note.replace(/\.$/, '')})` : ''}.`
+          : 'Para ver aquí las fechas de resultados de tu lista, carga la clave gratis de Finnhub (FINNHUB_API_KEY).',
+      );
+    }
+    $('cal-note').textContent = notes.filter(Boolean).join(' ');
   }
 
   async function loadCalendar() {
@@ -1721,6 +1795,11 @@
       if (!r.loaded) return;
       state.calendar = r;
       renderCalendar();
+      // Con resultados de empresas: avisos en la lista y la línea de la ficha abierta.
+      if (r.companies?.enabled) {
+        renderTiles();
+        if (state.selected) renderEarnings(state.selected);
+      }
     } catch (e) {
       $('calendar').replaceChildren(h('li', { class: 'err' }, e.message));
     }
@@ -1757,6 +1836,8 @@
       renderPortfolioForm();
       await loadQuotes(false);
       loadHistories().then(loadCompare);
+      // Los resultados de empresas dependen de la lista.
+      loadCalendar();
     } catch (err) {
       const p = $('wl-err');
       p.textContent = err.message;

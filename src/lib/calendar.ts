@@ -1,9 +1,11 @@
 // Calendario económico: fechas oficiales cargadas a mano, como los feriados de la NYSE. Cada año hay que
 // agregar el siguiente desde la fuente de cada evento (SOURCES); `CALENDAR_UNTIL` dice hasta cuándo hay datos.
 
+import type { EarningsRelease } from './finnhub';
 import { isoDate } from './num';
 
-export type EventKind = 'bcrp' | 'fed' | 'inei' | 'bls';
+/** «empresa»: resultados de las acciones de la lista (Finnhub), solo para el dueño; no van en EVENTS. */
+export type EventKind = 'bcrp' | 'fed' | 'inei' | 'bls' | 'empresa';
 
 export interface EconEvent {
   /** Día del anuncio, en la fecha local de quien publica. */
@@ -16,14 +18,26 @@ export interface EconEvent {
   time?: { hhmm: string; tz: string };
   /** La fuente la publica como tentativa. */
   tentative?: boolean;
+  /** Solo resultados de empresas: símbolo, momento del día y lo que esperan los analistas. */
+  company?: EarningsRelease;
 }
 
-export const SOURCES: Record<EventKind, { name: string; url: string }> = {
+type Source = { name: string; url: string };
+
+export const SOURCES: Record<EventKind, Source> = {
   bcrp: { name: 'BCRP (Programa Monetario)', url: 'https://www.bcrp.gob.pe/politica-monetaria/notas-informativas-del-programa-monetario.html' },
   fed: { name: 'Reserva Federal (FOMC)', url: 'https://www.federalreserve.gov/monetarypolicy/fomccalendars.htm' },
   inei: { name: 'INEI (precios de Lima Metropolitana)', url: 'https://www.inei.gob.pe/calendario/' },
   bls: { name: 'BLS (índice de precios al consumidor)', url: 'https://www.bls.gov/schedule/news_release/cpi.htm' },
+  empresa: { name: 'Finnhub (resultados de empresas)', url: 'https://finnhub.io/docs/api/earnings-calendar' },
 };
+
+/** Las fuentes que ve cada rol: los resultados de empresas (Finnhub) son solo para el dueño. */
+export function sourcesFor(owner: boolean): Partial<Record<EventKind, Source>> {
+  if (owner) return SOURCES;
+  const { empresa: _, ...rest } = SOURCES;
+  return rest;
+}
 
 /** Hasta qué fecha está cargado el calendario de cada fuente. */
 export const CALENDAR_UNTIL: Partial<Record<EventKind, string>> = {

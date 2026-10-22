@@ -84,6 +84,28 @@ describe('rutas según el rol (local, con datos de prueba)', () => {
     expect(status.credits).toBeUndefined();
   });
 
+  it('el calendario trae los resultados de la lista solo para el dueño', async () => {
+    const friend = (await (await get('/api/calendar', 'friend')).json()) as Record<string, any>;
+    expect(friend.companies).toBeUndefined();
+    expect(friend.sources.empresa).toBeUndefined();
+    expect(friend.events.some((e: { kind: string }) => e.kind === 'empresa')).toBe(false);
+
+    const owner = (await (await get('/api/calendar')).json()) as Record<string, any>;
+    expect(owner.companies).toMatchObject({ enabled: true });
+    expect(owner.sources.empresa.name).toContain('Finnhub');
+    const co = owner.events.filter((e: { kind: string }) => e.kind === 'empresa');
+    // Datos de prueba: BAP ya presentó; SCCO presenta en 2 días y BVN después; SPY es un ETF.
+    expect(co.map((e: { company: { symbol: string } }) => e.company.symbol)).toEqual(['SCCO', 'BVN']);
+    expect(owner.companies.recent.map((r: { symbol: string }) => r.symbol)).toEqual(['BAP']);
+  });
+
+  it('sin la clave de Finnhub el dueño ve el calendario igual, con los resultados apagados', async () => {
+    const e = { ...env(), MOCK_DATA: undefined } as Env;
+    const r = (await (await worker.fetch(new Request('http://localhost/api/calendar'), e, {} as ExecutionContext)).json()) as Record<string, any>;
+    expect(r.companies).toMatchObject({ enabled: false });
+    expect(r.events.length).toBeGreaterThan(0);
+  });
+
   it('el dueño ve todo', async () => {
     expect((await get('/api/quotes')).status).toBe(200);
     const status = (await (await get('/api/status')).json()) as Record<string, unknown>;

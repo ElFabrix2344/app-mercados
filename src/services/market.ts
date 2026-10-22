@@ -26,6 +26,7 @@ export interface Deps {
   fetch?: typeof fetch;
   twelveKey?: string;
   fredKey?: string;
+  finnhubKey?: string;
 }
 
 export interface Fresh<T> {

@@ -5,9 +5,23 @@
 import { createMcpHandler, McpServer, type CallToolResult } from '@modelcontextprotocol/server';
 import * as z from 'zod';
 import type { Role } from './auth/access';
-import { CALENDAR_UNTIL, EVENTS, SOURCES, upcoming } from './lib/calendar';
+import { CALENDAR_UNTIL, EVENTS, SOURCES, sourcesFor, upcoming } from './lib/calendar';
+import type { EarningsRelease } from './lib/finnhub';
 import { ApiError } from './lib/http';
-import { mockCompare, mockHistory, mockNews, mockPeru, mockPeruMarkets, mockPriceSource, mockQuotes, mockSymbolNews, mockUsa } from './mock';
+import { isoDate } from './lib/num';
+import {
+  mockCompanyCalendar,
+  mockCompare,
+  mockHistory,
+  mockNews,
+  mockPeru,
+  mockPeruMarkets,
+  mockPriceSource,
+  mockQuotes,
+  mockSymbolNews,
+  mockUsa,
+} from './mock';
+import { companyCalendar, epsSurprise, MOMENT, quarterLabel } from './services/earnings';
 import { marketNews, newsQuery, quoteName, symbolNews, type NewsItem } from './services/news';
 import { kvSource, readTrades, valuePortfolio } from './services/portfolio';
 import {
@@ -66,7 +80,7 @@ export function handleMcp(req: Request, c: McpContext): Promise<Response> {
 
 export function buildServer(c: McpContext): McpServer {
   const owner = c.role === 'owner';
-  const server = new McpServer({ name: 'rueda', version: '0.5.0' }, { instructions: owner ? INSTRUCTIONS : INSTRUCTIONS_FRIEND });
+  const server = new McpServer({ name: 'rueda', version: '0.6.0' }, { instructions: owner ? INSTRUCTIONS : INSTRUCTIONS_FRIEND });
   const when: When = (iso) => localTime(iso, c.timeZone);
 
   // Precios e historial (Twelve Data): solo para el dueño, por la licencia del plan gratis.
@@ -503,34 +517,80 @@ function registerPublicTools(server: McpServer, c: McpContext, when: When): void
 }
 
 function registerCalendarTool(server: McpServer, c: McpContext): void {
+  const owner = c.role === 'owner';
   server.registerTool(
     'calendario',
     {
-      title: 'Calendario económico (BCRP, Fed e inflación de Perú y EE. UU.)',
+      title: owner ? 'Calendario económico y resultados de tu lista' : 'Calendario económico (BCRP, Fed e inflación de Perú y EE. UU.)',
       description:
         'Próximas fechas oficiales: decisiones de tasa del BCRP (Programa Monetario) y de la Reserva Federal (FOMC), y ' +
         'publicación de la inflación de Lima Metropolitana (INEI) y de EE. UU. (BLS). La hora va en la zona horaria indicada ' +
-        'cuando la fuente la publica. «cobertura» dice hasta qué fecha está cargado cada calendario: más allá no hay datos.',
+        'cuando la fuente la publica. «cobertura» dice hasta qué fecha está cargado cada calendario: más allá no hay datos.' +
+        (owner
+          ? ' También trae las fechas de resultados trimestrales de las acciones de la lista (Finnhub, solo para el dueño), ' +
+            'con el momento del día y el BPA e ingresos que esperan los analistas (ajustados, no GAAP, en la moneda en que ' +
+            'reporta cada empresa; el trimestre es el fiscal). En «resultados_empresas.recientes» va el último resultado ' +
+            'del último mes de cada empresa, con lo esperado, lo real y la sorpresa del BPA.'
+          : ''),
       inputSchema: z.object({
         dias: z.number().int().min(1).max(366).default(60).describe('Cuántos días hacia adelante (por defecto 60).'),
       }),
-      annotations: { readOnlyHint: true, openWorldHint: false },
+      annotations: { readOnlyHint: true, openWorldHint: owner },
     },
     ({ dias }) =>
-      run(async () => ({
-        zona_horaria: c.timeZone,
-        eventos: upcoming(EVENTS, c.deps.now, dias, c.timeZone).map((e) => ({
-          fecha: e.date,
-          hora: e.at ? localTime(e.at, c.timeZone)!.slice(11) : null,
-          fuente: SOURCES[e.kind].name,
-          evento: e.title,
-          detalle: e.detail ?? null,
-          ...(e.tentative ? { tentativo: true } : {}),
-        })),
-        cobertura: CALENDAR_UNTIL,
-        fuentes: Object.fromEntries(Object.entries(SOURCES).map(([k, s]) => [k, s.url])),
-      })),
+      run(async () => {
+        const { deps } = c;
+        let companies = null;
+        if (owner) {
+          const list = await getWatchlist(deps.kv);
+          const today = isoDate(deps.now, c.timeZone);
+          companies = c.mock ? mockCompanyCalendar(list, deps.now, today) : await companyCalendar(deps, list, today);
+        }
+        return {
+          zona_horaria: c.timeZone,
+          eventos: upcoming([...EVENTS, ...(companies?.events ?? [])], deps.now, dias, c.timeZone).map((e) => ({
+            fecha: e.date,
+            hora: e.at ? localTime(e.at, c.timeZone)!.slice(11) : null,
+            fuente: SOURCES[e.kind].name,
+            evento: e.title,
+            detalle: e.detail ?? null,
+            ...(e.tentative ? { tentativo: true } : {}),
+            ...(e.company ? releaseOut(e.company) : {}),
+          })),
+          cobertura: CALENDAR_UNTIL,
+          fuentes: Object.fromEntries(Object.entries(sourcesFor(owner)).map(([k, s]) => [k, s.url])),
+          ...(companies
+            ? {
+                resultados_empresas: companies.enabled
+                  ? {
+                      hasta: companies.until,
+                      actualizado: localTime(companies.fetchedAt, c.timeZone),
+                      dato_guardado: companies.stale,
+                      nota: companies.note,
+                      recientes: companies.recent.map(releaseOut),
+                    }
+                  : { activo: false, nota: 'Falta la clave de Finnhub (FINNHUB_API_KEY): sin ella no hay fechas de resultados.' },
+              }
+            : {}),
+        };
+      }),
   );
+}
+
+/** Una presentación de resultados, como la recibe Claude. */
+function releaseOut(r: EarningsRelease) {
+  const surprise = epsSurprise(r);
+  return {
+    simbolo: r.symbol,
+    fecha: r.date,
+    momento: r.hour ? MOMENT[r.hour] : null,
+    trimestre_fiscal: quarterLabel(r),
+    bpa_estimado: r.epsEstimate,
+    ingresos_estimados: r.revenueEstimate,
+    ...(r.epsActual !== null ? { bpa_real: r.epsActual } : {}),
+    ...(r.revenueActual !== null ? { ingresos_reales: r.revenueActual } : {}),
+    ...(surprise !== null ? { sorpresa_bpa_pct: Math.round(surprise * 1000) / 10 } : {}),
+  };
 }
 
 /** Ejecuta una herramienta: el resultado va como JSON; los errores conocidos, como mensaje para Claude. */
