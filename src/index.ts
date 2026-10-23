@@ -9,6 +9,7 @@ import {
   mockCompany,
   mockCompanyCalendar,
   mockCompare,
+  mockCurve,
   mockEodView,
   mockForecastExtras,
   mockHistory,
@@ -34,6 +35,7 @@ import {
   compare,
   compareSymbols,
   creditsUsed,
+  curve,
   getWatchlist,
   history,
   isRange,
@@ -220,6 +222,10 @@ async function route(req: Request, env: Env, url: URL, role: Role, email: string
 
       case '/api/usa':
         return json(mock ? mockUsa(now) : await usa(deps));
+
+      // Curva del Tesoro de EE. UU. (FRED): datos públicos.
+      case '/api/curve':
+        return json(mock ? mockCurve(now) : await curve(deps));
 
       // Pronósticos del grupo: datos públicos, juegan el dueño y los amigos.
       case '/api/forecasts':

@@ -11,6 +11,8 @@ import {
   rangeStart,
   rangeStartIndex,
   shapeCompare,
+  shapeCurve,
+  shapePeru,
   sliceRange,
   summarize,
   validateWatchlist,
@@ -378,5 +380,37 @@ describe('verifyAccess', () => {
   it('falla cerrado si ALLOWED_EMAILS está vacío', async () => {
     const env = { ACCESS_TEAM_DOMAIN: 'https://x.cloudflareaccess.com', ACCESS_AUD: 'a'.repeat(64), ALLOWED_EMAILS: ' ' } as Env;
     expect(await verifyAccess(new Request('https://m.example/'), env)).toMatchObject({ ok: false, status: 503 });
+  });
+});
+
+describe('curva de rendimientos y expectativas', () => {
+  it('arma la curva de hoy, la de hace un mes y la de hace un año, y la diferencia 10 años − 2 años', () => {
+    // Una serie diaria por plazo (11 plazos): el plazo k rinde 3 + k/10, y todo sube 0,001 por día.
+    const days = Array.from({ length: 400 }, (_, i) => new Date(Date.UTC(2025, 8, 20) + i * 86_400_000).toISOString().slice(0, 10));
+    const series = Array.from({ length: 11 }, (_, k) => days.map((date, i) => ({ date, value: Math.round((3 + k / 10 + i * 0.001) * 1000) / 1000 })));
+    const c = shapeCurve(series);
+    expect(c.tenors).toEqual(['1M', '3M', '6M', '1A', '2A', '3A', '5A', '7A', '10A', '20A', '30A']);
+    expect(c.curves.map((k) => [k.label, k.date])).toEqual([
+      ['Hoy', days.at(-1)],
+      ['Hace 1 mes', days.at(-31)],
+      ['Hace 1 año', days.at(-366)],
+    ]);
+    expect(c.curves[0]!.values[8]).toBeCloseTo(3.8 + 0.399, 9); // 10 años, último día
+    // 10 años (k = 8) menos 2 años (k = 4): 0,4 pp todos los días del último año.
+    expect(c.spread10y2y).toHaveLength(366);
+    expect(c.spread10y2y.every(([, v]) => v === 0.4)).toBe(true);
+    expect(shapeCurve(Array.from({ length: 11 }, () => [])).curves).toEqual([]);
+  });
+
+  it('suma la encuesta de expectativas del BCRP (inflación, PBI y dólar a 12 meses)', () => {
+    const p = shapePeru([], [], [
+      { date: '2026-08-01', values: [3.05, 3.2333, 3.3875] },
+      { date: '2026-09-01', values: [3.0875, null, 3.3975] },
+      { date: '2026-10-01', values: [null, null, null] },
+    ]);
+    expect(p.expectations).toEqual([
+      { date: '2026-08-01', inflation: 3.05, gdp: 3.2333, fx: 3.3875 },
+      { date: '2026-09-01', inflation: 3.0875, gdp: null, fx: 3.3975 },
+    ]);
   });
 });

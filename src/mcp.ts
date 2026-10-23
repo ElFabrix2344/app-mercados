@@ -13,6 +13,7 @@ import {
   mockCompany,
   mockCompanyCalendar,
   mockCompare,
+  mockCurve,
   mockEodView,
   mockForecastExtras,
   mockHistory,
@@ -39,6 +40,7 @@ import {
   compare,
   compareSymbols,
   creditsUsed,
+  curve,
   getWatchlist,
   history,
   peru,
@@ -509,7 +511,9 @@ function registerPublicTools(server: McpServer, c: McpContext, when: When): void
       description:
         'Datos del Banco Central de Reserva del Perú (BCRPData, guardados hasta 6 h): tipo de cambio interbancario del dólar ' +
         '(compra y venta en soles, últimos ~30 días hábiles), tasa de referencia de política monetaria (%), inflación de Lima ' +
-        'Metropolitana a 12 meses (%, últimos 13 meses) y, en «mercados», cobre y oro en Londres, reservas internacionales ' +
+        'Metropolitana a 12 meses (%, últimos 13 meses), lo que esperan los analistas a 12 meses según la encuesta de ' +
+        'expectativas del BCRP (inflación y PBI en %, tipo de cambio en soles; últimos 6 meses) y, en «mercados», cobre y ' +
+        'oro en Londres, reservas internacionales ' +
         'netas, índice general de la Bolsa de Valores de Lima, rendimiento del bono del gobierno peruano a 10 años (en soles ' +
         'y en dólares) y un riesgo país aproximado (bono peruano en dólares menos Tesoro de EE. UU., ambos a 10 años, en ' +
         'puntos básicos; no es el EMBIG, que el BCRP no actualiza desde el 3 de setiembre de 2026). Para cada uno: último ' +
@@ -537,6 +541,13 @@ function registerPublicTools(server: McpServer, c: McpContext, when: When): void
           dolar_ultimos_dias: { columnas: ['fecha', 'compra', 'venta'], filas: r.data.fx.map((p) => [p.date, p.buy, p.sell]) },
           tasa_de_referencia_pct: r.data.policyRate && { fecha: r.data.policyRate.date, valor: r.data.policyRate.value },
           inflacion_lima_12_meses_pct: r.data.inflation.map((p) => [p.date.slice(0, 7), round(p.value)]),
+          // Encuesta de expectativas del BCRP: lo que esperan analistas y empresas a 12 meses (mes de la encuesta).
+          expectativas_analistas_12_meses: (r.data.expectations ?? []).slice(-6).map((e) => ({
+            mes: e.date.slice(0, 7),
+            inflacion_pct: round(e.inflation),
+            pbi_pct: round(e.gdp),
+            tipo_de_cambio: e.fx === null ? null : Math.round(e.fx * 1000) / 1000,
+          })),
           mercados: mk && {
             cobre_usd_por_libra: marketOut(mk.data.copper),
             oro_usd_por_onza_troy: marketOut(mk.data.gold),
@@ -554,6 +565,7 @@ function registerPublicTools(server: McpServer, c: McpContext, when: When): void
             venta: 'PD04638PD',
             tasa_de_referencia: 'PD12301MD',
             inflacion: 'PN01273PM',
+            expectativas: 'PD12912AM (inflación), PD38048AM (PBI), PD38049AM (tipo de cambio)',
             cobre: 'PD04701XD (centavos de US$ por libra, aquí convertido a US$)',
             oro: 'PD04704XD',
             reservas: 'PD04650MD',
@@ -574,7 +586,8 @@ function registerPublicTools(server: McpServer, c: McpContext, when: When): void
     {
       title: 'EE. UU.: bono a 10 años, tasa de la Fed e inflación (FRED)',
       description:
-        'Datos de FRED (Reserva Federal de St. Louis, guardados hasta 6 h): rendimiento del bono del Tesoro a 10 años (%, ' +
+        'Datos de FRED (Reserva Federal de St. Louis, guardados hasta 6 h): curva del Tesoro de 1 mes a 30 años (hoy, hace ' +
+        'un mes y hace un año, con la diferencia 10 años − 2 años), rendimiento del bono del Tesoro a 10 años (%, ' +
         'últimos ~60 días hábiles), tasa efectiva de fondos federales (%) e inflación anual del IPC (%, últimos 13 meses).',
       inputSchema: z.object({}),
       annotations: { readOnlyHint: true, openWorldHint: true },
@@ -582,6 +595,8 @@ function registerPublicTools(server: McpServer, c: McpContext, when: When): void
     () =>
       run(async () => {
         const r = c.mock ? mockUsa(deps.now) : await usa(deps);
+        // La curva es un extra: si falla, lo demás se responde igual.
+        const cv = c.mock ? mockCurve(deps.now) : await curve(deps).catch(() => null);
         const t10 = r.data.treasury10y;
         return {
           fuente: 'FRED (Reserva Federal de St. Louis)',
@@ -589,7 +604,13 @@ function registerPublicTools(server: McpServer, c: McpContext, when: When): void
           bono_10_anios_serie: t10.map((p) => [p.date, p.value]),
           tasa_fed_pct: r.data.fedFunds && { fecha: r.data.fedFunds.date, valor: r.data.fedFunds.value },
           inflacion_anual_pct: r.data.cpiYoY.map((p) => [p.date.slice(0, 7), round(p.value)]),
-          series: { bono_10_anios: 'DGS10', tasa_fed: 'DFF', inflacion: 'CPIAUCSL (variación % a 12 meses)' },
+          curva_rendimientos: cv && {
+            plazos: cv.data.tenors,
+            curvas: cv.data.curves.map((k) => ({ cuando: k.label, fecha: k.date, tasas_pct: k.values })),
+            diferencia_10a_2a_pp: cv.data.spread10y2y.at(-1) ?? null,
+            nota: 'Diferencia negativa = curva invertida.',
+          },
+          series: { bono_10_anios: 'DGS10', tasa_fed: 'DFF', inflacion: 'CPIAUCSL (variación % a 12 meses)', curva: 'DGS1MO … DGS30' },
           actualizado: when(r.fetchedAt),
           dato_guardado: r.stale,
           nota: r.note,

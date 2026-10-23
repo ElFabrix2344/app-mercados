@@ -14,6 +14,21 @@ export const FRED_SERIES = {
   fedTargetLower: 'DFEDTARL', // rango objetivo de la Fed, límite inferior (%, diario)
 } as const;
 
+/** Curva del Tesoro de EE. UU. (rendimientos a plazo constante, %, diarios): plazo → serie. */
+export const FRED_CURVE: [tenor: string, series: string][] = [
+  ['1M', 'DGS1MO'],
+  ['3M', 'DGS3MO'],
+  ['6M', 'DGS6MO'],
+  ['1A', 'DGS1'],
+  ['2A', 'DGS2'],
+  ['3A', 'DGS3'],
+  ['5A', 'DGS5'],
+  ['7A', 'DGS7'],
+  ['10A', 'DGS10'],
+  ['20A', 'DGS20'],
+  ['30A', 'DGS30'],
+];
+
 export interface FredPoint {
   date: string;
   value: number;

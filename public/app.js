@@ -247,6 +247,7 @@
    * v0, v1, spec) → { value, label } y monthly (el tramo se cuenta en meses). Una serie con kind: 'bars' se dibuja como
    * barras desde el cero (volumen, histograma); candles { open, high, low } dibuja velas con el cierre de la serie
    * principal; inset pone cada día al centro de su franja (la ficha lo usa en todos sus gráficos para que se alineen).
+   * labels: textos del eje x en vez de fechas (los plazos de la curva de rendimientos); se muestran todos si caben.
    */
   function drawChart(host, spec) {
     // Si había una medición fija en este gráfico, se va con él (si no, su tooltip quedaría flotando).
@@ -321,7 +322,16 @@
         label.textContent = tickFmt(t);
         svg.append(label);
       }
-      if (spec.xLabels !== false) {
+      if (spec.xLabels !== false && spec.labels) {
+        // Etiquetas propias (plazos): todas si caben, si no, una sí y una no.
+        const every = iw / n >= 26 ? 1 : 2;
+        spec.labels.forEach((text, i) => {
+          if (i % every && i !== n - 1) return;
+          const label = s('text', { class: 'tick', x: X(i), y: H - 6, 'text-anchor': 'middle' });
+          label.textContent = text;
+          svg.append(label);
+        });
+      } else if (spec.xLabels !== false) {
         // Menos etiquetas en gráficos angostos (celular), para que las fechas no se pisen.
         const labels = iw < 300 ? 2 : iw < 480 ? 3 : 4;
         const idxs = [...new Set(Array.from({ length: labels }, (_, k) => Math.round((k * (n - 1)) / (labels - 1))))];
@@ -398,7 +408,7 @@
 
   /** Una serie: el valor y la fecha. Varias: la fecha y una fila por serie, con el valor primero y su clave de color. */
   function tipContent(spec, i) {
-    const date = (spec.dateFmt || fDayYear).format(day(spec.dates[i]));
+    const date = spec.labels ? spec.labels[i] : (spec.dateFmt || fDayYear).format(day(spec.dates[i]));
     if (spec.series.length === 1 && !spec.extraTip) {
       const v = spec.series[0].values[i];
       return [h('strong', {}, v == null ? '—' : spec.fmt(v)), date];
@@ -1843,6 +1853,18 @@
       if (policyRate) row.append(metric('Tasa de referencia', rate(policyRate.value), fDay.format(day(policyRate.date))));
       if (lastInf) row.append(metric('Inflación 12 meses (Lima)', rate(lastInf.value), fMonthYear.format(day(lastInf.date))));
       const parts = [row];
+      // Encuesta de expectativas del BCRP: lo que esperan analistas y empresas a 12 meses, frente al mes anterior.
+      const survey = r.data.expectations ?? [];
+      const exp = survey.at(-1);
+      if (exp) {
+        const prev = survey.at(-2);
+        const before = (k, show) => (prev?.[k] != null ? `Mes anterior: ${show(prev[k])}` : null);
+        const expRow = h('div', { class: 'metric-row' });
+        if (exp.inflation != null) expRow.append(metric('Inflación esperada', rate(exp.inflation), before('inflation', (v) => rate(v))));
+        if (exp.gdp != null) expRow.append(metric('PBI esperado', rate(exp.gdp), before('gdp', (v) => rate(v))));
+        if (exp.fx != null) expRow.append(metric('Dólar esperado', nf(3).format(exp.fx), before('fx', (v) => nf(3).format(v))));
+        parts.push(h('p', { class: 'hint' }, `Lo que esperan los analistas a 12 meses (encuesta del BCRP de ${fMonthYear.format(day(exp.date))}):`), expRow);
+      }
       const live = quoteFor('USD/PEN');
       if (live && lastFx) {
         parts.push(h('p', { class: 'hint' }, `En vivo (Twelve Data): ${nf(4).format(live.price)} · ${pctFrac(live.price / lastFx.sell - 1, 2)} frente al BCRP del ${fDay.format(day(lastFx.date))}.`));
@@ -1897,6 +1919,63 @@
       host.replaceChildren(row, tChart.wrap, cChart.wrap, ...[staleHint(r)].filter(Boolean));
       tChart.draw();
       cChart.draw();
+    } catch (e) {
+      host.replaceChildren(h('p', { class: 'err' }, e.message));
+    }
+  }
+
+  // ---------- curva de rendimientos de EE. UU. ----------
+  // Tres curvas que se cruzan: s1, s4 y s2, validadas para daltonismo en todas las parejas (las mismas de la ficha).
+  const CURVE_CLS = ['s1', 's4', 's2'];
+
+  async function loadCurve() {
+    const host = $('curve');
+    try {
+      const r = await api('/api/curve');
+      const { tenors, curves, spread10y2y } = r.data;
+      if (!curves.length) {
+        host.replaceChildren();
+        return;
+      }
+      const series = curves.map((c, k) => ({ name: c.label, values: c.values, cls: CURVE_CLS[k], tipLabel: () => `${c.label} (${fDay.format(day(c.date))})` }));
+      const chart = h('div', { class: 'chart' });
+      const legend = h('div', { class: 'legend' }, ...curves.map((c, k) => h('span', { class: `legend-item ${CURVE_CLS[k]}` }, h('span', { class: 'key' }), `${c.label} · ${fDay.format(day(c.date))}`)));
+      const csv = h('button', { type: 'button', class: 'csv-btn', title: 'Descargar la curva para Excel' }, '⤓ CSV');
+      csv.addEventListener('click', () =>
+        downloadCsv(`fred_curva_tesoro_${today()}.csv`, ['plazo', ...curves.map((c) => `${c.label} (${c.date})`)], tenors.map((t, i) => [t, ...curves.map((c) => c.values[i])])),
+      );
+      const last = spread10y2y.at(-1);
+      const parts = [
+        h('div', { class: 'chart-head' }, h('p', { class: 'hint' }, 'Curva del Tesoro: rendimiento por plazo'), csv),
+        legend,
+        chart,
+      ];
+      if (last) {
+        const inverted = last[1] < 0;
+        parts.push(
+          h('p', { class: 'hint' }, `10 años menos 2 años: ${sign(last[1])}${nf(2).format(Math.abs(last[1]))} pp (${fDay.format(day(last[0]))}). `, inverted ? 'Negativa: la curva está invertida, algo que suele leerse como señal de recesión.' : 'Positiva: la curva no está invertida.'),
+        );
+      }
+      const spread = chartBlock(
+        '10 años menos 2 años, último año (pp)',
+        spread10y2y.map(([date, v]) => ({ date, v })),
+        { fmt: (v) => `${sign(v)}${nf(2).format(Math.abs(v))} pp`, refs: [0], measureRow: measureRowPoints, aria: 'Diferencia entre los bonos del Tesoro a 10 y a 2 años, último año' },
+        { filename: `fred_10a_menos_2a_${today()}.csv`, header: ['fecha', 'diferencia_pp'], rows: spread10y2y },
+      );
+      host.replaceChildren(...parts, spread.wrap, ...[staleHint(r)].filter(Boolean));
+      drawChart(chart, {
+        dates: tenors,
+        labels: tenors,
+        series,
+        height: 170,
+        axis: true,
+        interactive: true,
+        measure: 'none',
+        fmt: (v) => rate(v),
+        endLabel: (sr, v) => (sr.cls === 's1' ? rate(v) : null),
+        aria: `Curva de rendimientos del Tesoro de EE. UU. de 1 mes a 30 años: ${curves.map((c) => c.label.toLowerCase()).join(', ')}`,
+      });
+      spread.draw();
     } catch (e) {
       host.replaceChildren(h('p', { class: 'err' }, e.message));
     }
@@ -2128,10 +2207,16 @@
       const t = us?.fedTarget?.at(-1);
       return t ? `Hoy: ${nf(2).format(t.lower)}–${rate(t.upper)}` : null;
     }
+    // Para la inflación de Lima y el dólar, también lo que esperan los analistas a 12 meses (encuesta del BCRP).
+    const exp = pe?.expectations?.at(-1);
     const last = q.kind === 'inei' ? pe?.inflation?.at(-1) : q.kind === 'bls' ? us?.cpiYoY?.at(-1) : null;
-    if (last) return `Último dato: ${rate(last.value, q.kind === 'bls' ? 1 : 2)} (${fMonthYear.format(day(last.date))})`;
+    if (last) {
+      const now = `Último dato: ${rate(last.value, q.kind === 'bls' ? 1 : 2)} (${fMonthYear.format(day(last.date))})`;
+      return q.kind === 'inei' && exp?.inflation != null ? `${now} · analistas: ${rate(exp.inflation)} a 12 meses` : now;
+    }
     const fx = q.kind === 'dolar' ? pe?.fx?.at(-1) : null;
-    return fx ? `Hoy: S/ ${nf(3).format(fx.sell)}` : null;
+    if (!fx) return null;
+    return `Hoy: S/ ${nf(3).format(fx.sell)}${exp?.fx != null ? ` · analistas: S/ ${nf(3).format(exp.fx)} en 12 meses` : ''}`;
   }
 
   /** «cierra en 3 días (mié 11 nov 23:59)»: se muestra un minuto antes de la medianoche del cierre. */
@@ -2484,6 +2569,7 @@
       $('fresh').textContent = 'Datos públicos';
       loadPeru();
       loadUsa();
+      loadCurve();
       loadPeruMarkets();
       loadCalendar();
       loadForecasts();
@@ -2508,6 +2594,7 @@
     renderCompare();
     loadPeru();
     loadUsa();
+    loadCurve();
     loadPeruMarkets();
     loadCalendar();
     loadForecasts();

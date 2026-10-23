@@ -20,6 +20,7 @@ import {
   summarize,
   type Bar,
   type CompareResult,
+  type CurveData,
   type Fresh,
   type HistoryResult,
   type MarketSeries,
@@ -165,7 +166,8 @@ export function mockPeru(now: Date): Fresh<PeruData> {
     value: Number((2 + Math.sin(i / 2)).toFixed(2)),
   }));
   const policyRates = Array.from({ length: 40 }, (_, i) => ({ date: addDays(today, i - 40), value: 4.5 }));
-  return fresh({ fx, policyRate: { date: addDays(today, -1), value: 4.5 }, policyRates, inflation }, now);
+  const expectations = inflation.map((p, i) => ({ date: p.date, inflation: Number((2.6 + Math.sin(i / 3) * 0.3).toFixed(2)), gdp: Number((3 + Math.cos(i / 4) * 0.2).toFixed(2)), fx: Number((3.45 + Math.sin(i / 5) * 0.05).toFixed(3)) }));
+  return fresh({ fx, policyRate: { date: addDays(today, -1), value: 4.5 }, policyRates, inflation, expectations }, now);
 }
 
 /** Titulares de prueba (no son noticias reales; los enlaces van a example.com). */
@@ -384,4 +386,25 @@ export function mockForecastExtras(now: Date): { extra: { entries: Entry[]; alia
     if (value !== null) results[q.id] = { value, at: now.toISOString() };
   }
   return { extra: { entries, aliases }, results };
+}
+
+/** Curva de prueba: hoy con forma de «U», hace un mes parecida y hace un año invertida. */
+export function mockCurve(now: Date): Fresh<CurveData> {
+  const today = isoDate(now);
+  const tenors = ['1M', '3M', '6M', '1A', '2A', '3A', '5A', '7A', '10A', '20A', '30A'];
+  const hoy = [4.31, 4.22, 4.1, 3.92, 3.74, 3.69, 3.76, 3.92, 4.15, 4.58, 4.66];
+  const year = [5.42, 5.45, 5.38, 5.1, 4.82, 4.6, 4.42, 4.4, 4.38, 4.62, 4.5];
+  const spread10y2y = Array.from({ length: 250 }, (_, i) => [addDays(today, i - 365), Number((-0.4 + i * 0.0035 + Math.sin(i / 9) * 0.05).toFixed(2))] as [string, number]);
+  return fresh(
+    {
+      tenors,
+      curves: [
+        { label: 'Hoy', date: addDays(today, -1), values: hoy },
+        { label: 'Hace 1 mes', date: addDays(today, -31), values: hoy.map((v, i) => Number((v + 0.12 - i * 0.01).toFixed(2))) },
+        { label: 'Hace 1 año', date: addDays(today, -366), values: year },
+      ],
+      spread10y2y,
+    },
+    now,
+  );
 }

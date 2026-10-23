@@ -12,6 +12,10 @@ export const BCRP_SERIES = {
   fxSell: 'PD04638PD', // TC interbancario, venta (diario)
   policyRate: 'PD12301MD', // tasa de referencia (diario)
   inflation12m: 'PN01273PM', // IPC Lima Metropolitana, var% 12 meses (mensual)
+  // Encuesta de expectativas macroeconómicas (mensual): lo que esperan analistas y empresas a 12 meses.
+  expInflation12m: 'PD12912AM', // inflación esperada a 12 meses, %
+  expGdp12m: 'PD38048AM', // crecimiento del PBI esperado a 12 meses, %
+  expFx12m: 'PD38049AM', // tipo de cambio esperado a 12 meses, soles por dólar
   reserves: 'PD04650MD', // reservas internacionales netas, millones de US$ (diario, aunque el código termine en MD)
   copper: 'PD04701XD', // cobre en Londres, centavos de US$ por libra (diario)
   gold: 'PD04704XD', // oro en Londres, US$ por onza troy (diario)

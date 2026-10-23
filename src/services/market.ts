@@ -2,7 +2,7 @@
 // KV del plan gratis: 1.000 escrituras/día → se guarda poco y en registros agrupados.
 
 import { BCRP_SERIES, getBcrp, lastWithValue, type BcrpPoint } from '../lib/bcrp';
-import { FRED_SERIES, getFred, type FredPoint } from '../lib/fred';
+import { FRED_CURVE, FRED_SERIES, getFred, type FredPoint } from '../lib/fred';
 import { ApiError } from '../lib/http';
 import { alignByDate, indicators, pearson, rebase, returnsOf, sliceIndicators, type Indicators } from '../lib/indicators';
 import { lastSessionDate, usMarketOpen } from '../lib/market-hours';
@@ -477,33 +477,41 @@ export interface PeruData {
   /** Tasa de referencia día por día (últimos ~60 días): resuelve los pronósticos de las decisiones del BCRP. */
   policyRates: { date: string; value: number }[];
   inflation: { date: string; value: number }[];
+  /** Encuesta de expectativas del BCRP (mensual): inflación (%), PBI (%) y tipo de cambio esperados a 12 meses. */
+  expectations: { date: string; inflation: number | null; gdp: number | null; fx: number | null }[];
 }
 
-export function shapePeru(daily: BcrpPoint[], monthly: BcrpPoint[]): PeruData {
+export function shapePeru(daily: BcrpPoint[], monthly: BcrpPoint[], survey: BcrpPoint[] = []): PeruData {
   const fx = daily
     .filter((p) => p.values[0] != null && p.values[1] != null)
     .map((p) => ({ date: p.date, buy: p.values[0]!, sell: p.values[1]! }))
     .slice(-30);
   const policyRates = daily.filter((p) => p.values[2] != null).map((p) => ({ date: p.date, value: p.values[2]! }));
   const inflation = monthly.filter((p) => p.values[0] != null).map((p) => ({ date: p.date, value: p.values[0]! }));
-  return { fx, policyRate: lastWithValue(daily, 2), policyRates, inflation };
+  const expectations = survey
+    .filter((p) => p.values.some((v) => v != null))
+    .map((p) => ({ date: p.date, inflation: p.values[0] ?? null, gdp: p.values[1] ?? null, fx: p.values[2] ?? null }));
+  return { fx, policyRate: lastWithValue(daily, 2), policyRates, inflation, expectations };
 }
 
 export async function peru(d: Deps): Promise<Fresh<PeruData>> {
   const today = isoDate(d.now);
-  // Lo guardado antes del 23 oct no traía la tasa día por día: se renueva una vez.
+  // Lo guardado antes del 23 oct no traía la tasa día por día ni la encuesta de expectativas: se renueva una vez.
   return cached<PeruData>(
     d,
     'peru',
     MACRO_TTL_MS,
     async () => {
-      const [daily, monthly] = await Promise.all([
+      const monthsFrom = addDays(today, -430).slice(0, 7);
+      const [daily, monthly, survey] = await Promise.all([
         getBcrp([BCRP_SERIES.fxBuy, BCRP_SERIES.fxSell, BCRP_SERIES.policyRate], addDays(today, -60), today, d.fetch),
-        getBcrp([BCRP_SERIES.inflation12m], addDays(today, -430).slice(0, 7), today.slice(0, 7), d.fetch),
+        getBcrp([BCRP_SERIES.inflation12m], monthsFrom, today.slice(0, 7), d.fetch),
+        // La encuesta es un extra: si falla, lo demás se muestra igual (sin prefijo PN en el mismo pedido).
+        getBcrp([BCRP_SERIES.expInflation12m, BCRP_SERIES.expGdp12m, BCRP_SERIES.expFx12m], monthsFrom, today.slice(0, 7), d.fetch).catch(() => []),
       ]);
-      return shapePeru(daily, monthly);
+      return shapePeru(daily, monthly, survey);
     },
-    { valid: (p) => Array.isArray(p.policyRates) },
+    { valid: (p) => Array.isArray(p.policyRates) && Array.isArray(p.expectations) },
   );
 }
 
@@ -640,4 +648,52 @@ export async function usa(d: Deps): Promise<Fresh<UsaData>> {
   );
 }
 
+// ---------- curva de rendimientos de EE. UU. (FRED) ----------
+
+export interface CurveData {
+  tenors: string[];
+  /** La curva de hoy, la de hace un mes y la de hace un año (tasas en %, alineadas con `tenors`). */
+  curves: { label: string; date: string; values: (number | null)[] }[];
+  /** 10 años menos 2 años, en puntos porcentuales, día por día del último año (negativa = curva invertida). */
+  spread10y2y: [string, number][];
+}
+
+/** Último valor en esa fecha o antes. */
+function valueAt(points: FredPoint[], date: string): number | null {
+  let v: number | null = null;
+  for (const p of points) {
+    if (p.date > date) break;
+    v = p.value;
+  }
+  return v;
+}
+
+/** Arma las tres curvas desde las series de cada plazo (ordenadas por fecha). Pura, para probarla. */
+export function shapeCurve(series: FredPoint[][]): CurveData {
+  const ten = series[FRED_CURVE.findIndex(([t]) => t === '10A')] ?? [];
+  const two = series[FRED_CURVE.findIndex(([t]) => t === '2A')] ?? [];
+  const last = ten.at(-1)?.date;
+  if (!last) return { tenors: FRED_CURVE.map(([t]) => t), curves: [], spread10y2y: [] };
+  // Fechas de referencia: el último día con dato y el último día hábil de hace un mes y de hace un año.
+  const dayBefore = (days: number) => [...ten].reverse().find((p) => p.date <= addDays(last, -days))?.date ?? null;
+  const refs: [string, string | null][] = [['Hoy', last], ['Hace 1 mes', dayBefore(30)], ['Hace 1 año', dayBefore(365)]];
+  const curves = refs
+    .filter((r): r is [string, string] => r[1] !== null)
+    .map(([label, date]) => ({ label, date, values: series.map((s) => valueAt(s, date)) }));
+  const twoBy = new Map(two.map((p) => [p.date, p.value]));
+  const spread10y2y = ten
+    .filter((p) => p.date >= addDays(last, -365) && twoBy.has(p.date))
+    .map((p) => [p.date, Math.round((p.value - twoBy.get(p.date)!) * 100) / 100] as [string, number]);
+  return { tenors: FRED_CURVE.map(([t]) => t), curves, spread10y2y };
+}
+
+/** Curva del Tesoro: 11 pedidos a FRED (uno por plazo), guardados 6 h en un solo registro. Datos públicos. */
+export async function curve(d: Deps): Promise<Fresh<CurveData>> {
+  const today = isoDate(d.now);
+  return cached<CurveData>(d, 'curve', MACRO_TTL_MS, async () => {
+    const key = needKey(d.fredKey, 'FRED_API_KEY', 'fred');
+    const series = await Promise.all(FRED_CURVE.map(([, id]) => getFred(id, { start: addDays(today, -400) }, key, d.fetch)));
+    return shapeCurve(series);
+  });
+}
 export type { Quote };

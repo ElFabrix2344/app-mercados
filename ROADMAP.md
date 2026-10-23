@@ -126,6 +126,18 @@ Elegido por el usuario antes de abrir la app a los chicos, con las opciones reco
 - [x] Conector: herramienta `pronosticos` (solo lectura).
 - [ ] Ver resolverse en producción la primera pregunta: la decisión de la Fed del 28 de octubre (se resuelve desde el 29).
 
+## 8c. Lo elegido tras mirar apps de pago — en curso (23 de octubre)
+
+Ideas sacadas de Bloomberg, Morningstar, Seeking Alpha, Simply Wall St y TradingView. El usuario eligió las siete:
+
+- [x] **Expectativas de los analistas** (encuesta del BCRP), públicas, también en el juego.
+- [x] **Curva de rendimientos** de EE. UU. (FRED), pública. El BCRP no publica más plazos que el bono a 10 años.
+- [ ] **Estacionalidad** en la ficha (rendimiento promedio de cada mes).
+- [ ] **Probar una estrategia** (cruce de medias frente a comprar y mantener).
+- [ ] **Rayos X de la cartera** (sector, país, beta, volatilidad, concentración).
+- [ ] **Notas por factores A–F** frente a las comparables (Finnhub).
+- [ ] **Historia financiera** de 8 a 15 años desde la SEC, pública.
+
 ## 9. Ideas para después
 
 - **Alertas al celular por Telegram:** precio, % del día, dólar, MM200/RSI y «mañana presenta resultados». Tarea programada cada 15 min con la bolsa abierta, unos 100–150 créditos al día. Es lo que tienen todas las apps comparadas y Rueda no.

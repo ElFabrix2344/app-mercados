@@ -381,6 +381,7 @@ describe('herramientas de Perú y EE. UU.', () => {
         fx: [{ date: '2026-10-13', buy: 3.43, sell: 3.432 }, { date: '2026-10-14', buy: 3.4372, sell: 3.4391 }],
         policyRate: { date: '2026-10-14', value: 4.25 },
         policyRates: [{ date: '2026-10-14', value: 4.25 }],
+        expectations: [{ date: '2026-09-01', inflation: 3.0875, gdp: 3.1625, fx: 3.3975 }],
         inflation: [{ date: '2026-09-01', value: 1.54865469481509 }],
       },
     };
