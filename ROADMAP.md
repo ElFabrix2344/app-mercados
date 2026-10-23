@@ -138,6 +138,15 @@ Ideas sacadas de Bloomberg, Morningstar, Seeking Alpha, Simply Wall St y Trading
 - [x] **Notas por factores A–F** frente a las comparables (Finnhub), con el detalle de cada indicador.
 - [x] **Historia financiera** desde la SEC (hasta 12 años), pública: sección para todos con cualquier símbolo, bloque en la ficha y herramienta `resultados_anuales` en el conector.
 
+## 8d. Hapi, el bróker del grupo — en curso (23 de octubre)
+
+Hapi no tiene API pública ni exporta CSV: solo PDF (estado de cuenta mensual que emite Apex Clearing y una confirmación por operación, también por correo). Leer la cuenta con usuario y contraseña quedó descartado (términos y seguridad). El usuario eligió que **nadie más vea su cuenta** (sin liga del grupo).
+
+- [x] **Mi cuenta Hapi a mano**, privada para cada uno: compras, ventas, dividendos, depósitos y retiros con las comisiones de Hapi de 2026; rendimiento en US$ y en soles. Precios de mercado solo para el dueño. Herramienta `cuenta_hapi` en el conector.
+- [x] **Enlace «Ver en Hapi»** en la ficha y en «Resultados de empresas» (página pública; Hapi no tiene enlaces que abran la app).
+- [ ] **Leer el estado de cuenta mensual (PDF)** en el navegador (pdf.js servido por la app; el PDF no sale del equipo) para cargar los movimientos y el valor de fin de mes. Falta: un estado de cuenta de ejemplo del usuario (puede tapar el número de cuenta) para armar el lector.
+- [ ] Idea: reporte anual para la declaración de impuestos (ganancias realizadas y dividendos en soles, con el tipo de cambio de cada fecha). Solo cálculos: el tratamiento tributario lo decide un contador.
+
 ## 9. Ideas para después
 
 - **Alertas al celular por Telegram:** precio, % del día, dólar, MM200/RSI y «mañana presenta resultados». Tarea programada cada 15 min con la bolsa abierta, unos 100–150 créditos al día. Es lo que tienen todas las apps comparadas y Rueda no.

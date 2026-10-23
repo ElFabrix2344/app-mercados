@@ -30,6 +30,7 @@ import { financials } from './services/financials';
 import { companyCalendar } from './services/earnings';
 import { EOD_NEW_NOW, eodView, knownSymbols, refreshEod, validateEodList } from './services/eod';
 import { forecastView, resolveForecasts, setAlias, submitForecast, type Store } from './services/forecasts';
+import { addOp, deleteOp, hapiView, updateSettings, type HapiViewDeps } from './services/hapi';
 import { marketNews, quoteName, symbolNews } from './services/news';
 import { addTrade, deleteTrade, kvSource, readTrades, valuePortfolio } from './services/portfolio';
 import {
@@ -53,7 +54,9 @@ import {
   validateWatchlist,
   SYMBOL_RE,
   type Deps,
+  type PeruData,
   type Range,
+  type Stored,
 } from './services/market';
 
 const CSP = [
@@ -265,6 +268,10 @@ async function route(req: Request, env: Env, url: URL, role: Role, email: string
       case '/api/curve':
         return json(mock ? mockCurve(now) : await curve(deps));
 
+      // Cuenta de Hapi de quien pide: privada (cada uno ve solo la suya); el dueño, también a precios de mercado.
+      case '/api/hapi':
+        return json(await hapiView(env.CACHE, needEmail(email), hapiDeps(env, deps, role, mock, now)));
+
       // Pronósticos del grupo: datos públicos, juegan el dueño y los amigos.
       case '/api/forecasts':
         return json(await forecastView(env.CACHE, needEmail(email), now, mock ? mockForecastExtras(now) : {}));
@@ -325,6 +332,23 @@ async function route(req: Request, env: Env, url: URL, role: Role, email: string
     );
   }
 
+  // Cuenta de Hapi: anotar un movimiento (POST), borrarlo (DELETE ?id=…) o cambiar el plan o el valor total
+  // (PUT /api/hapi/settings). Cada uno solo toca la suya. Responde la cuenta actualizada.
+  if ((p === '/api/hapi' && (req.method === 'POST' || req.method === 'DELETE')) || (p === '/api/hapi/settings' && req.method === 'PUT')) {
+    const who = needEmail(email);
+    if (req.method === 'DELETE') {
+      const origin = req.headers.get('Origin');
+      if (origin && origin !== url.origin) throw new ApiError('bad_request', 403, 'Origen no permitido.');
+      await deleteOp(env.CACHE, who, url.searchParams.get('id') ?? '');
+    } else {
+      sameOrigin(req, url);
+      const body = await req.json().catch(() => null);
+      if (req.method === 'POST') await addOp(env.CACHE, who, now, body);
+      else await updateSettings(env.CACHE, who, now, body);
+    }
+    return json(await hapiView(env.CACHE, who, hapiDeps(env, deps, role, mock, now)));
+  }
+
   // Guarda la lista diaria y pide ya los cierres de hasta 4 símbolos nuevos (el resto, la tarea programada).
   if (p === '/api/eod' && req.method === 'PUT') {
     sameOrigin(req, url);
@@ -365,6 +389,17 @@ async function connectorIdentity(url: URL, env: Env, role: Role, email: string |
   target.searchParams.set('state', state);
   target.searchParams.set('identidad', await signPayload({ state, email, exp: Date.now() + 2 * 60_000 }, env.LOGIN_LINK_SECRET));
   return new Response(null, { status: 302, headers: { Location: target.toString(), 'Cache-Control': 'no-store' } });
+}
+
+/** Precios para la cuenta de Hapi (solo el dueño: Twelve Data) y el dólar del BCRP (público). */
+function hapiDeps(env: Env, deps: Deps, role: Role, mock: boolean, now: Date): HapiViewDeps {
+  return {
+    prices: role === 'owner' ? (symbols) => (mock ? mockPriceSource(symbols, now) : kvSource(deps)) : null,
+    usdPen: async () => {
+      const fx = mock ? mockPeru(now).data.fx.at(-1) : (await env.CACHE.get<Stored<PeruData>>('peru', 'json'))?.data.fx.at(-1);
+      return fx ? { rate: fx.sell, date: fx.date } : null;
+    },
+  };
 }
 
 /** El correo de Access (en local, dev@localhost): identifica al jugador de los pronósticos. */

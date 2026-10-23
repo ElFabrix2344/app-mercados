@@ -122,6 +122,7 @@
       <div class="ranges" id="d-ranges" role="group" aria-label="Periodo del gráfico"></div>
       <div class="legend" id="d-ind" role="group" aria-label="Indicadores técnicos"></div>
       <button type="button" id="d-csv" class="csv-btn" title="Cierres, rendimientos diarios e indicadores del periodo, para Excel">⤓ CSV</button>
+      <a id="d-hapi" class="csv-btn hapi-btn" target="_blank" rel="noopener noreferrer" title="Página de esta acción en Hapi (no abre la app)" hidden>Ver en Hapi ↗</a>
     </div>
     <div class="chart" id="d-chart"></div>
     <div id="d-vol-wrap" hidden>
@@ -254,6 +255,47 @@
       <summary>Rayos X de la cartera: de qué está hecha y cuánto riesgo tiene</summary>
       <div id="pf-xray-body"></div>
     </details>
+  </section>
+
+  <section class="screen" id="hapi" aria-labelledby="hp-h">
+    <div class="screen-head">
+      <h2 id="hp-h">Mi cuenta Hapi</h2>
+      <span class="src">Privada · solo tú</span>
+      <details class="help">
+        <summary aria-label="Cómo funciona tu cuenta Hapi">?</summary>
+        <div class="help-body">
+          <p>Anota lo que haces en Hapi: compras, ventas, dividendos, depósitos y retiros. Tu cuenta es solo tuya: nadie más del grupo la ve, ni en el panel ni en el conector de Claude. Se guarda en Rueda asociada a tu correo.</p>
+          <p>Si dejas el costo vacío, se calcula con las comisiones de Hapi de 2026: US$ 0,10 por orden de acciones enteras y US$ 0,15 por fracciones (US$ 0,05 con Prime); en las ventas, además, los cargos de la SEC y de FINRA. Depósito en soles: US$ 1,99; retiro en soles: US$ 4,99. Si tu confirmación dice otra cosa, escribe el monto exacto.</p>
+          <p>En los depósitos va lo que llegó a Hapi; en los retiros, lo que salió de Hapi. Si anotas también los soles, ves tu rendimiento en soles, con el dólar del BCRP de hoy.</p>
+          <p>Dividendos: EE. UU. retiene el 30 % a quienes viven en el Perú (no hay convenio). Se calcula solo; corrígelo si tu estado de cuenta dice otra cosa.</p>
+          <p>Hapi no tiene una conexión directa (API): para comparar, anota el valor total que te muestra Hapi. Pronto: leer tu estado de cuenta mensual en PDF.</p>
+        </div>
+      </details>
+      <button type="button" id="hp-csv" class="csv-btn" title="Movimientos de tu cuenta Hapi, para Excel" disabled>⤓ CSV</button>
+    </div>
+    <form id="hp-form" class="pf-form">
+      <label>Movimiento <select id="hp-kind"><option value="buy">Compra</option><option value="sell">Venta</option><option value="dividend">Dividendo</option><option value="deposit">Depósito</option><option value="withdrawal">Retiro</option></select></label>
+      <label>Fecha <input type="date" id="hp-date" required></label>
+      <label data-for="trade dividend">Símbolo <input id="hp-symbol" maxlength="12" autocomplete="off" autocapitalize="characters" spellcheck="false" placeholder="VOO"></label>
+      <label data-for="trade">Cantidad <input type="number" id="hp-qty" min="0" step="any" inputmode="decimal"></label>
+      <label data-for="trade">Precio en US$ <input type="number" id="hp-price" min="0" step="any" inputmode="decimal"></label>
+      <label data-for="dividend transfer"><span id="hp-amount-label">Monto en US$</span> <input type="number" id="hp-amount" min="0" step="any" inputmode="decimal"></label>
+      <label data-for="transfer"><span id="hp-pen-label">Soles</span> <input type="number" id="hp-pen" min="0" step="any" inputmode="decimal" placeholder="Opcional"></label>
+      <label data-for="dividend">Retención en US$ <input type="number" id="hp-tax" min="0" step="any" inputmode="decimal" placeholder="30 %"></label>
+      <label data-for="trade transfer">Costo en US$ <input type="number" id="hp-fee" min="0" step="any" inputmode="decimal" placeholder="Se calcula"></label>
+      <button type="submit">Anotar</button>
+    </form>
+    <p class="err" id="hp-err" hidden></p>
+    <div class="hp-settings">
+      <label>Plan <select id="hp-plan"><option value="standard">Standard</option><option value="prime">Prime</option></select></label>
+      <form id="hp-snap-form" class="hp-snap">
+        <label>Valor total según Hapi (US$) <input type="number" id="hp-snap-value" min="0" step="any" inputmode="decimal" required></label>
+        <label>Al <input type="date" id="hp-snap-date" required></label>
+        <button type="submit">Guardar</button>
+        <button type="button" id="hp-snap-clear" class="pf-del" hidden>Quitar</button>
+      </form>
+    </div>
+    <div id="hp-body"><p class="muted">Cargando…</p></div>
   </section>
 
   <div class="macro">

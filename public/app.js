@@ -35,6 +35,7 @@
     factors: new Map(), // símbolo → respuesta de /api/company/factors | { error } | 'cargando'
     fin: new Map(), // símbolo → respuesta de /api/financials | { error } | 'cargando' (SEC: ficha y sección pública)
     finSym: null, // símbolo que muestra la sección «Resultados de empresas»
+    hapi: null, // respuesta de /api/hapi (la cuenta de Hapi de quien mira; privada)
     eod: null, // respuesta de /api/eod (lista diaria: cierres, no precios en vivo)
     forecasts: null, // respuesta de /api/forecasts (pronósticos del grupo)
     fcEditName: false, // cambiando el nombre del ranking
@@ -1003,6 +1004,9 @@
       return;
     }
     sec.hidden = false;
+    const hapi = $('d-hapi');
+    hapi.hidden = sym.includes('/');
+    hapi.href = hapiUrl(sym);
     renderRanges();
     renderSymbolNews();
     renderEarnings(sym);
@@ -2134,7 +2138,7 @@
       .filter(Boolean)
       .join(' ');
     const nodes = [
-      withName ? h('p', { class: 'co-h' }, `${d.name} · ${d.symbol}`) : null,
+      withName ? h('p', { class: 'co-h' }, `${d.name} · ${d.symbol} · `, hapiLink(d.symbol)) : null,
       h('dl', { class: 'stats fin-stats' }, ...items),
       h('div', { class: 'chart-head' }, h('p', { class: 'hint' }, `Por año fiscal, en ${sc.name} de ${curName}`), csv),
       h('div', { class: 'legend' }, ...bars.map((x) => h('span', { class: `legend-item ${x.cls}` }, h('span', { class: 'key fill' }), x.label))),
@@ -2446,6 +2450,211 @@
         ['fecha', 'operacion', 'simbolo', 'cantidad', 'precio_usd', 'monto_usd'],
         p.trades.map((x) => [x.date, x.side === 'buy' ? 'compra' : 'venta', x.symbol, x.qty, x.price, round6(x.qty * x.price)]),
       );
+  }
+
+  // ---------- cuenta de Hapi (privada: cada uno ve solo la suya) ----------
+  /** Página pública de la acción en Hapi (no abre la app: Hapi no tiene enlaces que lleguen a ella). */
+  const hapiUrl = (sym) => `https://hapi.trade/es/stock/${encodeURIComponent(sym)}`;
+  const hapiLink = (sym, text = 'Ver en Hapi ↗') => h('a', { href: hapiUrl(sym), target: '_blank', rel: 'noopener noreferrer', class: 'hapi-link' }, text);
+  const HAPI_KINDS = { buy: 'Compra', sell: 'Venta', dividend: 'Dividendo', deposit: 'Depósito', withdrawal: 'Retiro' };
+  const hapiGroup = (kind) => (kind === 'buy' || kind === 'sell' ? 'trade' : kind === 'dividend' ? 'dividend' : 'transfer');
+  // Lo que se pide en cada tipo de movimiento (y cómo se llama el monto).
+  const HAPI_AMOUNT_LABEL = { dividend: 'Dividendo bruto en US$', deposit: 'Llegó a Hapi (US$)', withdrawal: 'Salió de Hapi (US$)' };
+  const HAPI_PEN_LABEL = { deposit: 'Soles que pagaste', withdrawal: 'Soles que recibiste' };
+
+  function hapiError(msg) {
+    const p = $('hp-err');
+    p.textContent = msg || '';
+    p.hidden = !msg;
+  }
+
+  /** Muestra solo los campos del tipo elegido. */
+  function renderHapiForm() {
+    const kind = $('hp-kind').value;
+    const group = hapiGroup(kind);
+    for (const label of $('hp-form').querySelectorAll('label[data-for]')) label.hidden = !label.dataset.for.split(' ').includes(group);
+    if (HAPI_AMOUNT_LABEL[kind]) $('hp-amount-label').textContent = HAPI_AMOUNT_LABEL[kind];
+    if (HAPI_PEN_LABEL[kind]) $('hp-pen-label').textContent = HAPI_PEN_LABEL[kind];
+    const date = $('hp-date');
+    date.max = today();
+    if (!date.value) date.value = today();
+  }
+
+  async function loadHapi(init, path = '/api/hapi') {
+    try {
+      state.hapi = await api(path, init);
+      hapiError(null);
+      renderHapi();
+      return true;
+    } catch (e) {
+      if (init) hapiError(e.message);
+      else $('hp-body').replaceChildren(h('p', { class: 'err' }, e.message));
+      return false;
+    }
+  }
+
+  const jsonInit = (method, body) => ({ method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+
+  async function submitHapi(e) {
+    e.preventDefault();
+    const kind = $('hp-kind').value;
+    const val = (id) => $(id).value.trim() || null;
+    const body = { kind, date: $('hp-date').value, fee: val('hp-fee') };
+    const group = hapiGroup(kind);
+    if (group !== 'transfer') body.symbol = val('hp-symbol');
+    if (group === 'trade') Object.assign(body, { qty: val('hp-qty'), price: val('hp-price') });
+    if (group !== 'trade') body.amount = val('hp-amount');
+    if (group === 'transfer') body.pen = val('hp-pen');
+    if (group === 'dividend') body.tax = val('hp-tax');
+    if (await loadHapi(jsonInit('POST', body))) for (const id of ['hp-qty', 'hp-price', 'hp-amount', 'hp-pen', 'hp-tax', 'hp-fee']) $(id).value = '';
+  }
+
+  function hapiDetail(o) {
+    if (o.kind === 'buy' || o.kind === 'sell') return `${qtyFmt.format(o.qty)} ${o.symbol} a ${usd(o.price)}`;
+    if (o.kind === 'dividend') return `${o.symbol}: ${usd(o.amount)} bruto, retenido ${usd(o.tax)}`;
+    return o.pen != null ? `${pen(o.pen)} · ${usd(o.amount)}` : usd(o.amount);
+  }
+
+  /** Efecto en el efectivo de la cuenta. */
+  function hapiCash(o) {
+    if (o.kind === 'buy') return -(o.qty * o.price + o.fee);
+    if (o.kind === 'sell') return o.qty * o.price - o.fee;
+    if (o.kind === 'dividend') return o.amount - o.tax;
+    return o.kind === 'deposit' ? o.amount : -o.amount;
+  }
+
+  function removeHapiOp(o) {
+    if (!window.confirm(`¿Borrar ${HAPI_KINDS[o.kind].toLowerCase()} del ${fDayYear.format(day(o.date))} (${hapiDetail(o)})?`)) return;
+    loadHapi({ method: 'DELETE' }, `/api/hapi?id=${encodeURIComponent(o.id)}`);
+  }
+
+  function renderHapi() {
+    const v = state.hapi;
+    const host = $('hp-body');
+    if (!v) return;
+    $('hp-plan').value = v.plan;
+    $('hp-csv').disabled = !v.ops.length;
+    if (v.snapshot) {
+      $('hp-snap-value').value = v.snapshot.value;
+      $('hp-snap-date').value = v.snapshot.date;
+    }
+    $('hp-snap-clear').hidden = !v.snapshot;
+    if (!v.ops.length) {
+      host.replaceChildren(h('p', { class: 'muted' }, 'Todavía no anotaste nada. Empieza por tus depósitos y compras: con ellos sale cuánto pusiste, cuánto pagaste en costos y tu costo promedio.'));
+      return;
+    }
+    const t = v.totals;
+    const row = h('div', { class: 'metric-row hp-metrics' });
+    // Valor de la cuenta: a precios de mercado (solo el dueño, si todo tiene precio) o el que anotaste de Hapi.
+    const value = t.account ?? v.snapshot?.value ?? null;
+    const valueLabel = t.account != null ? 'Valor hoy' : v.snapshot ? `Según Hapi (${fDay.format(day(v.snapshot.date))})` : null;
+    if (t.cash != null) row.append(metric('Depositado neto', usd(t.netDeposits), t.netPen != null ? `${pen(t.netPen)} en soles` : 'Anota los soles para ver el rendimiento en soles'));
+    if (value != null && valueLabel) {
+      row.append(metric(valueLabel, usd(value), t.account != null ? `Posiciones ${usd(t.value)} · efectivo ${usd(t.cash)}` : 'El valor que anotaste'));
+      if (t.cash != null && t.netDeposits > 0) {
+        const gain = value - t.netDeposits;
+        const m = metric('Ganancia', pctFrac(gain / t.netDeposits), signedUsd(gain));
+        m.querySelector('.value').classList.add(trend(gain));
+        row.append(m);
+        if (t.netPen != null && t.netPen > 0 && v.fx) {
+          const gPen = value * v.fx.rate - t.netPen;
+          const mp = metric('Ganancia en soles', pctFrac(gPen / t.netPen), `${sign(gPen)}${pen(Math.abs(gPen))} · dólar BCRP ${nf(3).format(v.fx.rate)}`);
+          mp.querySelector('.value').classList.add(trend(gPen));
+          row.append(mp);
+        }
+      }
+    } else if (t.cash != null) {
+      row.append(metric('Efectivo', usd(t.cash), 'Según lo anotado'));
+    }
+    if (t.realized) row.append(metric('Ganancia realizada', signedUsd(t.realized), 'En ventas, neta de costos'));
+    if (t.dividends.gross) row.append(metric('Dividendos netos', usd(t.dividends.net), `Bruto ${usd(t.dividends.gross)} · retenido ${usd(t.dividends.tax)}`));
+    row.append(metric('Costos de Hapi', usd(t.fees.total), `Órdenes ${usd(t.fees.orders)} · depósitos y retiros ${usd(t.fees.transfers)}`));
+
+    const head = (...cols) => h('thead', {}, h('tr', {}, ...cols.filter(Boolean).map((c) => h('th', { scope: 'col' }, c))));
+    const open = v.positions.filter((x) => x.qty > 0);
+    const priced = v.priced;
+    const positions = h(
+      'table',
+      { class: 'cmp-stats' },
+      head('Símbolo', 'Cantidad', 'Costo prom.', 'Costo', priced && 'Precio', priced && 'Valor', priced && 'Ganancia'),
+      h(
+        'tbody',
+        {},
+        ...open.map((x) =>
+          h(
+            'tr',
+            {},
+            h('th', { scope: 'row' }, hapiLink(x.symbol, x.symbol)),
+            h('td', {}, qtyFmt.format(x.qty)),
+            h('td', {}, fmtPrice(x.avgCost)),
+            h('td', {}, usd(x.cost)),
+            priced ? h('td', {}, x.price == null ? '—' : fmtPrice(x.price)) : null,
+            priced ? h('td', {}, usd(x.value)) : null,
+            priced ? h('td', { class: x.gain == null ? 'flat' : trend(x.gain) }, x.gain == null ? '—' : `${signedUsd(x.gain)} (${pctFrac(x.ret)})`) : null,
+          ),
+        ),
+      ),
+    );
+    const ops = h(
+      'table',
+      { class: 'cmp-stats' },
+      head('Fecha', 'Movimiento', 'Detalle', 'Efectivo', 'Costo', ''),
+      h(
+        'tbody',
+        {},
+        ...v.ops.map((o) => {
+          const del = h('button', { type: 'button', class: 'pf-del', 'aria-label': `Borrar ${HAPI_KINDS[o.kind].toLowerCase()} del ${o.date}` }, 'Borrar');
+          del.addEventListener('click', () => removeHapiOp(o));
+          const cash = hapiCash(o);
+          return h(
+            'tr',
+            {},
+            h('th', { scope: 'row' }, fDayYear.format(day(o.date))),
+            h('td', {}, HAPI_KINDS[o.kind]),
+            h('td', {}, hapiDetail(o)),
+            h('td', {}, signedUsd(cash)),
+            h('td', {}, o.fee ? usd(o.fee) : '—'),
+            h('td', {}, del),
+          );
+        }),
+      ),
+    );
+    const notes = [...v.notes];
+    if (!priced) notes.push('Sin precios de mercado: la licencia de precios de Rueda no permite mostrarlos a otras personas. Para ver tu ganancia, anota el valor total que te muestra Hapi.');
+    host.replaceChildren(
+      row,
+      h(
+        'div',
+        { class: 'pf-tables' },
+        h('div', {}, h('p', { class: 'hint' }, 'Lo que tienes (costo con las comisiones de compra)'), open.length ? positions : h('p', { class: 'muted' }, 'No tienes posiciones abiertas.')),
+        h('div', {}, h('p', { class: 'hint' }, 'Movimientos'), ops),
+      ),
+      ...(notes.length ? [h('p', { class: 'hint' }, notes.join(' '))] : []),
+    );
+    $('hp-csv').onclick = () =>
+      downloadCsv(
+        `hapi_${today()}.csv`,
+        ['fecha', 'tipo', 'simbolo', 'cantidad', 'precio_usd', 'monto_usd', 'soles', 'costo_usd', 'retencion_usd'],
+        [...v.ops].reverse().map((o) => [o.date, HAPI_KINDS[o.kind].toLowerCase(), o.symbol ?? '', o.qty ?? '', o.price ?? '', o.amount ?? '', o.pen ?? '', o.fee, o.tax ?? '']),
+      );
+  }
+
+  function setupHapi() {
+    $('hp-kind').addEventListener('change', renderHapiForm);
+    $('hp-form').addEventListener('submit', submitHapi);
+    $('hp-plan').addEventListener('change', () => loadHapi(jsonInit('PUT', { plan: $('hp-plan').value }), '/api/hapi/settings'));
+    $('hp-snap-form').addEventListener('submit', (e) => {
+      e.preventDefault();
+      loadHapi(jsonInit('PUT', { snapshot: { value: $('hp-snap-value').value, date: $('hp-snap-date').value } }), '/api/hapi/settings');
+    });
+    $('hp-snap-clear').addEventListener('click', () => {
+      $('hp-snap-value').value = '';
+      loadHapi(jsonInit('PUT', { snapshot: null }), '/api/hapi/settings');
+    });
+    $('hp-snap-date').max = today();
+    if (!$('hp-snap-date').value) $('hp-snap-date').value = today();
+    renderHapiForm();
+    loadHapi();
   }
 
   // ---------- Perú / EE. UU. ----------
@@ -3209,6 +3418,8 @@
     loadNews();
     // Resultados de empresas (SEC): públicos, también para los amigos.
     setupFinSection();
+    // Cuenta de Hapi: cada uno la suya (también los amigos).
+    setupHapi();
     setInterval(() => {
       if (document.visibilityState === 'visible') loadNews();
     }, 30 * 60_000);

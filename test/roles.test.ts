@@ -84,6 +84,29 @@ describe('rutas según el rol (local, con datos de prueba)', () => {
     expect(status.credits).toBeUndefined();
   });
 
+  it('la cuenta de Hapi: un amigo anota la suya y la ve sin precios de mercado; el dueño, con precios', async () => {
+    const e = env('friend');
+    const call = (method: string, path: string, body?: unknown) =>
+      worker.fetch(
+        new Request(`http://localhost${path}`, { method, headers: { 'Content-Type': 'application/json' }, body: body ? JSON.stringify(body) : undefined }),
+        e,
+        {} as ExecutionContext,
+      );
+    const date = new Date(Date.now() - 5 * 86_400_000).toISOString().slice(0, 10);
+    expect((await call('POST', '/api/hapi', { kind: 'deposit', date, amount: 500, pen: 1900 })).status).toBe(200);
+    const v = (await (await call('POST', '/api/hapi', { kind: 'buy', date, symbol: 'scco', qty: 1, price: 150 })).json()) as Record<string, any>;
+    expect(v.priced).toBe(false);
+    expect(v.positions[0]).toMatchObject({ symbol: 'SCCO', cost: 150.1, value: null });
+    expect(v.totals).toMatchObject({ cash: 349.9, netPen: 1900 });
+    const del = (await (await call('DELETE', `/api/hapi?id=${v.ops[0].id}`)).json()) as Record<string, any>;
+    expect(del.ops).toHaveLength(1);
+    expect((await call('PUT', '/api/hapi/settings', { plan: 'prime' })).status).toBe(200);
+    expect((await call('POST', '/api/hapi', { kind: 'buy', date, symbol: 'USD/PEN', qty: 1, price: 1 })).status).toBe(400);
+
+    const owner = (await (await get('/api/hapi')).json()) as Record<string, any>;
+    expect(owner.priced).toBe(true);
+  });
+
   it('un amigo sí ve los resultados anuales de la SEC, de cualquier acción', async () => {
     const nvda = (await (await get('/api/financials?symbol=nvda', 'friend')).json()) as Record<string, any>;
     expect(nvda.data).toMatchObject({ symbol: 'NVDA', standard: 'us-gaap', currency: 'USD' });

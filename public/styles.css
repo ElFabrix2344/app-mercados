@@ -378,6 +378,20 @@ a.news-title:hover{color:var(--accent);text-decoration:underline}
 .pf-tables .hint{margin:0 0 6px}
 .pf-tables > div{min-width:0;overflow-x:auto}
 .pf-del{padding:2px 8px;font-size:.8rem;color:var(--muted)}
+/* Cuenta de Hapi: el formulario muestra solo los campos del movimiento elegido. */
+.pf-form label[hidden]{display:none}
+.hp-settings{display:flex;flex-wrap:wrap;align-items:flex-end;gap:8px 20px;margin-bottom:12px;font-family:var(--f-sans);font-size:.85rem;color:var(--muted)}
+.hp-settings label{display:flex;flex-direction:column;gap:3px}
+.hp-settings select,.hp-settings input{font:inherit;font-family:var(--f-mono);font-size:15px;color:var(--ink);background:var(--bg);border:1px solid var(--line);
+  border-radius:var(--r);padding:5px 8px;min-width:0}
+.hp-settings input[type="number"]{width:9rem}
+.hp-snap{display:flex;flex-wrap:wrap;align-items:flex-end;gap:8px}
+#hp-symbol{width:7rem;text-transform:uppercase}
+.hp-metrics{grid-template-columns:repeat(auto-fit,minmax(170px,1fr));margin-bottom:4px}
+.hapi-link{color:var(--accent);text-decoration:none}
+.hapi-link:hover{text-decoration:underline}
+a.hapi-btn{text-decoration:none;display:inline-flex;align-items:center;border:1px solid var(--line);border-radius:var(--r)}
+a.hapi-btn:hover{border-color:var(--accent);color:var(--accent)}
 .metric .value.up{color:var(--up)} .metric .value.down{color:var(--down)}
 
 /* ---------- calendario ---------- */
