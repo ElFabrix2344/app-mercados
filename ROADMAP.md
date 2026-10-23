@@ -52,8 +52,8 @@ Las tres preguntas pendientes las respondió Claude con la opción más simple, 
 ## 4. Ajustes tuyos que no dependen de los amigos
 
 - [x] **`FRED_API_KEY`** cargada el 22 de octubre. Verificada en el conector: bono a 10 años 5,12 % (20 oct), tasa de la Fed 3,88 % e inflación anual 3,72 % (setiembre).
-- [ ] **`FINNHUB_API_KEY`:** crear la clave gratis en finnhub.io y cargarla como Secret en `mercados` y en `mercados-mcp`. Sin ella, los resultados de empresas quedan apagados (el resto funciona igual).
-- [ ] **Reconectar el conector en claude.ai** para que aparezcan las herramientas nuevas (`comparar`, `cartera`, `noticias` y `calendario`).
+- [x] **`FINNHUB_API_KEY`** cargada. Verificada el 23 de octubre con el conector: resultados de SCCO (26 oct) y BVN (28 oct) en el calendario, y datos de SCCO coherentes (capitalización US$ 155.013 millones / 844 millones de acciones ≈ US$ 184; PER 28 × BPA 6,81 ≈ US$ 190).
+- [x] **Conector reconectado en claude.ai** (23 oct): ya aparecen `comparar`, `cartera`, `empresa`, `lista_diaria`, `noticias` y `calendario`.
 - [ ] **Probar en el celular** la medición con dos dedos: hasta ahora solo se probó simulada.
 
 ## 5. Al final: abrir la app a los chicos del grupo
@@ -111,7 +111,7 @@ El 22 de octubre se comparó Rueda con Yahoo Finance, Google Finance, TradingVie
 
 - **Lo propio de Rueda:** el Perú en una pantalla con fuentes oficiales (BCRP), el conector para Claude con tus datos, el calendario con fechas del Perú en hora de Lima, exportar a Excel gratis (Yahoo lo cobra), la matriz de correlación, y nada de anuncios.
 - **Elegido por el usuario:**
-  - [x] **Datos de la empresa** en la ficha (Finnhub, solo el dueño): PER, capitalización, beta, dividendo, márgenes, recomendación de analistas, sorpresas de BPA de los últimos 4 trimestres y comparables. Al cargar la clave, comparar el PER y la capitalización de BAP con Yahoo o Google: Credicorp reporta en soles y Finnhub podría mezclar monedas en las ADR.
+  - [x] **Datos de la empresa** en la ficha (Finnhub, solo el dueño): PER, capitalización, beta, dividendo, márgenes, recomendación de analistas, sorpresas de BPA de los últimos 4 trimestres y comparables. Pendiente si BAP vuelve a la lista (hoy está VTI en su lugar): comparar su PER y capitalización con Yahoo, porque Credicorp reporta en soles y Finnhub podría mezclar monedas en las ADR.
   - [x] **Velas, volumen y MACD** en la ficha. Volumen verificado contra Nasdaq y MACD contra Twelve Data.
   - [x] **Lista ampliada** («Lista diaria»): hasta 20 símbolos más, actualizados una vez al día después del cierre por una tarea programada (1 crédito por símbolo al día). Falta verla funcionar en producción tras el primer cierre.
 - **No elegido por ahora** (queda en ideas): alertas al celular por Telegram, pronósticos del grupo (juego sin plata con datos públicos, para los amigos), gráfico del día (1D y 5D), reportes oficiales de la SEC y la SMV, dividendos en la cartera simulada.
