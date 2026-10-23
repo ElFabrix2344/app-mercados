@@ -299,6 +299,23 @@ a.news-title:hover{color:var(--accent);text-decoration:underline}
 }
 .news-foot{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-top:8px}
 .news-foot .hint{margin:0}
+/* Ficha: bloques plegables (estacionalidad y estrategia). */
+.d-tool{margin-top:12px;border-top:1px solid var(--line);padding-top:8px}
+.d-tool > summary{cursor:pointer;color:var(--accent);font-family:var(--f-sans)}
+.d-tool[open] > summary{margin-bottom:8px}
+.season-wrap{overflow-x:auto}
+.season{border-collapse:separate;border-spacing:2px;font-size:.78rem;min-width:560px}
+.season th{font-family:var(--f-sans);font-weight:400;color:var(--muted);padding:2px 4px;text-align:center}
+.season tbody th,.season tfoot th{text-align:left;white-space:nowrap}
+.season td{text-align:center;padding:4px 2px;border-radius:2px;color:var(--ink);min-width:38px}
+.season td.now{outline:1px dashed var(--muted);outline-offset:-1px}
+.season td.year{font-weight:600}
+.season td.count{color:var(--muted);font-family:var(--f-sans)}
+.season tfoot tr:first-child td,.season tfoot tr:first-child th{border-top:1px solid var(--line)}
+.d-strat-pick{display:flex;align-items:center;gap:8px;margin-bottom:8px;font-family:var(--f-sans);color:var(--muted)}
+.d-strat-pick select{font:inherit;font-family:var(--f-sans);color:var(--ink);background:var(--panel);border:1px solid var(--line);border-radius:var(--r);padding:4px 6px}
+#d-strat-body .stats{border-top:0;margin-top:10px;padding-top:0}
+#d-strat-body .co-h{margin:12px 0 4px}
 /* Ficha: datos de la empresa (Finnhub, solo el dueño). */
 .d-co{margin-top:14px;border-top:1px solid var(--line);padding-top:10px}
 .d-co > .hint:first-child{margin:0}

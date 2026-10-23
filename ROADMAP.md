@@ -132,8 +132,8 @@ Ideas sacadas de Bloomberg, Morningstar, Seeking Alpha, Simply Wall St y Trading
 
 - [x] **Expectativas de los analistas** (encuesta del BCRP), públicas, también en el juego.
 - [x] **Curva de rendimientos** de EE. UU. (FRED), pública. El BCRP no publica más plazos que el bono a 10 años.
-- [ ] **Estacionalidad** en la ficha (rendimiento promedio de cada mes).
-- [ ] **Probar una estrategia** (cruce de medias frente a comprar y mantener).
+- [x] **Estacionalidad** en la ficha (rendimiento de cada mes por año, promedio y meses en alza).
+- [x] **Probar una estrategia**: cruce de medias 50/200 o 20/50, o RSI 30/70, frente a comprar y mantener.
 - [ ] **Rayos X de la cartera** (sector, país, beta, volatilidad, concentración).
 - [ ] **Notas por factores A–F** frente a las comparables (Finnhub).
 - [ ] **Historia financiera** de 8 a 15 años desde la SEC, pública.

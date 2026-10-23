@@ -141,6 +141,22 @@
       <div class="chart" id="d-macd"></div>
     </div>
     <dl class="stats" id="d-stats"></dl>
+    <details class="d-tool" id="d-season">
+      <summary>Estacionalidad: cómo le fue a cada mes (5 años)</summary>
+      <div id="d-season-body"></div>
+    </details>
+    <details class="d-tool" id="d-strat">
+      <summary>Probar una estrategia (5 años)</summary>
+      <div class="d-strat-pick">
+        <label for="d-strat-kind">Estrategia</label>
+        <select id="d-strat-kind">
+          <option value="ma50-200">Cruce de medias 50 / 200 días</option>
+          <option value="ma20-50">Cruce de medias 20 / 50 días</option>
+          <option value="rsi">RSI: compra bajo 30, vende sobre 70</option>
+        </select>
+      </div>
+      <div id="d-strat-body"></div>
+    </details>
     <div class="d-co" id="d-co" hidden>
       <p class="hint">Datos de la empresa <span id="d-co-meta"></span></p>
       <dl class="stats" id="d-co-stats"></dl>

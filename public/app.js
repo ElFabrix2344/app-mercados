@@ -31,6 +31,7 @@
     newsShown: 6,
     symbolNews: new Map(), // símbolo → { items } | { error } | 'cargando' (se piden al abrir la ficha)
     company: new Map(), // símbolo → respuesta de /api/company | { error } | 'cargando' (al abrir la ficha)
+    full: new Map(), // símbolo → { points } de 5 años | { error } | 'cargando' (estacionalidad y estrategia)
     eod: null, // respuesta de /api/eod (lista diaria: cierres, no precios en vivo)
     forecasts: null, // respuesta de /api/forecasts (pronósticos del grupo)
     fcEditName: false, // cambiando el nombre del ranking
@@ -999,6 +1000,8 @@
     renderSymbolNews();
     renderEarnings(sym);
     renderCompany();
+    renderSeason();
+    renderStrategy();
     const q = quoteFor(sym);
     const hist = detailHistory(sym, state.range);
     renderIndicatorToggles(hist);
@@ -1202,6 +1205,289 @@
       );
       prev = p.v;
     }
+  }
+
+  // ---------- estacionalidad y estrategia (ficha) ----------
+  // Usan los 5 años que el servidor ya tiene guardados: no gastan créditos. Se calculan aquí, al abrir cada bloque.
+
+  /** Los 5 años de cierres de un símbolo, una vez por sesión. Al llegar se dibujan los dos bloques que estén abiertos. */
+  function fullHistory(sym) {
+    const c = state.full.get(sym);
+    if (c && c !== 'cargando') return c;
+    if (!c) {
+      state.full.set(sym, 'cargando');
+      api(`/api/history?symbol=${encodeURIComponent(sym)}&range=5A`)
+        .then((r) => state.full.set(sym, { points: r.data.points }))
+        .catch((e) => state.full.set(sym, { error: e.message }))
+        .finally(() => {
+          if (state.selected !== sym) return;
+          renderSeason();
+          renderStrategy();
+        });
+    }
+    return undefined;
+  }
+
+  const MONTHS_SHORT = ['Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Set', 'Oct', 'Nov', 'Dic'];
+
+  /** Rendimiento de cada mes (último cierre del mes frente al del mes anterior) y de cada año, por año. */
+  function monthlyReturns(points) {
+    const ends = new Map();
+    for (const [d, c] of points) ends.set(d.slice(0, 7), c);
+    const months = [...ends.keys()].sort();
+    const rows = new Map();
+    for (let i = 1; i < months.length; i++) {
+      const y = months[i].slice(0, 4);
+      if (!rows.has(y)) rows.set(y, new Array(12).fill(null));
+      rows.get(y)[Number(months[i].slice(5, 7)) - 1] = ends.get(months[i]) / ends.get(months[i - 1]) - 1;
+    }
+    const years = [...rows.keys()].sort().reverse();
+    const yearRet = new Map();
+    for (const y of years) {
+      const last = months.filter((m) => m.startsWith(y)).at(-1);
+      const before = months.filter((m) => m < `${y}-01`).at(-1);
+      if (last && before) yearRet.set(y, ends.get(last) / ends.get(before) - 1);
+    }
+    return { years, rows, yearRet, current: limaDate(new Date()).slice(0, 7) };
+  }
+
+  // Divergente azul ↔ rojo con gris al medio (guía dataviz, modo oscuro): el número va dentro de cada celda.
+  const HEAT_POS = [0x25, 0x6a, 0xbf];
+  const HEAT_NEG = [0xb8, 0x40, 0x3e];
+  const HEAT_MID = [0x38, 0x38, 0x35];
+  const heat = (v, cap) => {
+    const t = Math.min(1, Math.abs(v) / cap);
+    const pole = v >= 0 ? HEAT_POS : HEAT_NEG;
+    return `rgb(${HEAT_MID.map((m, i) => Math.round(m + (pole[i] - m) * t)).join(',')})`;
+  };
+  const pct1 = (v) => `${sign(v)}${nf(1).format(Math.abs(v * 100))}`;
+
+  function renderSeason() {
+    const box = $('d-season');
+    const body = $('d-season-body');
+    const sym = state.selected;
+    if (!sym || !box.open) return;
+    const full = fullHistory(sym);
+    if (!full) return body.replaceChildren(h('p', { class: 'muted' }, 'Calculando con los 5 años guardados…'));
+    if (full.error) return body.replaceChildren(h('p', { class: 'err' }, full.error));
+    const { years, rows, yearRet, current } = monthlyReturns(full.points);
+    const all = years.flatMap((y) => rows.get(y).filter((v) => v != null).map(Math.abs)).sort((a, b) => a - b);
+    // Tope del color: el percentil 90 de los movimientos de este símbolo (la cripto se mueve más que un banco).
+    const cap = all[Math.floor(all.length * 0.9)] || 0.05;
+    const cell = (v, extra = '') => {
+      const td = h('td', { class: extra || null }, v == null ? '' : pct1(v));
+      if (v != null) td.style.background = heat(v, cap);
+      return td;
+    };
+    // Promedio y meses en alza de cada mes, sin el mes en curso (todavía no cerró).
+    const avg = MONTHS_SHORT.map((_, m) => {
+      const mm = String(m + 1).padStart(2, '0');
+      const xs = years.filter((y) => `${y}-${mm}` !== current).map((y) => rows.get(y)[m]).filter((v) => v != null);
+      return xs.length ? { mean: xs.reduce((a, b) => a + b, 0) / xs.length, up: xs.filter((v) => v > 0).length, n: xs.length } : null;
+    });
+    const table = h(
+      'table',
+      { class: 'season' },
+      h('thead', {}, h('tr', {}, h('th', { scope: 'col' }, 'Año'), ...MONTHS_SHORT.map((m) => h('th', { scope: 'col' }, m)), h('th', { scope: 'col' }, 'Año'))),
+      h(
+        'tbody',
+        {},
+        ...years.map((y) =>
+          h(
+            'tr',
+            {},
+            h('th', { scope: 'row' }, y),
+            ...rows.get(y).map((v, m) => cell(v, `${y}-${String(m + 1).padStart(2, '0')}` === current ? 'now' : '')),
+            cell(yearRet.get(y) ?? null, 'year'),
+          ),
+        ),
+      ),
+      h(
+        'tfoot',
+        {},
+        h('tr', {}, h('th', { scope: 'row' }, 'Promedio'), ...avg.map((a) => cell(a ? a.mean : null)), h('td', {}, '')),
+        h('tr', {}, h('th', { scope: 'row' }, 'Subió'), ...avg.map((a) => h('td', { class: 'count' }, a ? `${a.up}/${a.n}` : '')), h('td', {}, '')),
+      ),
+    );
+    const best = avg.map((a, m) => ({ a, m })).filter((x) => x.a).sort((p, q) => q.a.mean - p.a.mean);
+    const summary = best.length
+      ? `En promedio, el mejor mes fue ${MONTHS_SHORT[best[0].m].toLowerCase()} (${pct1(best[0].a.mean)} %) y el peor ${MONTHS_SHORT[best.at(-1).m].toLowerCase()} (${pct1(best.at(-1).a.mean)} %).`
+      : '';
+    body.replaceChildren(
+      h('div', { class: 'season-wrap' }, table),
+      h(
+        'p',
+        { class: 'hint' },
+        `Rendimiento de cada mes en %, del último cierre del mes anterior al último del mes. Azul: subió; rojo: bajó; más intenso, más grande (tope ±${nf(1).format(cap * 100)} %). El mes en curso va con borde y no entra al promedio. ${summary} Con 5 años, cada promedio sale de 4 o 5 datos: sirve para ver patrones, no para predecir.`,
+      ),
+    );
+  }
+
+  // Indicadores para la estrategia, calculados aquí (los mismos que el servidor: media simple y RSI de Wilder).
+  function smaOf(values, n) {
+    const out = new Array(values.length).fill(null);
+    let sum = 0;
+    values.forEach((v, i) => {
+      sum += v;
+      if (i >= n) sum -= values[i - n];
+      if (i >= n - 1) out[i] = sum / n;
+    });
+    return out;
+  }
+  function rsiOf(values, n = 14) {
+    const out = new Array(values.length).fill(null);
+    if (values.length <= n) return out;
+    let gain = 0;
+    let loss = 0;
+    for (let i = 1; i <= n; i++) {
+      const ch = values[i] - values[i - 1];
+      if (ch >= 0) gain += ch;
+      else loss -= ch;
+    }
+    let g = gain / n;
+    let l = loss / n;
+    const val = () => (l === 0 ? (g === 0 ? 50 : 100) : 100 - 100 / (1 + g / l));
+    out[n] = val();
+    for (let i = n + 1; i < values.length; i++) {
+      const ch = values[i] - values[i - 1];
+      g = (g * (n - 1) + Math.max(ch, 0)) / n;
+      l = (l * (n - 1) + Math.max(-ch, 0)) / n;
+      out[i] = val();
+    }
+    return out;
+  }
+
+  /**
+   * Prueba una regla simple sobre los cierres: dentro o fuera del mercado cada día, según la señal del cierre
+   * ANTERIOR (sin mirar el futuro). Sin comisiones ni impuestos. Empieza el primer día con señal, igual que
+   * comprar y mantener, para comparar desde el mismo punto.
+   */
+  function backtest(points, kind) {
+    const closes = points.map(([, c]) => c);
+    let want; // (i) → true dentro, false fuera, null sin señal todavía
+    if (kind === 'rsi') {
+      const r = rsiOf(closes, 14);
+      let inside = false;
+      want = (i) => {
+        if (r[i] == null) return null;
+        if (r[i] < 30) inside = true;
+        else if (r[i] > 70) inside = false;
+        return inside;
+      };
+    } else {
+      const [fast, slow] = kind === 'ma20-50' ? [20, 50] : [50, 200];
+      const f = smaOf(closes, fast);
+      const s = smaOf(closes, slow);
+      want = (i) => (s[i] == null ? null : f[i] > s[i]);
+    }
+    const start = closes.findIndex((_, i) => want(i) !== null);
+    if (start < 0 || start >= closes.length - 2) return null;
+    const dates = [];
+    const strat = [];
+    const hold = [];
+    const trades = [];
+    let eq = 100;
+    let inside = false;
+    let entry = null;
+    let daysIn = 0;
+    for (let i = start; i < closes.length; i++) {
+      if (i > start) {
+        const ret = closes[i] / closes[i - 1] - 1;
+        if (inside) {
+          eq *= 1 + ret;
+          daysIn++;
+        }
+      }
+      dates.push(points[i][0]);
+      strat.push(Math.round(eq * 100) / 100);
+      hold.push(Math.round((closes[i] / closes[start]) * 10000) / 100);
+      // La señal de hoy decide la posición de mañana.
+      const next = want(i);
+      if (next && !inside) entry = { date: points[i][0], price: closes[i] };
+      if (!next && inside && entry) trades.push({ ...entry, exit: points[i][0], ret: closes[i] / entry.price - 1 });
+      inside = !!next;
+    }
+    if (inside && entry) trades.push({ ...entry, exit: null, ret: closes.at(-1) / entry.price - 1 });
+    const drawdown = (xs) => {
+      let peak = xs[0];
+      let worst = 0;
+      for (const x of xs) {
+        peak = Math.max(peak, x);
+        worst = Math.min(worst, x / peak - 1);
+      }
+      return worst;
+    };
+    const years = (Date.parse(dates.at(-1)) - Date.parse(dates[0])) / (365.25 * 86_400_000);
+    const stats = (xs) => ({ total: xs.at(-1) / 100 - 1, cagr: years > 0 ? (xs.at(-1) / 100) ** (1 / years) - 1 : null, dd: drawdown(xs) });
+    return { dates, strat, hold, trades, s: stats(strat), b: stats(hold), share: daysIn / Math.max(1, dates.length - 1), years };
+  }
+
+  function renderStrategy() {
+    const box = $('d-strat');
+    const body = $('d-strat-body');
+    const sym = state.selected;
+    if (!sym || !box.open) return;
+    const full = fullHistory(sym);
+    if (!full) return body.replaceChildren(h('p', { class: 'muted' }, 'Calculando con los 5 años guardados…'));
+    if (full.error) return body.replaceChildren(h('p', { class: 'err' }, full.error));
+    const kind = $('d-strat-kind').value;
+    const r = backtest(full.points, kind);
+    if (!r) return body.replaceChildren(h('p', { class: 'muted' }, 'No hay historia suficiente para esta estrategia.'));
+    const chart = h('div', { class: 'chart' });
+    const legend = h(
+      'div',
+      { class: 'legend' },
+      h('span', { class: 'legend-item s1' }, h('span', { class: 'key' }), 'Estrategia'),
+      h('span', { class: 'legend-item s4' }, h('span', { class: 'key' }), 'Comprar y mantener'),
+    );
+    const statsEl = h(
+      'dl',
+      { class: 'stats' },
+      stat('Estrategia', pctFrac(r.s.total), `${r.s.cagr != null ? `${pctFrac(r.s.cagr)} al año · ` : ''}peor caída ${pctFrac(r.s.dd)}`),
+      stat('Comprar y mantener', pctFrac(r.b.total), `${r.b.cagr != null ? `${pctFrac(r.b.cagr)} al año · ` : ''}peor caída ${pctFrac(r.b.dd)}`),
+      stat('Operaciones', String(r.trades.length), `Dentro del mercado el ${nf(0).format(r.share * 100)} % del tiempo`),
+    );
+    const recent = r.trades.slice(-6).reverse();
+    const trades = recent.length
+      ? h(
+          'table',
+          { class: 'co-table' },
+          h('thead', {}, h('tr', {}, ...['Entrada', 'Salida', 'Resultado'].map((t) => h('th', { scope: 'col' }, t)))),
+          h(
+            'tbody',
+            {},
+            ...recent.map((t) =>
+              h('tr', {}, h('td', {}, fDayYear.format(day(t.date))), h('td', {}, t.exit ? fDayYear.format(day(t.exit)) : 'sigue dentro'), h('td', { class: trend(t.ret) }, `${arrowOf(t.ret)} ${pctFrac(t.ret)}`)),
+            ),
+          ),
+        )
+      : h('p', { class: 'muted' }, 'La regla no dio ninguna entrada en estos años.');
+    body.replaceChildren(
+      legend,
+      chart,
+      statsEl,
+      h('p', { class: 'co-h' }, 'Últimas operaciones'),
+      trades,
+      h(
+        'p',
+        { class: 'hint' },
+        `Desde el ${fDayYear.format(day(r.dates[0]))} (el primer día con señal), con 100 al inicio. Cada día se está dentro o fuera según la señal del cierre anterior. Sin comisiones ni impuestos: es para aprender, no una recomendación.`,
+      ),
+    );
+    drawChart(chart, {
+      dates: r.dates,
+      series: [
+        { name: 'Estrategia', values: r.strat, cls: 's1' },
+        { name: 'Comprar y mantener', values: r.hold, cls: 's4' },
+      ],
+      height: 200,
+      axis: true,
+      interactive: true,
+      measure: 'all',
+      fmt: (v) => nf(1).format(v),
+      endLabel: (sr, v) => nf(0).format(v),
+      aria: `${sym}: estrategia frente a comprar y mantener, base 100`,
+    });
   }
 
   // ---------- comparar ----------
@@ -2533,6 +2819,9 @@
     $('eod-cancel').addEventListener('click', () => openEodEditor(false));
     $('eod-form').addEventListener('submit', saveEod);
     $('d-close').addEventListener('click', () => select(state.selected));
+    $('d-season').addEventListener('toggle', renderSeason);
+    $('d-strat').addEventListener('toggle', renderStrategy);
+    $('d-strat-kind').addEventListener('change', renderStrategy);
     $('pf-form').addEventListener('submit', submitTrade);
     $('tape-toggle').addEventListener('click', () => {
       prefs.set('mercados.cinta', tapeMoving() ? 'quieta' : 'mover');
