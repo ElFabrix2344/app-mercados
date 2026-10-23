@@ -15,6 +15,7 @@ import {
   mockCompare,
   mockCurve,
   mockEodView,
+  mockFactors,
   mockForecastExtras,
   mockHistory,
   mockNews,
@@ -26,6 +27,7 @@ import {
   mockUsa,
 } from './mock';
 import { companyData } from './services/company';
+import { factorGrades } from './services/factors';
 import { eodView, knownSymbols } from './services/eod';
 import { forecastView } from './services/forecasts';
 import { companyCalendar, epsSurprise, MOMENT, quarterLabel } from './services/earnings';
@@ -402,6 +404,16 @@ function registerMarketTools(server: McpServer, c: McpContext, when: When): void
             sorpresa_pct: x.surprisePct === null ? null : round(x.surprisePct),
           })),
           comparables: r.data.peers,
+          notas_por_factores: await (async () => {
+            // Un extra: si falla, lo demás se responde igual.
+            const g = c.mock ? mockFactors(symbol, deps.now) : await factorGrades(deps, symbol).catch(() => null);
+            if (!g || !g.enabled || !g.applicable) return null;
+            return {
+              comparables_usadas: g.data.peers,
+              notas: Object.fromEntries(g.data.factors.map((f) => [f.label.toLowerCase(), f.grade])),
+              como_se_calcula: 'Percentil de cada indicador dentro del grupo (la empresa y sus comparables); A = 20 % mejor, F = 20 % peor.',
+            };
+          })(),
           ...(Object.keys(r.data.errors).length ? { partes_con_error: r.data.errors } : {}),
           actualizado: when(r.fetchedAt),
           dato_guardado: r.stale,

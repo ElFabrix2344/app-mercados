@@ -153,6 +153,9 @@ export interface CompanyMetrics {
   high52Date: string | null;
   low52: number | null;
   low52Date: string | null;
+  /** Rendimiento del precio en 26 y 52 semanas (%). */
+  return26w: number | null;
+  return52w: number | null;
 }
 
 /** El primero de los nombres que traiga un número: Finnhub cambió algunos nombres con los años. */
@@ -184,6 +187,8 @@ export function parseMetrics(raw: unknown): CompanyMetrics | null {
     high52Date: isoDay(r['52WeekHighDate']),
     low52: pick(r, ['52WeekLow']),
     low52Date: isoDay(r['52WeekLowDate']),
+    return26w: pick(r, ['26WeekPriceReturnDaily']),
+    return52w: pick(r, ['52WeekPriceReturnDaily']),
   };
   return Object.values(out).some((v) => v !== null) ? out : null;
 }

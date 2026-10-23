@@ -7,6 +7,7 @@ import { usMarketOpen } from './lib/market-hours';
 import { addDays, isoDate } from './lib/num';
 import type { DailyPoint, Quote } from './lib/twelvedata';
 import type { CompanyResult } from './services/company';
+import { gradeFactors, type FactorsResult } from './services/factors';
 import { getEodList, shapeEod, summarizeHistory, type EodRow, type EodView } from './services/eod';
 import type { Entry, Results } from './services/forecasts';
 import { EARNINGS_AHEAD_DAYS, shapeCompanies, type CompanyCalendar } from './services/earnings';
@@ -330,6 +331,8 @@ export function mockCompany(symbol: string, now: Date): CompanyResult {
               high52Date: addDays(today, -120),
               low52: Math.min(...pts),
               low52Date: addDays(today, -260),
+              return26w: between(-20, 40, 1),
+              return52w: between(-30, 80, 1),
             },
         recommendations: etf ? [] : months.map((period) => ({ period, strongBuy: between(2, 6, 0), buy: between(3, 9, 0), hold: between(1, 6, 0), sell: between(0, 2, 0), strongSell: 0 })),
         surprises: etf ? [] : surprises,
@@ -407,4 +410,17 @@ export function mockCurve(now: Date): Fresh<CurveData> {
     },
     now,
   );
+}
+
+/** Notas por factores de prueba: la empresa de prueba frente a comparables de prueba. */
+export function mockFactors(symbol: string, now: Date): FactorsResult {
+  const own = mockCompany(symbol, now);
+  if (!own.enabled || !own.applicable) return own;
+  if (!own.data.metrics) return { enabled: true, applicable: false, note: 'Finnhub no tiene indicadores o comparables de esta empresa (pasa con los ETF).' };
+  const peers = ['FCX', 'TECK', 'RIO', 'BHP', 'VALE'].filter((p) => p !== symbol);
+  const metrics = peers.map((p) => {
+    const r = mockCompany(p, now);
+    return r.enabled && r.applicable ? r.data.metrics : null;
+  });
+  return { enabled: true, applicable: true, ...fresh({ symbol, peers, factors: gradeFactors(own.data.metrics, metrics) }, now) };
 }

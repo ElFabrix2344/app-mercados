@@ -316,6 +316,25 @@ a.news-title:hover{color:var(--accent);text-decoration:underline}
 .d-strat-pick select{font:inherit;font-family:var(--f-sans);color:var(--ink);background:var(--panel);border:1px solid var(--line);border-radius:var(--r);padding:4px 6px}
 #d-strat-body .stats{border-top:0;margin-top:10px;padding-top:0}
 #d-strat-body .co-h{margin:12px 0 4px}
+/* Rayos X de la cartera: barras de una sola serie (un color), con el % al final. */
+.xr-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px 24px}
+.xr-group .co-h{margin:0 0 6px}
+.xr-row{display:grid;grid-template-columns:minmax(0,9ch) minmax(0,1fr) 6ch;gap:8px;align-items:center;font-size:.85rem;margin-bottom:4px}
+.xr-name{font-family:var(--f-sans);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.xr-track{height:8px;background:var(--hair);border-radius:2px;overflow:hidden}
+.xr-bar{display:block;height:100%;background:var(--s1);border-radius:0 2px 2px 0}
+.xr-pct{text-align:right;color:var(--muted)}
+.xr-corr{overflow-x:auto}
+#pf-xray-body > .co-h{margin:14px 0 4px}
+/* Notas por factores: la letra grande y el factor; el detalle va en una tabla plegable. */
+#d-co-grades{margin-top:12px}
+#d-co-grades > .co-h{margin:0 0 6px}
+.fx-tiles{display:flex;flex-wrap:wrap;gap:8px}
+.fx-tile{display:flex;flex-direction:column;align-items:center;min-width:88px;padding:6px 10px;border:1px solid var(--line);border-radius:var(--r);background:var(--bg)}
+.fx-grade{font-size:1.4rem;font-weight:600;line-height:1.2}
+.fx-label{font-family:var(--f-sans);font-size:.8rem;color:var(--muted)}
+.fx-table{max-width:none}
+.fx-table td:first-child{font-family:var(--f-sans);color:var(--muted)}
 /* Ficha: datos de la empresa (Finnhub, solo el dueño). */
 .d-co{margin-top:14px;border-top:1px solid var(--line);padding-top:10px}
 .d-co > .hint:first-child{margin:0}

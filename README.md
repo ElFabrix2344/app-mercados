@@ -54,6 +54,8 @@ Claude ─► Worker «mercados-mcp» (OAuth propio) ─────────
   - Usa costo promedio y muestra los totales en US$ y en soles (con el USD/PEN de la lista o el dólar del BCRP), sin dividendos ni comisiones.
   - Se compara con haber hecho las mismas compras y ventas en el SPY: cada compra pone esa plata en el SPY y cada venta saca la parte proporcional.
   - Solo entran los símbolos de la lista que cotizan en dólares (USD/PEN no). No deja vender más de lo que había en esa fecha ni borrar una compra que respalda una venta posterior.
+- **Rayos X de la cartera** (solo el dueño, `services/xray.ts`, `/api/portfolio/xray`): de qué está hecha la cartera simulada (por posición, sector y país, con el perfil de Finnhub; ETF y cripto aparte), su concentración (la mayor posición, las 3 mayores y las «posiciones efectivas», 1 / Σ peso²) y su riesgo del último año con los pesos de hoy: volatilidad anual, beta frente al SPY, peor caída y correlación entre posiciones. Usa solo lo guardado: no gasta créditos.
+- **Notas por factores A–F** (solo el dueño, `services/factors.ts`, `/api/company/factors`): en la ficha, valor (PER, precio/valor contable, precio/ventas: más barato, mejor), crecimiento, rentabilidad, impulso (26 y 52 semanas) y dividendo frente a las comparables de Finnhub. Cada indicador da un percentil dentro del grupo y la nota del factor es el promedio (A desde 80, B desde 60, C desde 40, D desde 20). Con menos de 3 empresas con el dato no se califica; un PER negativo no cuenta como barato. Los indicadores de las comparables se guardan 24 h en `factors:<símbolo>`.
 - **Noticias** (`services/news.ts`, lector en `lib/rss.ts`): titulares de RSS públicos, gratis y sin claves. Se muestran titular, medio, hora y enlace, nunca la nota completa.
   - **Generales:** Gestión (economía), Bloomberg Línea (mercados), WSJ, MarketWatch, CNBC y Bloomberg. Se guardan juntas en KV (`news`) cada 30 minutos, unas 48 escrituras al día. Si una fuente falla, se muestran las demás. Son públicas: las ven también los amigos.
   - **Por acción:** en la ficha, titulares de Yahoo Finance (por símbolo) y de Google News (por nombre, en español). Se piden al abrirla y no se guardan.
@@ -94,6 +96,8 @@ Todas las rutas exigen sesión de Cloudflare Access. Las marcadas con 🔒 son s
 | GET | `/api/portfolio` 🔒 | Cartera simulada valorizada: operaciones, posiciones, totales en US$ y soles, y comparación con el SPY |
 | POST / DELETE | `/api/portfolio` 🔒 | Agrega una operación (`{"date", "symbol", "side": "buy"\|"sell", "qty", "price"?}`) o borra una (`?id=…`); responde la cartera valorizada |
 | GET | `/api/company?symbol=BAP` 🔒 | Datos de la empresa (Finnhub): perfil, indicadores, analistas, sorpresas del BPA y comparables. `enabled: false` sin clave; `applicable: false` para divisas y cripto |
+| GET | `/api/portfolio/xray` 🔒 | Rayos X de la cartera simulada: composición, concentración y riesgo con los pesos de hoy |
+| GET | `/api/company/factors?symbol=BAP` 🔒 | Notas por factores A–F frente a las comparables de Finnhub, con el detalle de cada indicador |
 | GET | `/api/news` | Titulares generales (todas las fuentes, guardados 30 min), con su grupo: `latam`, `eeuu` o `global` |
 | GET | `/api/news/symbol?symbol=BAP` 🔒 | Titulares de un símbolo de la lista (Yahoo Finance y Google News), sin guardar |
 | GET | `/api/peru` | Dólar interbancario, tasa de referencia e inflación (BCRP) |
@@ -115,7 +119,7 @@ Vive en un **Worker aparte, `mercados-mcp`** (`src/mcp-worker.ts`, `wrangler.mcp
 | `historial` | Cierres de un símbolo de la lista en el rango pedido (hasta 5 años), sus estadísticas y los indicadores técnicos del último cierre (medias, RSI, Bollinger, MACD y volumen) |
 | `comparar` | De 2 a 4 símbolos de la lista: rendimiento, volatilidad, mayor caída, correlación y base 100 al cierre de cada mes |
 | `cartera` | La cartera simulada valorizada: posiciones, ganancia, totales en US$ y soles y comparación con el SPY (solo lectura) |
-| `empresa` | Datos de una acción de la lista (Finnhub): perfil, capitalización, PER, márgenes, ROE, beta, dividendo, analistas, sorpresas del BPA y comparables |
+| `empresa` | Datos de una acción de la lista (Finnhub): perfil, capitalización, PER, márgenes, ROE, beta, dividendo, analistas, sorpresas del BPA, comparables y notas por factores A–F |
 | `lista_diaria` | Cierres guardados de la lista diaria: último cierre, fecha, variación y rendimiento de 1 año. Sus símbolos también sirven en `historial`, `comparar`, `empresa` y `noticias` |
 | `pronosticos` | El juego de pronósticos del grupo: preguntas abiertas (con el pronóstico propio), cerradas, resueltas con puntos y ranking. Solo lectura |
 | `noticias` | Titulares generales por grupo y, para el dueño, los de un símbolo de la lista, con medio, hora, enlace y resumen corto |
@@ -144,6 +148,8 @@ src/
   services/news.ts      noticias: fuentes RSS, caché de las generales y titulares por acción
   services/earnings.ts  resultados de empresas de la lista (Finnhub, solo el dueño) para el calendario y la ficha
   services/company.ts   datos de la empresa para la ficha (Finnhub, solo el dueño)
+  services/factors.ts   notas por factores A–F frente a las comparables (Finnhub, solo el dueño)
+  services/xray.ts      rayos X de la cartera simulada: composición, concentración y riesgo
   services/eod.ts       lista diaria: cierres de hasta 20 símbolos más y la tarea programada que los renueva
   lib/forecasts.ts      pronósticos del grupo: preguntas desde el calendario, puntos y cómo se resuelve cada una
   services/forecasts.ts pronósticos del grupo: jugadores, pronósticos en KV, lo que ve cada uno y la resolución automática

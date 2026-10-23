@@ -32,6 +32,7 @@
     symbolNews: new Map(), // símbolo → { items } | { error } | 'cargando' (se piden al abrir la ficha)
     company: new Map(), // símbolo → respuesta de /api/company | { error } | 'cargando' (al abrir la ficha)
     full: new Map(), // símbolo → { points } de 5 años | { error } | 'cargando' (estacionalidad y estrategia)
+    factors: new Map(), // símbolo → respuesta de /api/company/factors | { error } | 'cargando'
     eod: null, // respuesta de /api/eod (lista diaria: cierres, no precios en vivo)
     forecasts: null, // respuesta de /api/forecasts (pronósticos del grupo)
     fcEditName: false, // cambiando el nombre del ranking
@@ -1838,7 +1839,7 @@
     const an = $('d-co-analysts');
     const su = $('d-co-surprises');
     const note = $('d-co-note');
-    for (const el of [meta, statsEl, an, su]) el.replaceChildren();
+    for (const el of [meta, statsEl, an, su, $('d-co-grades')]) el.replaceChildren();
     note.className = 'hint';
     if (!r) {
       note.textContent = 'Cargando datos de la empresa…';
@@ -1883,6 +1884,7 @@
       if (m.high52 != null && m.low52 != null) items.push(stat('Rango de 52 semanas', `${fmtPrice(m.low52)} – ${fmtPrice(m.high52)}`));
     }
     statsEl.append(...items);
+    renderFactors(sym);
 
     // Analistas: el mes más reciente y cómo estaba en el más viejo que dé Finnhub.
     const buyShare = (x) => {
@@ -1934,6 +1936,71 @@
     if (errs.length) notes.push(`Sin respuesta para ${listJoin(errs)}.`);
     if (r.note) notes.push(r.note);
     note.textContent = notes.join(' ');
+  }
+
+  // ---------- notas por factores (A–F, frente a las comparables) ----------
+  function factorsFor(sym) {
+    const c = state.factors.get(sym);
+    if (c) return c === 'cargando' ? undefined : c;
+    state.factors.set(sym, 'cargando');
+    api(`/api/company/factors?symbol=${encodeURIComponent(sym)}`)
+      .then((r) => state.factors.set(sym, r))
+      .catch((e) => state.factors.set(sym, { error: e.message }))
+      .finally(() => {
+        if (state.selected === sym) renderFactors(sym);
+      });
+    return undefined;
+  }
+
+  const fmtMetric = (v, label) => (v == null ? '—' : /%/.test(label) ? `${sign(v)}${nf(1).format(Math.abs(v))}%` : nf(2).format(v));
+
+  function renderFactors(sym) {
+    const host = $('d-co-grades');
+    const r = factorsFor(sym);
+    if (!r) return host.replaceChildren(h('p', { class: 'muted' }, 'Calculando las notas frente a sus comparables…'));
+    if (r.error) return host.replaceChildren(h('p', { class: 'err' }, r.error));
+    if (!r.enabled || !r.applicable) return host.replaceChildren();
+    const tiles = r.data.factors.map((f) =>
+      h(
+        'div',
+        { class: 'fx-tile', title: f.score != null ? `Percentil promedio ${nf(0).format(f.score * 100)}` : 'Sin comparables suficientes con este dato' },
+        h('span', { class: 'fx-grade' }, f.grade ?? '—'),
+        h('span', { class: 'fx-label' }, f.label),
+      ),
+    );
+    const rows = r.data.factors.flatMap((f) =>
+      f.metrics.map((m, i) =>
+        h(
+          'tr',
+          {},
+          h('td', {}, i ? '' : f.label),
+          h('td', {}, m.label),
+          h('td', {}, fmtMetric(m.value, m.label)),
+          h('td', {}, fmtMetric(m.median, m.label)),
+          h('td', {}, m.percentile != null ? nf(0).format(m.percentile * 100) : '—'),
+        ),
+      ),
+    );
+    host.replaceChildren(
+      h('p', { class: 'co-h' }, `Notas frente a ${r.data.peers.length} comparables (${r.data.peers.join(', ')})`),
+      h('div', { class: 'fx-tiles' }, ...tiles),
+      h(
+        'details',
+        { class: 'table-view' },
+        h('summary', {}, 'Cómo sale cada nota'),
+        h(
+          'table',
+          { class: 'co-table fx-table' },
+          h('thead', {}, h('tr', {}, ...['Factor', 'Indicador', 'Empresa', 'Mediana comparables', 'Percentil'].map((t) => h('th', { scope: 'col' }, t)))),
+          h('tbody', {}, ...rows),
+        ),
+        h(
+          'p',
+          { class: 'hint' },
+          'Cada indicador da un percentil dentro del grupo (100 = el mejor; en los múltiplos de valor, el más barato). La nota del factor es el promedio: A desde 80, B desde 60, C desde 40, D desde 20 y F por debajo. Con menos de 3 empresas con el dato no se califica. No es una recomendación.',
+        ),
+      ),
+    );
   }
 
   // ---------- cartera simulada ----------
@@ -1989,9 +2056,91 @@
     loadPortfolio({ method: 'DELETE', headers: { 'Content-Type': 'application/json' } }, `/api/portfolio?id=${encodeURIComponent(t.id)}`);
   }
 
+  // ---------- rayos X de la cartera ----------
+  async function loadXray() {
+    const body = $('pf-xray-body');
+    if (!$('pf-xray').open) return;
+    body.replaceChildren(h('p', { class: 'muted' }, 'Calculando…'));
+    try {
+      renderXray(await api('/api/portfolio/xray'));
+    } catch (e) {
+      body.replaceChildren(h('p', { class: 'err' }, e.message));
+    }
+  }
+
+  /** Barras horizontales de una sola serie (un solo color), ordenadas, con el % al final de cada una. */
+  function weightBars(title, items, label = (x) => x.name) {
+    return h(
+      'div',
+      { class: 'xr-group' },
+      h('p', { class: 'co-h' }, title),
+      ...items.map((x) => {
+        const bar = h('span', { class: 'xr-bar' });
+        bar.style.width = `${Math.max(1, x.weight * 100)}%`;
+        return h('div', { class: 'xr-row' }, h('span', { class: 'xr-name' }, label(x)), h('span', { class: 'xr-track' }, bar), h('span', { class: 'xr-pct' }, `${nf(1).format(x.weight * 100)}%`));
+      }),
+    );
+  }
+
+  function renderXray(x) {
+    const body = $('pf-xray-body');
+    if (!x.total) return body.replaceChildren(h('p', { class: 'muted' }, 'No hay posiciones abiertas.'));
+    const c = x.concentration;
+    const country = (code) => (code === 'Varios' ? 'Varios (ETF y cripto)' : regionName(code));
+    const parts = [
+      h(
+        'div',
+        { class: 'xr-grid' },
+        weightBars('Por posición', x.positions.map((p) => ({ name: p.symbol, weight: p.weight }))),
+        weightBars('Por sector', x.bySector),
+        weightBars('Por país', x.byCountry, (g) => country(g.name)),
+      ),
+      h(
+        'dl',
+        { class: 'stats' },
+        c.largest ? stat('Mayor posición', `${nf(0).format(c.largest.weight * 100)}%`, c.largest.symbol) : null,
+        stat('Las 3 mayores', `${nf(0).format(c.top3 * 100)}%`, 'del valor de la cartera'),
+        stat('Posiciones efectivas', nf(1).format(c.effective), `Equivale a ${nf(1).format(c.effective)} posiciones del mismo tamaño`),
+      ),
+    ];
+    const r = x.risk;
+    if (r) {
+      parts.push(
+        h('p', { class: 'co-h' }, `Riesgo con los pesos de hoy (${fDayYear.format(day(r.from))} → ${fDayYear.format(day(r.to))})`),
+        h(
+          'dl',
+          { class: 'stats' },
+          stat('Volatilidad anual', r.volatility != null ? `${nf(1).format(r.volatility * 100)}%` : '—', 'Cuánto se mueve la cartera en un año típico'),
+          stat('Beta frente al SPY', r.beta != null ? nf(2).format(r.beta) : '—', r.beta != null ? (r.beta > 1.05 ? 'Se mueve más que el mercado' : r.beta < 0.95 ? 'Se mueve menos que el mercado' : 'Se mueve como el mercado') : 'Sin historial del SPY'),
+          stat('Peor caída', pctFrac(r.maxDrawdown), 'Del punto más alto al más bajo en el año'),
+        ),
+      );
+      if (r.correlation.symbols.length > 1) {
+        const syms = r.correlation.symbols;
+        parts.push(
+          h('p', { class: 'co-h' }, 'Correlación entre tus posiciones (rendimientos diarios)'),
+          h(
+            'div',
+            { class: 'xr-corr' },
+            h(
+              'table',
+              { class: 'corr' },
+              h('thead', {}, h('tr', {}, h('td', {}), ...syms.map((s) => h('th', { scope: 'col' }, s)))),
+              h('tbody', {}, ...syms.map((a, i) => h('tr', {}, h('th', { scope: 'row' }, a), ...syms.map((b, j) => corrCell(r.correlation.matrix[i][j], i === j, a, b, r.days))))),
+            ),
+          ),
+        );
+      }
+    }
+    parts.push(h('p', { class: 'hint' }, ['Sector y país según Finnhub. El riesgo usa los historiales ya guardados, sin gastar créditos.', ...x.notes].join(' ')));
+    body.replaceChildren(...parts);
+  }
+
   function renderPortfolio() {
     const p = state.portfolio;
     const host = $('pf-body');
+    // Si los rayos X están abiertos, se recalculan con la cartera nueva.
+    if ($('pf-xray').open) loadXray();
     $('pf-csv').disabled = !p?.trades?.length;
     if (!p) return;
     // Si la ficha está abierta, sus marcas de compras y ventas se actualizan.
@@ -2822,6 +2971,7 @@
     $('d-season').addEventListener('toggle', renderSeason);
     $('d-strat').addEventListener('toggle', renderStrategy);
     $('d-strat-kind').addEventListener('change', renderStrategy);
+    $('pf-xray').addEventListener('toggle', loadXray);
     $('pf-form').addEventListener('submit', submitTrade);
     $('tape-toggle').addEventListener('click', () => {
       prefs.set('mercados.cinta', tapeMoving() ? 'quieta' : 'mover');

@@ -11,6 +11,7 @@ import {
   mockCompare,
   mockCurve,
   mockEodView,
+  mockFactors,
   mockForecastExtras,
   mockHistory,
   mockNews,
@@ -22,6 +23,8 @@ import {
   mockUsa,
 } from './mock';
 import { companyData } from './services/company';
+import { portfolioXray, type ProfileOf } from './services/xray';
+import { factorGrades } from './services/factors';
 import { companyCalendar } from './services/earnings';
 import { EOD_NEW_NOW, eodView, knownSymbols, refreshEod, validateEodList } from './services/eod';
 import { forecastView, resolveForecasts, setAlias, submitForecast, type Store } from './services/forecasts';
@@ -116,7 +119,7 @@ export default {
 } satisfies ExportedHandler<Env>;
 
 /** Precios de Twelve Data: su licencia gratis no permite mostrarlos a otras personas. */
-const OWNER_ONLY = new Set(['/api/watchlist', '/api/eod', '/api/quotes', '/api/history', '/api/compare', '/api/portfolio', '/api/news/symbol', '/api/company']);
+const OWNER_ONLY = new Set(['/api/watchlist', '/api/eod', '/api/quotes', '/api/history', '/api/compare', '/api/portfolio', '/api/portfolio/xray', '/api/news/symbol', '/api/company', '/api/company/factors']);
 
 async function route(req: Request, env: Env, url: URL, role: Role, email: string | null): Promise<Response | null> {
   const p = url.pathname;
@@ -191,6 +194,19 @@ async function route(req: Request, env: Env, url: URL, role: Role, email: string
         return json(await valuePortfolio(await readTrades(env.CACHE), src));
       }
 
+      // Rayos X de la cartera: composición y riesgo con lo ya guardado (perfil de Finnhub para sector y país).
+      case '/api/portfolio/xray': {
+        const list = await getWatchlist(env.CACHE);
+        const src = mock ? mockPriceSource(list, now) : kvSource(deps);
+        const profileOf: ProfileOf = async (symbol) => {
+          const r = mock ? mockCompany(symbol, now) : await companyData(deps, symbol);
+          if (!r.enabled || !r.applicable) return null;
+          const p = r.data.profile;
+          return p ? { industry: p.industry, country: p.country } : 'etf';
+        };
+        return json(await portfolioXray(await valuePortfolio(await readTrades(env.CACHE), src), src, profileOf, now));
+      }
+
       // Titulares públicos (RSS): también para los amigos.
       case '/api/news':
         return json(mock ? mockNews(now) : await marketNews(deps));
@@ -212,6 +228,15 @@ async function route(req: Request, env: Env, url: URL, role: Role, email: string
           throw new ApiError('bad_request', 400, 'Solo hay datos de empresa para los símbolos de tus listas.');
         }
         return json(mock ? mockCompany(symbol, now) : await companyData(deps, symbol));
+      }
+
+      // Notas por factores (A–F) frente a las comparables de Finnhub: solo el dueño.
+      case '/api/company/factors': {
+        const symbol = (url.searchParams.get('symbol') ?? '').trim().toUpperCase();
+        if (!(await knownSymbols(env.CACHE)).includes(symbol)) {
+          throw new ApiError('bad_request', 400, 'Solo hay notas por factores para los símbolos de tus listas.');
+        }
+        return json(mock ? mockFactors(symbol, now) : await factorGrades(deps, symbol));
       }
 
       case '/api/peru':

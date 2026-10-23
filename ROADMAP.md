@@ -134,8 +134,8 @@ Ideas sacadas de Bloomberg, Morningstar, Seeking Alpha, Simply Wall St y Trading
 - [x] **Curva de rendimientos** de EE. UU. (FRED), pública. El BCRP no publica más plazos que el bono a 10 años.
 - [x] **Estacionalidad** en la ficha (rendimiento de cada mes por año, promedio y meses en alza).
 - [x] **Probar una estrategia**: cruce de medias 50/200 o 20/50, o RSI 30/70, frente a comprar y mantener.
-- [ ] **Rayos X de la cartera** (sector, país, beta, volatilidad, concentración).
-- [ ] **Notas por factores A–F** frente a las comparables (Finnhub).
+- [x] **Rayos X de la cartera** (sector, país, beta, volatilidad, concentración y correlaciones).
+- [x] **Notas por factores A–F** frente a las comparables (Finnhub), con el detalle de cada indicador.
 - [ ] **Historia financiera** de 8 a 15 años desde la SEC, pública.
 
 ## 9. Ideas para después
