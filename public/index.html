@@ -45,7 +45,7 @@
   <!-- Vista de amigos: la licencia gratis de Twelve Data no permite mostrar sus precios a otras personas. -->
   <section class="screen friend-only" aria-labelledby="pub-h">
     <div class="screen-head"><h2 id="pub-h">Datos públicos</h2></div>
-    <p class="hint">Aquí ves los datos públicos de Perú (BCRP) y de EE. UU. (FRED). Los precios de mercado no se pueden compartir: la licencia gratis de su proveedor no lo permite.</p>
+    <p class="hint">Aquí ves los datos públicos de Perú (BCRP), de EE. UU. (FRED) y los resultados anuales de las empresas (SEC). Los precios de mercado no se pueden compartir: la licencia gratis de su proveedor no lo permite.</p>
   </section>
 
   <section class="screen owner-only" aria-labelledby="wl-h">
@@ -112,6 +112,7 @@
           <p>Las medias móviles, las bandas de Bollinger, el RSI y el MACD se calculan con 5 años de historia. Un RSI sobre 70 suele leerse como sobrecompra; bajo 30, como sobreventa. El MACD es la media exponencial de 12 días menos la de 26; cuando cruza su señal (la media de 9 días del MACD) suele leerse como cambio de impulso.</p>
           <p>Velas: cada una muestra la apertura, el máximo, el mínimo y el cierre del día. Hueca si cerró más arriba de lo que abrió; rellena si cerró más abajo. Se ven hasta 1 año.</p>
           <p>Los datos de la empresa vienen de Finnhub, solo los ves tú y se guardan 24 horas. El PER y el BPA son de los últimos 12 meses; los montos van en la moneda en que reporta la empresa.</p>
+          <p>Los resultados anuales vienen de los informes que la empresa presenta a la SEC (10-K o 20-F): son públicos y se guardan una semana.</p>
         </div>
       </details>
       <button type="button" id="d-close">Cerrar</button>
@@ -156,6 +157,10 @@
         </select>
       </div>
       <div id="d-strat-body"></div>
+    </details>
+    <details class="d-tool" id="d-fin">
+      <summary>Resultados anuales (SEC)</summary>
+      <div id="d-fin-body"></div>
     </details>
     <div class="d-co" id="d-co" hidden>
       <p class="hint">Datos de la empresa <span id="d-co-meta"></span></p>
@@ -279,6 +284,28 @@
     <div id="peru-markets" class="pm-grid"><p class="muted">Cargando…</p></div>
   </section>
 
+  <section class="screen" id="fin" aria-labelledby="fin-h">
+    <div class="screen-head">
+      <h2 id="fin-h">Resultados de empresas</h2>
+      <span class="src">SEC EDGAR</span>
+      <details class="help">
+        <summary aria-label="De dónde salen los resultados">?</summary>
+        <div class="help-body">
+          <p>Ingresos, utilidad operativa y utilidad neta de cada año fiscal, de los informes anuales que las empresas presentan a la SEC, el regulador de valores de EE. UU.: el 10-K de las empresas de EE. UU. y el 20-F o 40-F de las extranjeras que cotizan allá, como Southern Copper, Buenaventura o Credicorp.</p>
+          <p>Los montos van en la moneda en que reporta cada empresa, tal como figuran en sus informes. Los bancos no reportan «ingresos» como las demás empresas: de ellos se ve la utilidad. Los ETF y los fondos no tienen estos informes.</p>
+          <p>Son datos públicos y se guardan una semana.</p>
+        </div>
+      </details>
+    </div>
+    <form class="fin-form" id="fin-form" autocomplete="off">
+      <label for="fin-sym">Símbolo</label>
+      <input id="fin-sym" name="symbol" maxlength="12" spellcheck="false" autocapitalize="characters" placeholder="SCCO" required>
+      <button type="submit">Ver</button>
+    </form>
+    <div class="ranges fin-chips" id="fin-chips" role="group" aria-label="Empresas sugeridas"></div>
+    <div id="fin-body"></div>
+  </section>
+
   <section class="screen" aria-labelledby="cal-h" hidden>
     <div class="screen-head">
       <h2 id="cal-h">Calendario</h2>
@@ -316,7 +343,7 @@
   </section>
 
   <footer class="foot">
-    <p><span class="owner-only">Precios: Twelve Data. </span>Perú: Banco Central de Reserva del Perú (BCRPData). EE. UU.: FRED®, Federal Reserve Bank of St. Louis. Datos informativos; no es asesoría de inversión.</p>
+    <p><span class="owner-only">Precios: Twelve Data. </span>Perú: Banco Central de Reserva del Perú (BCRPData). EE. UU.: FRED®, Federal Reserve Bank of St. Louis. Resultados de empresas: SEC EDGAR. Datos informativos; no es asesoría de inversión.</p>
     <p>Este producto usa la API de FRED® pero no está respaldado ni certificado por el Federal Reserve Bank of St. Louis.</p>
   </footer>
 </div>

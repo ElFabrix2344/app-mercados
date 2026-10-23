@@ -126,7 +126,7 @@ Elegido por el usuario antes de abrir la app a los chicos, con las opciones reco
 - [x] Conector: herramienta `pronosticos` (solo lectura).
 - [ ] Ver resolverse en producción la primera pregunta: la decisión de la Fed del 28 de octubre (se resuelve desde el 29).
 
-## 8c. Lo elegido tras mirar apps de pago — en curso (23 de octubre)
+## 8c. Lo elegido tras mirar apps de pago — hecho (23 de octubre)
 
 Ideas sacadas de Bloomberg, Morningstar, Seeking Alpha, Simply Wall St y TradingView. El usuario eligió las siete:
 
@@ -136,7 +136,7 @@ Ideas sacadas de Bloomberg, Morningstar, Seeking Alpha, Simply Wall St y Trading
 - [x] **Probar una estrategia**: cruce de medias 50/200 o 20/50, o RSI 30/70, frente a comprar y mantener.
 - [x] **Rayos X de la cartera** (sector, país, beta, volatilidad, concentración y correlaciones).
 - [x] **Notas por factores A–F** frente a las comparables (Finnhub), con el detalle de cada indicador.
-- [ ] **Historia financiera** de 8 a 15 años desde la SEC, pública.
+- [x] **Historia financiera** desde la SEC (hasta 12 años), pública: sección para todos con cualquier símbolo, bloque en la ficha y herramienta `resultados_anuales` en el conector.
 
 ## 9. Ideas para después
 
@@ -145,7 +145,6 @@ Ideas sacadas de Bloomberg, Morningstar, Seeking Alpha, Simply Wall St y Trading
 - **Reportes oficiales:** SEC (6-K, 10-Q), gratis y públicos; hechos de importancia de la SMV, falta probar si su web deja leerse.
 - **Dividendos en la cartera simulada:** anotados a mano (Finnhub los cobra).
 - Que cada amigo use su propia clave gratis de Twelve Data (lista y caché por persona) para que también vea precios.
-- Reportes financieros de empresas de EE. UU. (SEC EDGAR).
 - **Valor cuota de las AFP:** la SBS lo muestra detrás de una verificación anti-robots (Imperva) y no se puede leer desde el Worker. Queda el archivo mensual de la SBS (xlsx de ~1 MB), sin probar.
 - Medir el gasto de créditos de Twelve Data en un día normal y ajustar el freno si hace falta.
 - Decidir si el repositorio sigue público (hoy lo está) o pasa a privado.

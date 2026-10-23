@@ -8,6 +8,7 @@ import { addDays, isoDate } from './lib/num';
 import type { DailyPoint, Quote } from './lib/twelvedata';
 import type { CompanyResult } from './services/company';
 import { gradeFactors, type FactorsResult } from './services/factors';
+import { SEC_YEARS, type FinancialsData } from './services/financials';
 import { getEodList, shapeEod, summarizeHistory, type EodRow, type EodView } from './services/eod';
 import type { Entry, Results } from './services/forecasts';
 import { EARNINGS_AHEAD_DAYS, shapeCompanies, type CompanyCalendar } from './services/earnings';
@@ -423,4 +424,25 @@ export function mockFactors(symbol: string, now: Date): FactorsResult {
     return r.enabled && r.applicable ? r.data.metrics : null;
   });
   return { enabled: true, applicable: true, ...fresh({ symbol, peers, factors: gradeFactors(own.data.metrics, metrics) }, now) };
+}
+/** Resultados anuales de prueba (inventados): 12 años con altibajos, un año con pérdidas y, para BAP, como banco en soles. */
+export function mockFinancials(symbol: string, now: Date): Fresh<FinancialsData> {
+  if (MOCK_ETFS.has(symbol)) return fresh({ symbol, cik: null, name: null, standard: null, currency: null, years: [] }, now);
+  const rand = rng(seedOf(`sec${symbol}`));
+  const bank = symbol === 'BAP';
+  const lastYear = Number(isoDate(now).slice(0, 4)) - 1;
+  let revenue = 2e9 + rand() * 8e9;
+  const years = Array.from({ length: SEC_YEARS }, (_, k) => {
+    const year = lastYear - SEC_YEARS + 1 + k;
+    revenue *= 0.92 + rand() * 0.25;
+    const margin = k === 4 ? -0.06 : 0.06 + rand() * 0.24;
+    return {
+      year,
+      end: `${year}-12-31`,
+      revenue: bank ? null : Math.round(revenue),
+      operatingIncome: bank ? null : Math.round(revenue * (margin + 0.08)),
+      netIncome: Math.round(revenue * margin),
+    };
+  });
+  return fresh({ symbol, cik: 1_000_000 + Math.floor(rand() * 900_000), name: info(symbol).name, standard: bank ? 'ifrs-full' : 'us-gaap', currency: bank ? 'PEN' : 'USD', years }, now);
 }

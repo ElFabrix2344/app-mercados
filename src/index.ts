@@ -12,6 +12,7 @@ import {
   mockCurve,
   mockEodView,
   mockFactors,
+  mockFinancials,
   mockForecastExtras,
   mockHistory,
   mockNews,
@@ -25,6 +26,7 @@ import {
 import { companyData } from './services/company';
 import { portfolioXray, type ProfileOf } from './services/xray';
 import { factorGrades } from './services/factors';
+import { financials } from './services/financials';
 import { companyCalendar } from './services/earnings';
 import { EOD_NEW_NOW, eodView, knownSymbols, refreshEod, validateEodList } from './services/eod';
 import { forecastView, resolveForecasts, setAlias, submitForecast, type Store } from './services/forecasts';
@@ -41,6 +43,7 @@ import {
   curve,
   getWatchlist,
   history,
+  isUsEquity,
   isRange,
   peru,
   peruMarkets,
@@ -48,6 +51,7 @@ import {
   saveWatchlist,
   usa,
   validateWatchlist,
+  SYMBOL_RE,
   type Deps,
   type Range,
 } from './services/market';
@@ -237,6 +241,15 @@ async function route(req: Request, env: Env, url: URL, role: Role, email: string
           throw new ApiError('bad_request', 400, 'Solo hay notas por factores para los símbolos de tus listas.');
         }
         return json(mock ? mockFactors(symbol, now) : await factorGrades(deps, symbol));
+      }
+
+      // Resultados anuales de la SEC (dominio público): para todos y de cualquier acción, no solo las de las listas.
+      case '/api/financials': {
+        const symbol = (url.searchParams.get('symbol') ?? '').trim().toUpperCase();
+        if (!SYMBOL_RE.test(symbol) || !isUsEquity(symbol)) {
+          throw new ApiError('bad_request', 400, 'Escribe el símbolo de una acción, como SCCO o AAPL.');
+        }
+        return json(mock ? mockFinancials(symbol, now) : await financials(deps, symbol));
       }
 
       case '/api/peru':

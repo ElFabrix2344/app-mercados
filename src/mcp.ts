@@ -16,6 +16,7 @@ import {
   mockCurve,
   mockEodView,
   mockFactors,
+  mockFinancials,
   mockForecastExtras,
   mockHistory,
   mockNews,
@@ -28,6 +29,7 @@ import {
 } from './mock';
 import { companyData } from './services/company';
 import { factorGrades } from './services/factors';
+import { financials } from './services/financials';
 import { eodView, knownSymbols } from './services/eod';
 import { forecastView } from './services/forecasts';
 import { companyCalendar, epsSurprise, MOMENT, quarterLabel } from './services/earnings';
@@ -45,9 +47,11 @@ import {
   curve,
   getWatchlist,
   history,
+  isUsEquity,
   peru,
   peruMarkets,
   quotes,
+  SYMBOL_RE,
   usa,
   type CompareResult,
   type Deps,
@@ -72,14 +76,16 @@ export interface McpContext {
 
 const INSTRUCTIONS =
   'Datos del panel personal «Rueda» del usuario: precios, historial con indicadores técnicos y comparación de los ' +
-  'símbolos de su lista de seguimiento y de su lista diaria (Twelve Data), datos de sus empresas (Finnhub), ' +
-  'Perú (BCRP), EE. UU. (FRED), el calendario económico y el juego de pronósticos del grupo. Los datos pueden venir de la ' +
+  'símbolos de su lista de seguimiento y de su lista diaria (Twelve Data), datos de sus empresas (Finnhub), resultados ' +
+  'anuales de cualquier empresa que reporte a la SEC, Perú (BCRP), EE. UU. (FRED), el calendario económico y el juego de ' +
+  'pronósticos del grupo. Los datos pueden venir de la ' +
   'caché del panel: al responder, di ' +
-  'la hora de «actualizado» y avisa si «dato_guardado» es true. Para símbolos fuera de la lista usa otra fuente (por ' +
+  'la hora de «actualizado» y avisa si «dato_guardado» es true. Para precios de símbolos fuera de la lista usa otra fuente (por ' +
   'ejemplo, el conector de Twelve Data).';
 
 const INSTRUCTIONS_FRIEND =
-  'Datos públicos del panel «Rueda»: Perú (BCRP), EE. UU. (FRED) y el calendario económico. Los datos pueden venir de ' +
+  'Datos públicos del panel «Rueda»: Perú (BCRP), EE. UU. (FRED), resultados anuales de empresas (SEC) y el calendario ' +
+  'económico. Los datos pueden venir de ' +
   'la caché del panel: al responder, di la hora de «actualizado» y avisa si «dato_guardado» es true. Los precios de ' +
   'mercado no están disponibles en este conector para tu cuenta.';
 
@@ -93,7 +99,7 @@ export function handleMcp(req: Request, c: McpContext): Promise<Response> {
 
 export function buildServer(c: McpContext): McpServer {
   const owner = c.role === 'owner';
-  const server = new McpServer({ name: 'rueda', version: '0.9.0' }, { instructions: owner ? INSTRUCTIONS : INSTRUCTIONS_FRIEND });
+  const server = new McpServer({ name: 'rueda', version: '0.10.0' }, { instructions: owner ? INSTRUCTIONS : INSTRUCTIONS_FRIEND });
   const when: When = (iso) => localTime(iso, c.timeZone);
 
   // Precios e historial (Twelve Data): solo para el dueño, por la licencia del plan gratis.
@@ -623,6 +629,52 @@ function registerPublicTools(server: McpServer, c: McpContext, when: When): void
             nota: 'Diferencia negativa = curva invertida.',
           },
           series: { bono_10_anios: 'DGS10', tasa_fed: 'DFF', inflacion: 'CPIAUCSL (variación % a 12 meses)', curva: 'DGS1MO … DGS30' },
+          actualizado: when(r.fetchedAt),
+          dato_guardado: r.stale,
+          nota: r.note,
+        };
+      }),
+  );
+
+  server.registerTool(
+    'resultados_anuales',
+    {
+      title: 'Resultados anuales de una empresa (SEC)',
+      description:
+        'Ingresos, utilidad operativa y utilidad neta por año fiscal (hasta 12 años) de cualquier empresa que reporte a la SEC ' +
+        'de EE. UU.: el 10-K de las de EE. UU. y el 20-F o 40-F de las extranjeras que cotizan allá (p. ej. SCCO, BVN, BAP, ' +
+        'IFS). Datos públicos de SEC EDGAR, guardados hasta 7 días. Montos completos (no en millones) en la moneda en que ' +
+        'reporta la empresa (USD, PEN…), tal como figuran en sus informes; los bancos no reportan ingresos como las demás. ' +
+        'Los ETF y los fondos no tienen.',
+      inputSchema: z.object({ simbolo: z.string().max(20).describe('Símbolo de la acción, p. ej. "SCCO" o "AAPL".') }),
+      annotations: { readOnlyHint: true, openWorldHint: true },
+    },
+    ({ simbolo }) =>
+      run(async () => {
+        const symbol = normalize(simbolo);
+        if (!SYMBOL_RE.test(symbol) || !isUsEquity(symbol)) throw new ApiError('bad_request', 400, 'Escribe el símbolo de una acción, como SCCO o AAPL.');
+        const r = c.mock ? mockFinancials(symbol, deps.now) : await financials(deps, symbol);
+        const d = r.data;
+        const lastEnd = d.years.at(-1)?.end;
+        return {
+          fuente: 'SEC EDGAR (informes anuales)',
+          simbolo: symbol,
+          empresa: d.name,
+          cik: d.cik,
+          norma: d.standard === 'ifrs-full' ? 'NIIF' : d.standard === 'us-gaap' ? 'US GAAP' : null,
+          moneda: d.currency,
+          anios: d.years.map((y) => ({
+            anio_fiscal: y.year,
+            cierre: y.end,
+            ingresos: y.revenue,
+            utilidad_operativa: y.operatingIncome,
+            utilidad_neta: y.netIncome,
+            margen_neto_pct: y.revenue !== null && y.revenue > 0 && y.netIncome !== null ? pct(y.netIncome / y.revenue) : null,
+          })),
+          ...(d.cik ? {} : { sin_datos: 'La SEC no tiene informes anuales de este símbolo (pasa con los ETF y los fondos).' }),
+          ...(lastEnd && Date.parse(lastEnd) < deps.now.getTime() - 485 * 86_400_000
+            ? { aviso: `Los datos de la SEC llegan hasta el año fiscal ${d.years.at(-1)!.year}: el informe del año siguiente todavía no aparece en ellos.` }
+            : {}),
           actualizado: when(r.fetchedAt),
           dato_guardado: r.stale,
           nota: r.note,

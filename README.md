@@ -19,6 +19,7 @@ Claude ─► Worker «mercados-mcp» (OAuth propio) ─────────
   - BCRP, encuesta de expectativas (mensual): `PD12912AM` (inflación esperada a 12 meses), `PD38048AM` (PBI) y `PD38049AM` (tipo de cambio).
   - FRED: `DGS10` (bono del Tesoro a 10 años), `DFF` (tasa de la Fed), `CPIAUCSL` con `units=pc1` (inflación anual), `DFEDTARU`/`DFEDTARL` (rango objetivo de la Fed) y la curva del Tesoro de `DGS1MO` a `DGS30`.
   - Finnhub (opcional, clave gratis propia): `/calendar/earnings` (fechas de resultados trimestrales) y, para la ficha, `/stock/profile2`, `/stock/metric`, `/stock/recommendation`, `/stock/earnings` y `/stock/peers`. Solo para el dueño.
+  - SEC EDGAR (sin clave, dominio público): el buscador `efts.sec.gov/LATEST/search-index` (ticker → CIK) y `data.sec.gov/api/xbrl/companyconcept` (un concepto contable por pedido). `www.sec.gov` rechaza a quien no se identifica con un correo, así que no se usa.
 - **Caché en KV.** La Cache API no funciona en Workers detrás de Access, así que todo se guarda en KV (plan gratis: 1.000 escrituras/día).
   - Precios: el panel pide cada 10 min y cada símbolo se renueva por separado. Acciones y ETF solo con la bolsa de Nueva York abierta (lunes a viernes, 9:30–16:00 hora de NY, sin los feriados ni los cierres a la 1:00 p. m. del calendario oficial de la NYSE, cargado hasta 2027 en `lib/market-hours.ts`) y una vez más tras el cierre. Divisas y cripto, siempre. «Actualizar» renueva si el dato tiene más de 30 s.
   - Historial de **5 años** por símbolo, cada 12 h: Twelve Data cobra 1 crédito por consulta sin importar cuántos días traiga. Los rangos 1M, 3M, 6M, YTD, 1A, 3A y 5A se recortan de esa misma caché y miden el rendimiento desde el cierre anterior al inicio (YTD, desde el 31 de diciembre). BCRP y FRED: cada 6 h.
@@ -48,6 +49,7 @@ Claude ─► Worker «mercados-mcp» (OAuth propio) ─────────
   - **KV:** cada pronóstico es una clave propia con el valor en la metadata (`pron:f:<pregunta>:<jugador>`), igual que cada nombre (`pron:p:<jugador>`), así dos amigos que juegan a la vez no se pisan; un solo `list` trae todo. Los resultados van en `pron-results` y solo los escribe la tarea programada.
 - **Expectativas de los analistas** (público): en Perú, la inflación, el PBI y el dólar que esperan analistas y empresas a 12 meses según la encuesta mensual del BCRP, frente al mes anterior. Las tarjetas del juego de inflación de Lima y del dólar las muestran junto al último dato.
 - **Curva de rendimientos** (público, `/api/curve`): en EE. UU., la curva del Tesoro de 1 mes a 30 años de hoy, de hace un mes y de hace un año (FRED, 11 series guardadas juntas 6 h en `curve`), y la diferencia 10 años − 2 años del último año: si es negativa, la curva está invertida. El BCRP solo publica el bono peruano a 10 años, que ya está en «Mercados y tasas del Perú».
+- **Resultados de empresas** (público, `services/financials.ts`, lector en `lib/sec.ts`, `/api/financials?symbol=`): ingresos, utilidad operativa y utilidad neta de hasta 12 años fiscales de cualquier empresa que reporte a la SEC (10-K de EE. UU.; 20-F o 40-F de extranjeras como Southern Copper, Buenaventura o Credicorp), con margen neto, cambio frente al año anterior y crecimiento compuesto de los ingresos. Cada línea junta varios conceptos XBRL año por año (las empresas cambian de nombre contable con los años) y, si no hay US GAAP recientes, se leen los de NIIF. Hasta 11 pedidos a la SEC por símbolo (de a 6 a la vez: pide no pasar de 10 por segundo), guardados 7 días en `sec:<símbolo>`, también cuando la SEC no tiene la empresa (ETF). Una sección para todos con cualquier símbolo y un bloque plegable en la ficha del dueño.
 - **Encabezado «Rueda»:** logo de rueda (también `icon.svg`), estado «Rueda abierta / cerrada» según el horario de la NYSE (lo da `/api/status`, sin usar Twelve Data) y una cinta de precios. En la cinta, el dueño ve su lista con los precios guardados, sin gastar créditos; todos ven el dólar, el cobre, el oro y la BVL del BCRP, y el bono a 10 años de FRED. Un botón ▶/⏸ al inicio la mueve o la detiene (se recuerda en el navegador); sin elegir, sigue lo que pide el sistema: con «reducir movimiento» o los efectos de animación de Windows apagados, arranca quieta.
 - **Cartera simulada** (solo el dueño, `services/portfolio.ts`): compras y ventas con fecha, cantidad y precio guardadas en KV (`portfolio`). Si no se escribe el precio, se usa el cierre de ese día; si la fecha es hoy, el precio guardado de la lista.
   - Se valoriza con los precios ya guardados, así que no gasta créditos.
@@ -74,10 +76,10 @@ Claude ─► Worker «mercados-mcp» (OAuth propio) ─────────
 
 | Rol | Quién | Qué ve |
 |---|---|---|
-| Dueño | Los correos de `OWNER_EMAILS` | Todo: precios, historial, comparación, cartera simulada y lista (Twelve Data), resultados y datos de empresas (Finnhub), Perú y EE. UU. |
-| Amigo | El resto de `ALLOWED_EMAILS` (y de la política de Access) | Solo datos públicos: Perú (BCRP) y EE. UU. (FRED), noticias generales, calendario, y juegan a los pronósticos del grupo |
+| Dueño | Los correos de `OWNER_EMAILS` | Todo: precios, historial, comparación, cartera simulada y lista (Twelve Data), resultados y datos de empresas (Finnhub), resultados anuales (SEC), Perú y EE. UU. |
+| Amigo | El resto de `ALLOWED_EMAILS` (y de la política de Access) | Solo datos públicos: Perú (BCRP) y EE. UU. (FRED), resultados anuales de empresas (SEC), noticias generales, calendario, y juegan a los pronósticos del grupo |
 
-La licencia gratis de Twelve Data no permite mostrar sus datos a otras personas ni compartir la clave (§2.2 y §2.3 de sus [términos](https://twelvedata.com/terms)). Por eso el servidor responde **403** a los amigos en `/api/quotes`, `/api/history`, `/api/compare`, `/api/portfolio`, `/api/news/symbol`, `/api/company`, `/api/eod` y `/api/watchlist`, y el conector solo les ofrece las herramientas de datos públicos (`peru_bcrp`, `eeuu_fred`, `noticias` generales y `calendario`); no es solo un ocultamiento en pantalla. Si `OWNER_EMAILS` está vacío, nadie ve los precios (falla cerrado). Con Finnhub pasa lo mismo: `/api/calendar` y la herramienta `calendario` solo suman los resultados de empresas cuando quien pide es el dueño.
+La licencia gratis de Twelve Data no permite mostrar sus datos a otras personas ni compartir la clave (§2.2 y §2.3 de sus [términos](https://twelvedata.com/terms)). Por eso el servidor responde **403** a los amigos en `/api/quotes`, `/api/history`, `/api/compare`, `/api/portfolio`, `/api/news/symbol`, `/api/company`, `/api/eod` y `/api/watchlist`, y el conector solo les ofrece las herramientas de datos públicos (`peru_bcrp`, `eeuu_fred`, `resultados_anuales`, `noticias` generales y `calendario`); no es solo un ocultamiento en pantalla. Si `OWNER_EMAILS` está vacío, nadie ve los precios (falla cerrado). Con Finnhub pasa lo mismo: `/api/calendar` y la herramienta `calendario` solo suman los resultados de empresas cuando quien pide es el dueño.
 
 **Agregar un amigo:** su correo va en la política de Access de la app (regla *Allow* → *Emails*) **y** en `ALLOWED_EMAILS`. Al editar ese secreto hay que volver a escribir toda la lista, incluido tu correo: el panel no muestra el valor anterior.
 
@@ -106,6 +108,7 @@ Todas las rutas exigen sesión de Cloudflare Access. Las marcadas con 🔒 son s
 | PUT | `/api/forecasts/name` | Nombre para el ranking (`{"alias": "Fabri"}`), de 2 a 20 caracteres y sin repetir |
 | GET | `/api/calendar?days=120` | Próximos eventos del calendario económico (`loaded: false` mientras no haya fechas cargadas). Al dueño, además, los resultados de su lista (eventos `empresa` y `companies`: estado, último resultado del mes y notas) |
 | GET | `/api/curve` | Curva del Tesoro de EE. UU. (hoy, hace un mes y hace un año) y la diferencia 10 años − 2 años (FRED) |
+| GET | `/api/financials?symbol=SCCO` | Resultados anuales de cualquier acción que reporte a la SEC: ingresos, utilidad operativa y utilidad neta por año fiscal (`cik: null` si la SEC no la tiene) |
 | GET | `/api/usa` | Bono a 10 años, tasa de la Fed e inflación (FRED) |
 | GET | `/conector/identidad?state=…` 🔒 | Paso del login del conector: firma tu correo y vuelve a `mercados-mcp` |
 
@@ -126,6 +129,7 @@ Vive en un **Worker aparte, `mercados-mcp`** (`src/mcp-worker.ts`, `wrangler.mcp
 | `peru_bcrp` | Dólar interbancario, tasa de referencia, inflación de Lima y, en `mercados`, cobre, oro, reservas y BVL con sus variaciones y cierres mensuales (BCRP) |
 | `calendario` | Próximas decisiones de tasas (BCRP, Fed) y publicaciones de inflación (INEI, BLS). Para el dueño, también los resultados de su lista (Finnhub): fecha, momento, BPA e ingresos esperados y el último resultado del mes con la sorpresa. Aparece mientras haya fechas cargadas |
 | `eeuu_fred` | Bono del Tesoro a 10 años, tasa de la Fed e inflación (FRED) |
+| `resultados_anuales` | Ingresos, utilidad operativa, utilidad neta y margen neto por año fiscal de cualquier acción que reporte a la SEC (también para los amigos) |
 
 - **Mismos datos y reglas que el panel:** lee la misma caché de KV, renueva solo lo vencido con las mismas reglas (acciones solo con la bolsa abierta) y cuenta para el mismo freno de 600 créditos. Solo responde por los símbolos de la lista; para otros, Claude debe usar el conector oficial de Twelve Data.
 - **Por qué un Worker aparte:** Access no deja pasar a los servidores de Claude, y su login para conectores (*Managed OAuth*) falla en claude.ai web y móvil ([anthropics/claude-ai-mcp#410](https://github.com/anthropics/claude-ai-mcp/issues/410)). `mercados-mcp` no está detrás de Access: es su propio servidor OAuth 2.1, con la librería oficial `@cloudflare/workers-oauth-provider` (DCR, CIMD, PKCE, tokens guardados como hash en la KV `OAUTH_KV`).
@@ -149,11 +153,13 @@ src/
   services/earnings.ts  resultados de empresas de la lista (Finnhub, solo el dueño) para el calendario y la ficha
   services/company.ts   datos de la empresa para la ficha (Finnhub, solo el dueño)
   services/factors.ts   notas por factores A–F frente a las comparables (Finnhub, solo el dueño)
+  services/financials.ts resultados anuales de la SEC: conceptos por línea, NIIF si hace falta y caché de 7 días
   services/xray.ts      rayos X de la cartera simulada: composición, concentración y riesgo
   services/eod.ts       lista diaria: cierres de hasta 20 símbolos más y la tarea programada que los renueva
   lib/forecasts.ts      pronósticos del grupo: preguntas desde el calendario, puntos y cómo se resuelve cada una
   services/forecasts.ts pronósticos del grupo: jugadores, pronósticos en KV, lo que ve cada uno y la resolución automática
   lib/finnhub.ts        cliente de Finnhub (calendario de resultados y datos de empresa)
+  lib/sec.ts            cliente de la SEC (buscador de EDGAR y conceptos XBRL anuales)
   lib/rss.ts            lector de RSS por stream (corta apenas tiene los titulares que necesita)
   lib/twelvedata.ts     cliente de Twelve Data
   lib/bcrp.ts           cliente del BCRP (tolera el aviso HTML que agrega tras el JSON)

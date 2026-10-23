@@ -209,6 +209,9 @@ button[disabled]{opacity:.6;cursor:default}
 /* Barras neutras: el volumen y el histograma del MACD no compiten con las líneas. */
 .chart .bars{fill:var(--muted);fill-opacity:.55}
 .chart .bars.hist{fill-opacity:.45}
+/* Resultados anuales: dos series de barras lado a lado, cada una con su color (validadas para daltonismo). */
+.chart .bars.s1,.chart .bars.s4{fill:var(--c);fill-opacity:1}
+.key.fill{width:9px;height:10px;border-radius:2px 2px 0 0;background:var(--c,var(--accent))}
 .panel-head{display:flex;flex-wrap:wrap;align-items:center;gap:2px 10px;margin-top:8px}
 .panel-head .hint{margin:0 6px 0 0}
 .panel-head .legend-item{padding:0}
@@ -352,6 +355,16 @@ a.news-title:hover{color:var(--accent);text-decoration:underline}
 /* Ficha: próximos resultados y el último del mes (Finnhub, solo el dueño). */
 .d-earn{display:flex;flex-wrap:wrap;gap:2px 20px;margin:0 0 10px;font-family:var(--f-sans);font-size:.88rem;color:var(--muted)}
 .d-earn strong{font-weight:500;color:var(--ink)}
+
+/* Resultados de empresas (SEC): símbolo libre, sugerencias y el bloque de resultados (también en la ficha). */
+.fin-form{display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin-bottom:8px}
+.fin-form label{font-family:var(--f-sans);font-size:.85rem;color:var(--muted)}
+.fin-form input{font:inherit;font-family:var(--f-mono);font-size:15px;color:var(--ink);background:var(--bg);border:1px solid var(--line);
+  border-radius:var(--r);padding:5px 8px;width:8rem;min-width:0;text-transform:uppercase}
+.fin-chips{margin-bottom:10px}
+#fin-body > .co-h{margin:0 0 4px}
+.fin-stats{border-top:0;margin-top:4px;padding-top:0;margin-bottom:12px}
+.table-view .fin-table{max-width:560px}
 
 /* ---------- cartera simulada ---------- */
 .pf-form{display:flex;flex-wrap:wrap;gap:8px 12px;align-items:flex-end;margin-bottom:12px}

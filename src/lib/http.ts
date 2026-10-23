@@ -7,7 +7,7 @@ export type ApiErrorCode =
   | 'forbidden' // el rol no puede ver ese dato (p. ej., precios de Twelve Data para amigos)
   | 'not_found';
 
-export type Provider = 'twelvedata' | 'bcrp' | 'fred' | 'finnhub';
+export type Provider = 'twelvedata' | 'bcrp' | 'fred' | 'finnhub' | 'sec';
 
 export class ApiError extends Error {
   constructor(

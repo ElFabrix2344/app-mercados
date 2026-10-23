@@ -33,6 +33,8 @@
     company: new Map(), // símbolo → respuesta de /api/company | { error } | 'cargando' (al abrir la ficha)
     full: new Map(), // símbolo → { points } de 5 años | { error } | 'cargando' (estacionalidad y estrategia)
     factors: new Map(), // símbolo → respuesta de /api/company/factors | { error } | 'cargando'
+    fin: new Map(), // símbolo → respuesta de /api/financials | { error } | 'cargando' (SEC: ficha y sección pública)
+    finSym: null, // símbolo que muestra la sección «Resultados de empresas»
     eod: null, // respuesta de /api/eod (lista diaria: cierres, no precios en vivo)
     forecasts: null, // respuesta de /api/forecasts (pronósticos del grupo)
     fcEditName: false, // cambiando el nombre del ranking
@@ -311,8 +313,11 @@
     // inset: cada día ocupa una franja y su marca va al centro, así las velas y barras de los extremos no quedan cortadas.
     const slot = spec.inset ? iw / n : iw / (n - 1);
     const X = spec.inset ? (i) => pad.l + (i + 0.5) * slot : (i) => pad.l + i * slot;
-    // Velas y barras: 2px de aire entre vecinas y 24px de ancho como mucho.
-    const barW = slot >= 4 ? Math.min(24, slot - 2) : Math.max(1, slot * 0.6);
+    // Velas y barras: 2px de aire entre vecinas y 24px de ancho como mucho. Varias series de barras (resultados anuales)
+    // van lado a lado en la franja de cada día, con más aire entre grupos que dentro de cada uno.
+    const barSeries = series.filter((sr) => sr.kind === 'bars');
+    const groups = Math.max(1, barSeries.length);
+    const barW = groups > 1 ? Math.min(24 * groups, slot * 0.7) : slot >= 4 ? Math.min(24, slot - 2) : Math.max(1, slot * 0.6);
     const Y = (v) => pad.t + ((hi - v) * ih) / (hi - lo);
     const xy = (i, v) => `${X(i).toFixed(1)},${Y(v).toFixed(1)}`;
 
@@ -325,10 +330,10 @@
         svg.append(label);
       }
       if (spec.xLabels !== false && spec.labels) {
-        // Etiquetas propias (plazos): todas si caben, si no, una sí y una no.
+        // Etiquetas propias (plazos, años): todas si caben, si no, una sí y una no, contando desde la última.
         const every = iw / n >= 26 ? 1 : 2;
         spec.labels.forEach((text, i) => {
-          if (i % every && i !== n - 1) return;
+          if ((n - 1 - i) % every) return;
           const label = s('text', { class: 'tick', x: X(i), y: H - 6, 'text-anchor': 'middle' });
           label.textContent = text;
           svg.append(label);
@@ -357,16 +362,17 @@
         s('path', { class: 'band-edge', d: linePath(lower, xy) }),
       );
     }
-    // Barras (volumen, histograma) debajo de todo, desde el cero.
+    // Barras (volumen, histograma, resultados) debajo de todo, desde el cero.
     const base = Y(Math.min(Math.max(0, lo), hi));
-    for (const sr of series) {
-      if (sr.kind !== 'bars') continue;
+    const each = barW / groups;
+    barSeries.forEach((sr, k) => {
       let d = '';
       sr.values.forEach((v, i) => {
-        if (v != null) d += barPath(X(i) - barW / 2, barW, Y(v), base);
+        if (v == null) return;
+        d += groups > 1 ? barPath(X(i) - barW / 2 + k * each + 1, Math.max(1, each - 2), Y(v), base) : barPath(X(i) - barW / 2, barW, Y(v), base);
       });
       svg.append(s('path', { class: `bars ${sr.cls || ''}`, d }));
-    }
+    });
     if (spec.candles) drawCandles(svg, spec.candles, series[0].values, X, Y, barW);
     // Líneas (con velas, el cierre ya está en ellas). La serie principal se dibuja al final para quedar encima.
     const drawOrder = [...series.slice(1), series[0]].filter((sr) => sr.kind !== 'bars' && !(spec.candles && sr === series[0]));
@@ -1003,6 +1009,7 @@
     renderCompany();
     renderSeason();
     renderStrategy();
+    renderDetailFin();
     const q = quoteFor(sym);
     const hist = detailHistory(sym, state.range);
     renderIndicatorToggles(hist);
@@ -2003,6 +2010,219 @@
     );
   }
 
+  // ---------- resultados anuales (SEC) ----------
+  // Datos públicos (SEC EDGAR): la sección «Resultados de empresas», para todos y con cualquier acción, y un bloque
+  // plegable en la ficha del dueño. El servidor los guarda una semana por símbolo.
+  const FIN_SUGGEST = ['SCCO', 'BVN', 'BAP', 'IFS', 'AAPL', 'NVDA'];
+  // Ingresos en s1 y utilidad neta en s4: pareja validada para daltonismo (las del precio y la MM50 en la ficha).
+  const FIN_BARS = [
+    { key: 'revenue', label: 'Ingresos', cls: 's1' },
+    { key: 'netIncome', label: 'Utilidad neta', cls: 's4' },
+  ];
+  const FIN_COLS = [
+    { key: 'revenue', label: 'Ingresos' },
+    { key: 'operatingIncome', label: 'Utilidad operativa' },
+    { key: 'netIncome', label: 'Utilidad neta' },
+  ];
+  const fMonthName = fmt({ month: 'long', timeZone: 'UTC' });
+  /** Del cierre del año fiscal al informe anual: hasta 4 meses (20-F); pasados ~16, falta un año. */
+  const FIN_OVERDUE_DAYS = 485;
+
+  /** Resultados de un símbolo, una vez por sesión; al llegar se dibujan donde se estén mirando. */
+  function financialsFor(sym) {
+    const c = state.fin.get(sym);
+    if (c) return c === 'cargando' ? undefined : c;
+    state.fin.set(sym, 'cargando');
+    api(`/api/financials?symbol=${encodeURIComponent(sym)}`)
+      .then((r) => state.fin.set(sym, r))
+      .catch((e) => state.fin.set(sym, { error: e.message }))
+      .finally(() => {
+        if (state.finSym === sym) renderFinSection();
+        if (state.selected === sym) renderDetailFin();
+      });
+    return undefined;
+  }
+
+  /** Escala de los montos: miles de millones desde mil millones y, si no, millones (`name` va en el título; `unit`, tras cada monto). */
+  function finScale(years) {
+    const max = Math.max(0, ...years.flatMap((y) => FIN_COLS.map((c) => Math.abs(y[c.key] ?? 0))));
+    return max >= 1e9 ? { div: 1e9, name: 'miles de millones', unit: 'mil millones', dec: 1 } : { div: 1e6, name: 'millones', unit: 'millones', dec: max >= 1e8 ? 0 : 1 };
+  }
+
+  /** Cambio frente al año anterior: en %, salvo que alguno de los dos años haya sido de pérdidas. */
+  function yoyText(v, prev, prevYear) {
+    if (v == null || prev == null) return null;
+    if (prev > 0 && v >= 0) return `${arrowOf(v - prev)} ${pctFrac(v / prev - 1)} frente a ${prevYear}`;
+    if (prev > 0) return `Pasó a pérdidas (ganó en ${prevYear})`;
+    if (prev < 0 && v > 0) return `Volvió a ganar (perdió en ${prevYear})`;
+    return null;
+  }
+
+  const netMargin = (y) => (y.revenue > 0 && y.netIncome != null ? y.netIncome / y.revenue : null);
+
+  /** Bloque de resultados: los nodos y la función que dibuja el gráfico (cuando ya está en la página). */
+  function financialsView(r, withName) {
+    const d = r.data;
+    if (!d.cik) return { nodes: [h('p', { class: 'muted' }, `La SEC no tiene informes anuales de ${d.symbol}: pasa con los ETF, los fondos y las empresas que no cotizan en EE. UU.`)] };
+    if (!d.years.length) return { nodes: [h('p', { class: 'muted' }, `${d.name} reporta a la SEC, pero sus informes no traen ingresos ni utilidades en el formato que Rueda sabe leer.`)] };
+    const ys = d.years;
+    const last = ys.at(-1);
+    const prev = ys.at(-2);
+    const cur = moneyPrefix(d.currency);
+    const curName = cur.trim() || d.currency;
+    const money = (v) => `${v < 0 ? '−' : ''}${cur}${millions(Math.abs(v) / 1e6)}`;
+
+    const items = [];
+    if (last.revenue != null) items.push(stat(`Ingresos ${last.year}`, money(last.revenue), yoyText(last.revenue, prev?.revenue, prev?.year)));
+    if (last.netIncome != null) items.push(stat(`Utilidad neta ${last.year}`, money(last.netIncome), yoyText(last.netIncome, prev?.netIncome, prev?.year)));
+    const m = netMargin(last);
+    if (m != null) items.push(stat(`Margen neto ${last.year}`, rate(m * 100, 1), last.operatingIncome != null ? `Margen operativo ${rate((last.operatingIncome / last.revenue) * 100, 1)}` : null));
+    const withRev = ys.filter((y) => y.revenue > 0);
+    const a = withRev[0];
+    const b = withRev.at(-1);
+    if (a && b && b.year - a.year >= 3) {
+      items.push(stat('Crecimiento anual de ingresos', pctFrac((b.revenue / a.revenue) ** (1 / (b.year - a.year)) - 1), `Compuesto, ${a.year}–${b.year}`));
+    }
+
+    const sc = finScale(ys);
+    const bars = FIN_BARS.filter((x) => ys.some((y) => y[x.key] != null));
+    const chart = h('div', { class: 'chart' });
+    const csv = h('button', { type: 'button', class: 'csv-btn', title: 'Descargar los resultados para Excel' }, '⤓ CSV');
+    csv.addEventListener('click', () =>
+      downloadCsv(
+        `sec_resultados_${d.symbol}_${today()}.csv`,
+        ['anio_fiscal', 'cierre', `ingresos_${d.currency}`, `utilidad_operativa_${d.currency}`, `utilidad_neta_${d.currency}`],
+        ys.map((y) => [y.year, y.end, y.revenue, y.operatingIncome, y.netIncome]),
+      ),
+    );
+    const cols = FIN_COLS.filter((c) => ys.some((y) => y[c.key] != null));
+    const hasMargin = ys.some((y) => netMargin(y) != null);
+    const amount = (v) => (v == null ? '—' : `${v < 0 ? '−' : ''}${nf(sc.dec).format(Math.abs(v) / sc.div)}`);
+    const table = h(
+      'details',
+      { class: 'table-view' },
+      h('summary', {}, 'Ver tabla'),
+      h(
+        'table',
+        { class: 'fin-table' },
+        h('thead', {}, h('tr', {}, h('th', { scope: 'col' }, 'Año'), ...cols.map((c) => h('th', { scope: 'col' }, c.label)), hasMargin ? h('th', { scope: 'col' }, 'Margen neto') : null)),
+        h(
+          'tbody',
+          {},
+          ...[...ys].reverse().map((y) => {
+            const ym = netMargin(y);
+            return h(
+              'tr',
+              {},
+              h('th', { scope: 'row', title: `Cierre del año fiscal: ${fDayYear.format(day(y.end))}` }, String(y.year)),
+              ...cols.map((c) => h('td', {}, amount(y[c.key]))),
+              hasMargin ? h('td', {}, ym == null ? '—' : rate(ym * 100, 1)) : null,
+            );
+          }),
+        ),
+      ),
+      h('p', { class: 'hint' }, `Montos en ${sc.name} de ${curName}.`),
+    );
+    // La SEC puede tardar en sumar un informe a sus datos (en 2026 pasa con los 20-F en NIIF): se avisa si ya debería estar.
+    const overdue = Date.now() - Date.parse(`${last.end}T00:00:00Z`) > FIN_OVERDUE_DAYS * 86_400_000;
+    const source = [
+      `Fuente: SEC EDGAR, informes anuales de ${d.name} (${d.standard === 'ifrs-full' ? 'NIIF' : 'US GAAP'}, en ${d.currency}).`,
+      `Su año fiscal cierra en ${fMonthName.format(day(last.end)).toLowerCase()}.`,
+      overdue ? `Los datos de la SEC llegan hasta ${last.year}: el informe de ${last.year + 1} todavía no aparece.` : null,
+      `${r.stale ? 'Guardado' : 'Actualizado'} ${ago(r.fetchedAt)}.`,
+    ]
+      .filter(Boolean)
+      .join(' ');
+    const nodes = [
+      withName ? h('p', { class: 'co-h' }, `${d.name} · ${d.symbol}`) : null,
+      h('dl', { class: 'stats fin-stats' }, ...items),
+      h('div', { class: 'chart-head' }, h('p', { class: 'hint' }, `Por año fiscal, en ${sc.name} de ${curName}`), csv),
+      h('div', { class: 'legend' }, ...bars.map((x) => h('span', { class: `legend-item ${x.cls}` }, h('span', { class: 'key fill' }), x.label))),
+      chart,
+      table,
+      h('p', { class: 'hint' }, source),
+      staleHint(r),
+    ].filter(Boolean);
+    const draw = () =>
+      drawChart(chart, {
+        dates: ys.map((y) => y.end),
+        labels: ys.map((y) => String(y.year)),
+        series: bars.map((x) => ({ name: x.label, cls: x.cls, kind: 'bars', values: ys.map((y) => (y[x.key] == null ? null : y[x.key] / sc.div)) })),
+        inset: true,
+        height: 180,
+        axis: true,
+        interactive: true,
+        measure: 'none',
+        padR: 8,
+        refs: ys.some((y) => bars.some((x) => y[x.key] < 0)) ? [0] : [],
+        fmt: (v) => `${v < 0 ? '−' : ''}${curName} ${nf(sc.dec).format(Math.abs(v))} ${sc.unit}`,
+        endLabel: () => null,
+        extraTip: (i) => {
+          const ym = netMargin(ys[i]);
+          return ym == null ? [] : [{ keyCls: 'none', value: rate(ym * 100, 1), label: 'Margen neto' }];
+        },
+        aria: `${bars.map((x) => x.label).join(' y ')} de ${d.name} por año fiscal, de ${ys[0].year} a ${last.year}, en ${sc.name} de ${curName}`,
+      });
+    return { nodes, draw };
+  }
+
+  function showFinancials(host, sym, withName) {
+    const r = financialsFor(sym);
+    if (!r) return host.replaceChildren(h('p', { class: 'muted' }, `Buscando los informes de ${sym} en la SEC…`));
+    if (r.error) return host.replaceChildren(h('p', { class: 'err' }, r.error));
+    const v = financialsView(r, withName);
+    host.replaceChildren(...v.nodes);
+    v.draw?.();
+  }
+
+  /** Bloque plegable de la ficha (solo acciones): se pide al abrirlo. */
+  function renderDetailFin() {
+    const box = $('d-fin');
+    const sym = state.selected;
+    box.hidden = !sym || sym.includes('/');
+    if (!box.hidden && box.open) showFinancials($('d-fin-body'), sym, false);
+  }
+
+  function renderFinSection() {
+    const sym = state.finSym;
+    if (!sym) return;
+    for (const b of $('fin-chips').querySelectorAll('button')) b.setAttribute('aria-pressed', String(b.textContent === sym));
+    showFinancials($('fin-body'), sym, true);
+  }
+
+  function pickFin(raw) {
+    const sym = String(raw ?? '').trim().toUpperCase();
+    if (!/^[A-Z0-9][A-Z0-9.-]{0,11}$/.test(sym)) {
+      $('fin-body').replaceChildren(h('p', { class: 'err' }, 'Escribe el símbolo de una acción, como SCCO o AAPL.'));
+      return;
+    }
+    // Si la SEC no respondió la vez anterior, se vuelve a intentar.
+    if (state.fin.get(sym)?.error) state.fin.delete(sym);
+    state.finSym = sym;
+    prefs.set('mercados.sec', sym);
+    renderFinSection();
+  }
+
+  function setupFinSection() {
+    $('fin-chips').replaceChildren(
+      ...FIN_SUGGEST.map((sym) => {
+        const b = h('button', { type: 'button', 'aria-pressed': 'false' }, sym);
+        b.addEventListener('click', () => {
+          $('fin-sym').value = sym;
+          pickFin(sym);
+        });
+        return b;
+      }),
+    );
+    $('fin-form').addEventListener('submit', (e) => {
+      e.preventDefault();
+      pickFin($('fin-sym').value);
+    });
+    const saved = prefs.get('mercados.sec', 'SCCO');
+    $('fin-sym').value = saved;
+    pickFin(saved);
+  }
+
   // ---------- cartera simulada ----------
   const usd = (v) => (v == null ? '—' : `US$ ${nf(2).format(v)}`);
   const signedUsd = (v) => `${sign(v)}US$ ${nf(2).format(Math.abs(v))}`;
@@ -2971,6 +3191,7 @@
     $('d-season').addEventListener('toggle', renderSeason);
     $('d-strat').addEventListener('toggle', renderStrategy);
     $('d-strat-kind').addEventListener('change', renderStrategy);
+    $('d-fin').addEventListener('toggle', renderDetailFin);
     $('pf-xray').addEventListener('toggle', loadXray);
     $('pf-form').addEventListener('submit', submitTrade);
     $('tape-toggle').addEventListener('click', () => {
@@ -2986,6 +3207,8 @@
     if (NEWS_GROUPS.some(([id]) => id === savedGroup)) state.newsGroup = savedGroup;
     // Noticias para todos (son públicas); el servidor las renueva cada 30 minutos.
     loadNews();
+    // Resultados de empresas (SEC): públicos, también para los amigos.
+    setupFinSection();
     setInterval(() => {
       if (document.visibilityState === 'visible') loadNews();
     }, 30 * 60_000);

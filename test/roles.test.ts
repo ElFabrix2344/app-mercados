@@ -84,6 +84,15 @@ describe('rutas según el rol (local, con datos de prueba)', () => {
     expect(status.credits).toBeUndefined();
   });
 
+  it('un amigo sí ve los resultados anuales de la SEC, de cualquier acción', async () => {
+    const nvda = (await (await get('/api/financials?symbol=nvda', 'friend')).json()) as Record<string, any>;
+    expect(nvda.data).toMatchObject({ symbol: 'NVDA', standard: 'us-gaap', currency: 'USD' });
+    expect(nvda.data.years).toHaveLength(12);
+    expect(((await (await get('/api/financials?symbol=SPY', 'friend')).json()) as Record<string, any>).data.cik).toBeNull();
+    expect((await get('/api/financials?symbol=USD/PEN', 'friend')).status).toBe(400);
+    expect((await get('/api/financials?symbol=', 'friend')).status).toBe(400);
+  });
+
   it('el calendario trae los resultados de la lista solo para el dueño', async () => {
     const friend = (await (await get('/api/calendar', 'friend')).json()) as Record<string, any>;
     expect(friend.companies).toBeUndefined();

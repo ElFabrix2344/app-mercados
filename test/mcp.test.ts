@@ -70,7 +70,7 @@ describe('servidor MCP', () => {
     const init = await rpc(c, 'initialize', { protocolVersion: '2025-06-18', capabilities: {}, clientInfo: { name: 'test', version: '0' } });
     expect(init.result.serverInfo.name).toBe('rueda');
     const { result } = await rpc(c, 'tools/list');
-    expect(result.tools.map((t: { name: string }) => t.name)).toEqual(['precios', 'historial', 'comparar', 'cartera', 'empresa', 'lista_diaria', 'peru_bcrp', 'eeuu_fred', 'noticias', 'pronosticos', ...CALENDAR_TOOL]);
+    expect(result.tools.map((t: { name: string }) => t.name)).toEqual(['precios', 'historial', 'comparar', 'cartera', 'empresa', 'lista_diaria', 'peru_bcrp', 'eeuu_fred', 'resultados_anuales', 'noticias', 'pronosticos', ...CALENDAR_TOOL]);
     for (const t of result.tools) expect(t.annotations.readOnlyHint).toBe(true);
   });
 
@@ -78,7 +78,7 @@ describe('servidor MCP', () => {
     const { f, calls } = quotesFetch();
     const { c } = ctx({ quotes: storedQuotes(LONG_AGO) }, f, undefined, 'friend');
     const { result } = await rpc(c, 'tools/list');
-    expect(result.tools.map((t: { name: string }) => t.name)).toEqual(['peru_bcrp', 'eeuu_fred', 'noticias', 'pronosticos', ...CALENDAR_TOOL]);
+    expect(result.tools.map((t: { name: string }) => t.name)).toEqual(['peru_bcrp', 'eeuu_fred', 'resultados_anuales', 'noticias', 'pronosticos', ...CALENDAR_TOOL]);
     const intento = await rpc(c, 'tools/call', { name: 'precios', arguments: {} });
     expect(JSON.stringify(intento)).not.toContain('"precio"');
     expect(calls).toHaveLength(0);
@@ -428,6 +428,21 @@ describe('herramientas de Perú y EE. UU.', () => {
     expect(r.data.tasa_de_referencia_pct.valor).toBe(4.25);
     expect(r.data.mercados).toBeNull();
     expect(r.data.mercados_error).toContain('BCRP');
+  });
+
+  it('resultados_anuales: cualquier acción y también para los amigos (la SEC es pública)', async () => {
+    const annual = (val: number) => ({ units: { USD: [{ start: '2025-01-01', end: '2025-12-31', val, filed: '2026-02-27', form: '10-K' }] } });
+    const { f } = fakeFetch((url) => {
+      if (url.hostname === 'efts.sec.gov') return { body: { hits: { hits: [{ _id: '1001838', _source: { entity: 'SOUTHERN COPPER CORP/ (SCCO)', tickers: 'SCCO' } }] } } };
+      if (url.pathname.endsWith('/us-gaap/Revenues.json')) return { body: annual(12e9) };
+      if (url.pathname.endsWith('/us-gaap/NetIncomeLoss.json')) return { body: annual(4e9) };
+      return { status: 404, body: {} };
+    });
+    const { c } = ctx({}, f, {}, 'friend');
+    const r = await callTool(c, 'resultados_anuales', { simbolo: 'scco' });
+    expect(r.data).toMatchObject({ simbolo: 'SCCO', empresa: 'SOUTHERN COPPER CORP', norma: 'US GAAP', moneda: 'USD' });
+    expect(r.data.anios).toEqual([{ anio_fiscal: 2025, cierre: '2025-12-31', ingresos: 12e9, utilidad_operativa: null, utilidad_neta: 4e9, margen_neto_pct: 33.33 }]);
+    expect((await callTool(c, 'resultados_anuales', { simbolo: 'USD/PEN' })).isError).toBe(true);
   });
 
   it('eeuu_fred avisa qué falta si no hay clave ni caché', async () => {
