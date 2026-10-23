@@ -51,7 +51,11 @@ Claude ─► Worker «mercados-mcp» (OAuth propio) ─────────
 - **Curva de rendimientos** (público, `/api/curve`): en EE. UU., la curva del Tesoro de 1 mes a 30 años de hoy, de hace un mes y de hace un año (FRED, 11 series guardadas juntas 6 h en `curve`), y la diferencia 10 años − 2 años del último año: si es negativa, la curva está invertida. El BCRP solo publica el bono peruano a 10 años, que ya está en «Mercados y tasas del Perú».
 - **Resultados de empresas** (público, `services/financials.ts`, lector en `lib/sec.ts`, `/api/financials?symbol=`): ingresos, utilidad operativa y utilidad neta de hasta 12 años fiscales de cualquier empresa que reporte a la SEC (10-K de EE. UU.; 20-F o 40-F de extranjeras como Southern Copper, Buenaventura o Credicorp), con margen neto, cambio frente al año anterior y crecimiento compuesto de los ingresos. Cada línea junta varios conceptos XBRL año por año (las empresas cambian de nombre contable con los años) y, si no hay US GAAP recientes, se leen los de NIIF. Hasta 11 pedidos a la SEC por símbolo (de a 6 a la vez: pide no pasar de 10 por segundo), guardados 7 días en `sec:<símbolo>`, también cuando la SEC no tiene la empresa (ETF). Una sección para todos con cualquier símbolo y un bloque plegable en la ficha del dueño.
 - **Encabezado «Rueda»:** logo de rueda (también `icon.svg`), estado «Rueda abierta / cerrada» según el horario de la NYSE (lo da `/api/status`, sin usar Twelve Data) y una cinta de precios. En la cinta, el dueño ve su lista con los precios guardados, sin gastar créditos; todos ven el dólar, el cobre, el oro y la BVL del BCRP, y el bono a 10 años de FRED. Un botón ▶/⏸ al inicio la mueve o la detiene (se recuerda en el navegador); sin elegir, sigue lo que pide el sistema: con «reducir movimiento» o los efectos de animación de Windows apagados, arranca quieta.
-- **Mi cuenta Hapi** (cada uno la suya, privada; `services/hapi.ts`, comisiones en `lib/hapi.ts`, `/api/hapi`): Hapi, el bróker que usa el grupo, no tiene API, así que se anotan compras, ventas, dividendos, depósitos y retiros. Si no se escribe el costo, se calcula con las comisiones de Hapi de 2026 (US$ 0,10 por orden de acciones enteras, 0,15 por fracciones, 0,05 con Prime; en ventas, los cargos de la SEC y de FINRA; depósito en soles US$ 1,99, retiro US$ 4,99) y los dividendos llevan la retención de 30 % de EE. UU. Muestra costo promedio con comisiones, ganancia realizada neta, dividendos, costos pagados, efectivo y rendimiento en US$ y en soles (con los soles de cada depósito y el dólar del BCRP). Solo el dueño la ve a precios de mercado (Twelve Data); los demás comparan con el valor total que anotan de Hapi. Un registro por persona en KV (`hapi:<jugador>`, el id del juego de pronósticos): nadie ve la cuenta de otro, ni en el panel ni en el conector. La ficha y «Resultados de empresas» enlazan a la página pública de cada acción en Hapi (Hapi no tiene enlaces que abran su app).
+- **Mi cuenta Hapi** (cada uno la suya, **cifrada en su navegador**; `public/hapi-core.js`, `public/hapi-crypto.js`, `public/hapi-statement.js`): Hapi, el bróker que usa el grupo, no tiene API.
+  - **Cifrado:** la cuenta se cifra con una frase que solo sabe cada uno (PBKDF2-SHA-256 de 600.000 vueltas → AES-GCM de 256 bits, con Web Crypto). El servidor (`services/hapi.ts`) solo guarda y devuelve texto ilegible en `hapi:<jugador>`: ni el dueño de la app puede leer la cuenta de otro, y sin la frase no hay recuperación. Cada equipo puede recordar la clave (IndexedDB, como clave no exportable). Si dos equipos guardan a la vez, el segundo recibe 409 y recarga.
+  - **Estado de cuenta en PDF:** el estado mensual de Hapi (lo emite Apex Clearing) se lee en el navegador con pdf.js (copia en `public/vendor/pdfjs`, versión 6.4.299 legacy) y nunca se sube. Se toman el periodo, el valor total, las posiciones y los movimientos (dividendos con su retención, compras, ventas, depósitos); el nombre, la dirección y el número de cuenta no se leen. La primera importación arma un saldo inicial al cierre del mes; las siguientes agregan lo que no esté anotado. Hay vista previa antes de agregar.
+  - **A mano y cálculos:** compras, ventas, dividendos, depósitos y retiros con las comisiones de Hapi de 2026 si no se escribe el costo (US$ 0,10 por orden de acciones enteras, 0,15 por fracciones, 0,05 con Prime; en ventas, SEC y FINRA; depósito en soles US$ 1,99, retiro US$ 4,99) y la retención de 30 % de los dividendos. Costo promedio con comisiones, ganancia realizada, dividendos, costos, efectivo y rendimiento en US$ y en soles. Solo el dueño la ve a precios de mercado (`/api/hapi/market`, con lo ya guardado: su navegador manda sus símbolos; el de los demás, nada).
+  - La ficha y «Resultados de empresas» enlazan a la página pública de cada acción en Hapi (Hapi no tiene enlaces que abran su app). Al pie de la página va el commit publicado, para que cualquiera revise el código que corre en su navegador.
 - **Cartera simulada** (solo el dueño, `services/portfolio.ts`): compras y ventas con fecha, cantidad y precio guardadas en KV (`portfolio`). Si no se escribe el precio, se usa el cierre de ese día; si la fecha es hoy, el precio guardado de la lista.
   - Se valoriza con los precios ya guardados, así que no gasta créditos.
   - Usa costo promedio y muestra los totales en US$ y en soles (con el USD/PEN de la lista o el dólar del BCRP), sin dividendos ni comisiones.
@@ -109,8 +113,8 @@ Todas las rutas exigen sesión de Cloudflare Access. Las marcadas con 🔒 son s
 | PUT | `/api/forecasts/name` | Nombre para el ranking (`{"alias": "Fabri"}`), de 2 a 20 caracteres y sin repetir |
 | GET | `/api/calendar?days=120` | Próximos eventos del calendario económico (`loaded: false` mientras no haya fechas cargadas). Al dueño, además, los resultados de su lista (eventos `empresa` y `companies`: estado, último resultado del mes y notas) |
 | GET | `/api/curve` | Curva del Tesoro de EE. UU. (hoy, hace un mes y hace un año) y la diferencia 10 años − 2 años (FRED) |
-| GET / POST / DELETE | `/api/hapi` | La cuenta de Hapi de quien pide: posiciones, totales y movimientos. POST `{"kind", "date", …}` anota un movimiento (compra, venta, dividendo, depósito o retiro); DELETE `?id=…` lo borra |
-| PUT | `/api/hapi/settings` | Plan de Hapi (`{"plan": "standard" \| "prime"}`) o el valor total que muestra Hapi (`{"snapshot": {"date", "value"}}`, `null` lo borra) |
+| GET / PUT / DELETE | `/api/hapi` | La cuenta de Hapi de quien pide, cifrada (`{blob, version, legacy}`). PUT `{"blob", "base"}` guarda (409 si otro equipo guardó antes); DELETE la borra |
+| GET | `/api/hapi/market?symbols=VOO,SCCO` | Para valorizar la cuenta: precios guardados (solo el dueño; `null` para los demás) y el dólar del BCRP |
 | GET | `/api/financials?symbol=SCCO` | Resultados anuales de cualquier acción que reporte a la SEC: ingresos, utilidad operativa y utilidad neta por año fiscal (`cik: null` si la SEC no la tiene) |
 | GET | `/api/usa` | Bono a 10 años, tasa de la Fed e inflación (FRED) |
 | GET | `/conector/identidad?state=…` 🔒 | Paso del login del conector: firma tu correo y vuelve a `mercados-mcp` |
@@ -133,7 +137,6 @@ Vive en un **Worker aparte, `mercados-mcp`** (`src/mcp-worker.ts`, `wrangler.mcp
 | `calendario` | Próximas decisiones de tasas (BCRP, Fed) y publicaciones de inflación (INEI, BLS). Para el dueño, también los resultados de su lista (Finnhub): fecha, momento, BPA e ingresos esperados y el último resultado del mes con la sorpresa. Aparece mientras haya fechas cargadas |
 | `eeuu_fred` | Bono del Tesoro a 10 años, tasa de la Fed e inflación (FRED) |
 | `resultados_anuales` | Ingresos, utilidad operativa, utilidad neta y margen neto por año fiscal de cualquier acción que reporte a la SEC (también para los amigos) |
-| `cuenta_hapi` | La cuenta de Hapi de quien usa el conector (privada): posiciones, costos, dividendos, depósitos y rendimiento; para el dueño, también a precios de mercado |
 
 - **Mismos datos y reglas que el panel:** lee la misma caché de KV, renueva solo lo vencido con las mismas reglas (acciones solo con la bolsa abierta) y cuenta para el mismo freno de 600 créditos. Solo responde por los símbolos de la lista; para otros, Claude debe usar el conector oficial de Twelve Data.
 - **Por qué un Worker aparte:** Access no deja pasar a los servidores de Claude, y su login para conectores (*Managed OAuth*) falla en claude.ai web y móvil ([anthropics/claude-ai-mcp#410](https://github.com/anthropics/claude-ai-mcp/issues/410)). `mercados-mcp` no está detrás de Access: es su propio servidor OAuth 2.1, con la librería oficial `@cloudflare/workers-oauth-provider` (DCR, CIMD, PKCE, tokens guardados como hash en la KV `OAUTH_KV`).
@@ -158,14 +161,13 @@ src/
   services/company.ts   datos de la empresa para la ficha (Finnhub, solo el dueño)
   services/factors.ts   notas por factores A–F frente a las comparables (Finnhub, solo el dueño)
   services/financials.ts resultados anuales de la SEC: conceptos por línea, NIIF si hace falta y caché de 7 días
-  services/hapi.ts      cuenta de Hapi de cada persona (privada): movimientos, costo promedio con comisiones y valorización
+  services/hapi.ts      cuenta de Hapi cifrada: guarda y devuelve el texto cifrado de cada persona, y los precios para valorizarla
   services/xray.ts      rayos X de la cartera simulada: composición, concentración y riesgo
   services/eod.ts       lista diaria: cierres de hasta 20 símbolos más y la tarea programada que los renueva
   lib/forecasts.ts      pronósticos del grupo: preguntas desde el calendario, puntos y cómo se resuelve cada una
   services/forecasts.ts pronósticos del grupo: jugadores, pronósticos en KV, lo que ve cada uno y la resolución automática
   lib/finnhub.ts        cliente de Finnhub (calendario de resultados y datos de empresa)
   lib/sec.ts            cliente de la SEC (buscador de EDGAR y conceptos XBRL anuales)
-  lib/hapi.ts           comisiones de Hapi 2026 (compensación por orden, SEC y FINRA en ventas, depósitos y retiros)
   lib/rss.ts            lector de RSS por stream (corta apenas tiene los titulares que necesita)
   lib/twelvedata.ts     cliente de Twelve Data
   lib/bcrp.ts           cliente del BCRP (tolera el aviso HTML que agrega tras el JSON)
@@ -176,6 +178,10 @@ src/
   lib/calendar.ts       calendario económico: fechas oficiales cargadas por año y conversión a la hora de Lima
   mock.ts               datos ficticios para desarrollo local
 public/                 index.html, app.js (gráficos en SVG propios), styles.css
+  hapi-core.js          cuenta de Hapi en el navegador: comisiones, validación, libro y lo que se muestra
+  hapi-crypto.js        cifrado de la cuenta con la frase (PBKDF2 + AES-GCM) y la clave recordada en el equipo
+  hapi-statement.js     lector del estado de cuenta de Hapi (PDF) y qué agregar a la cuenta
+  vendor/pdfjs/         pdf.js 6.4.299 (legacy, Apache 2.0) para leer el PDF en el navegador
 test/                   pruebas con vitest
 ```
 

@@ -40,12 +40,13 @@ jobs:
       # Los secretos de la app (claves de Twelve Data/FRED, Access…) viven en Cloudflare
       # (panel → Variables and Secrets) y no pasan por GitHub. Aquí solo se necesita
       # el token para desplegar.
+      # VERSION = el commit publicado: la app lo muestra al pie para que cualquiera revise el código que corre.
       - name: Desplegar la app (mercados)
         uses: cloudflare/wrangler-action@v3
         with:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-          command: deploy
+          command: deploy --var VERSION:${{ github.sha }}
       - name: Desplegar el conector de Claude (mercados-mcp)
         uses: cloudflare/wrangler-action@v3
         with:

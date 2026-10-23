@@ -35,7 +35,7 @@
     factors: new Map(), // símbolo → respuesta de /api/company/factors | { error } | 'cargando'
     fin: new Map(), // símbolo → respuesta de /api/financials | { error } | 'cargando' (SEC: ficha y sección pública)
     finSym: null, // símbolo que muestra la sección «Resultados de empresas»
-    hapi: null, // respuesta de /api/hapi (la cuenta de Hapi de quien mira; privada)
+    role: null, // 'owner' o 'friend' (de /api/status)
     eod: null, // respuesta de /api/eod (lista diaria: cierres, no precios en vivo)
     forecasts: null, // respuesta de /api/forecasts (pronósticos del grupo)
     fcEditName: false, // cambiando el nombre del ranking
@@ -2452,15 +2452,26 @@
       );
   }
 
-  // ---------- cuenta de Hapi (privada: cada uno ve solo la suya) ----------
+  // ---------- cuenta de Hapi (cifrada en este navegador: ni el servidor ni el dueño de la app pueden leerla) ----------
+  // La lógica vive en módulos aparte (public/hapi-*.js), que se cargan al usar esta sección.
   /** Página pública de la acción en Hapi (no abre la app: Hapi no tiene enlaces que lleguen a ella). */
   const hapiUrl = (sym) => `https://hapi.trade/es/stock/${encodeURIComponent(sym)}`;
   const hapiLink = (sym, text = 'Ver en Hapi ↗') => h('a', { href: hapiUrl(sym), target: '_blank', rel: 'noopener noreferrer', class: 'hapi-link' }, text);
   const HAPI_KINDS = { buy: 'Compra', sell: 'Venta', dividend: 'Dividendo', deposit: 'Depósito', withdrawal: 'Retiro' };
   const hapiGroup = (kind) => (kind === 'buy' || kind === 'sell' ? 'trade' : kind === 'dividend' ? 'dividend' : 'transfer');
-  // Lo que se pide en cada tipo de movimiento (y cómo se llama el monto).
   const HAPI_AMOUNT_LABEL = { dividend: 'Dividendo bruto en US$', deposit: 'Llegó a Hapi (US$)', withdrawal: 'Salió de Hapi (US$)' };
   const HAPI_PEN_LABEL = { deposit: 'Soles que pagaste', withdrawal: 'Soles que recibiste' };
+  const MIN_PASSPHRASE = 10;
+  // hp: { core, crypto, statement } (módulos), store { blob, version, legacy }, key, kdf, account, market { prices, fx }.
+  const hp = { mods: null, store: null, key: null, kdf: null, account: null, market: null, marketKey: null, proposal: null };
+
+  async function hapiMods() {
+    if (!hp.mods) {
+      const [core, crypto, statement] = await Promise.all([import('/hapi-core.js'), import('/hapi-crypto.js'), import('/hapi-statement.js')]);
+      hp.mods = { core, crypto, statement };
+    }
+    return hp.mods;
+  }
 
   function hapiError(msg) {
     const p = $('hp-err');
@@ -2468,7 +2479,7 @@
     p.hidden = !msg;
   }
 
-  /** Muestra solo los campos del tipo elegido. */
+  /** Muestra solo los campos del tipo de movimiento elegido. */
   function renderHapiForm() {
     const kind = $('hp-kind').value;
     const group = hapiGroup(kind);
@@ -2480,20 +2491,165 @@
     if (!date.value) date.value = today();
   }
 
-  async function loadHapi(init, path = '/api/hapi') {
+  /** Carga lo guardado (cifrado) y, si este equipo recuerda la clave, abre la cuenta sin pedir la frase. */
+  async function loadHapi() {
     try {
-      state.hapi = await api(path, init);
-      hapiError(null);
-      renderHapi();
-      return true;
+      const { crypto } = await hapiMods();
+      hp.store = await api('/api/hapi');
+      if (hp.store.blob && !hp.key) {
+        const key = await crypto.recallKey(hp.store.blob.kdf.salt);
+        if (key) {
+          try {
+            hp.account = await crypto.decryptAccount(hp.store.blob, key);
+            hp.key = key;
+            hp.kdf = hp.store.blob.kdf;
+          } catch {
+            /* la frase cambió en otro equipo: se pide de nuevo */
+          }
+        }
+      } else if (hp.store.blob && hp.key) {
+        hp.account = await crypto.decryptAccount(hp.store.blob, hp.key);
+      }
+      renderHapiLock();
     } catch (e) {
-      if (init) hapiError(e.message);
-      else $('hp-body').replaceChildren(h('p', { class: 'err' }, e.message));
-      return false;
+      $('hp-lock').replaceChildren(h('p', { class: 'err' }, e.message));
     }
   }
 
-  const jsonInit = (method, body) => ({ method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+  /** Crear la cuenta cifrada (o cifrar la de la primera versión), abrirla con la frase u olvidarla. */
+  function renderHapiLock() {
+    const lock = $('hp-lock');
+    const open = !!hp.account && !!hp.key;
+    $('hp-open').hidden = !open;
+    $('hp-csv').disabled = !open || !hp.account.ops.length;
+    if (open) {
+      lock.replaceChildren();
+      renderHapi();
+      return;
+    }
+    const remember = h('label', { class: 'hp-check' }, h('input', { type: 'checkbox', id: 'hp-remember' }), ' Recordar en este equipo (no lo marques en una computadora compartida)');
+    const status = h('p', { class: 'hint', role: 'status' });
+    const pass = (id, label, autocomplete) =>
+      h('label', {}, label, h('input', { type: 'password', id, minlength: MIN_PASSPHRASE, required: true, autocomplete, spellcheck: 'false' }));
+    if (!hp.store?.blob) {
+      const legacy = hp.store?.legacy;
+      const form = h(
+        'form',
+        { class: 'hp-pass' },
+        pass('hp-pass1', 'Frase (10 caracteres o más)', 'new-password'),
+        pass('hp-pass2', 'Repite la frase', 'new-password'),
+        remember,
+        h('button', { type: 'submit' }, legacy ? 'Cifrar mi cuenta' : 'Crear mi cuenta cifrada'),
+      );
+      form.addEventListener('submit', (e) => createHapi(e, status));
+      lock.replaceChildren(
+        h(
+          'p',
+          { class: 'hp-intro' },
+          legacy
+            ? 'Tu cuenta Hapi todavía no está cifrada. Ponle una frase y se cifra en este navegador; lo que anotaste se conserva.'
+            : 'Tu cuenta se cifra en este navegador con una frase que solo sabes tú: Rueda guarda solo texto ilegible y nadie más puede leerla, ni el dueño de la app.',
+        ),
+        h('p', { class: 'hint' }, 'Si olvidas la frase, nadie puede recuperar la cuenta. Usa varias palabras que recuerdes, que no sean la contraseña de Hapi ni la de tu correo.'),
+        form,
+        status,
+      );
+      return;
+    }
+    const form = h('form', { class: 'hp-pass' }, pass('hp-pass1', 'Tu frase', 'current-password'), remember, h('button', { type: 'submit' }, 'Abrir mi cuenta'));
+    form.addEventListener('submit', (e) => unlockHapi(e, status));
+    const wipe = h('button', { type: 'button', class: 'pf-del' }, 'Olvidé la frase: borrar la cuenta y empezar de nuevo');
+    wipe.addEventListener('click', wipeHapi);
+    lock.replaceChildren(h('p', { class: 'hp-intro' }, 'Tu cuenta está cifrada. Escribe tu frase para abrirla en este navegador.'), form, status, h('p', { class: 'hint' }, wipe));
+  }
+
+  async function createHapi(e, status) {
+    e.preventDefault();
+    const p1 = $('hp-pass1').value;
+    if (p1.length < MIN_PASSPHRASE) return (status.textContent = `La frase debe tener ${MIN_PASSPHRASE} caracteres o más.`);
+    if (p1 !== $('hp-pass2').value) return (status.textContent = 'Las dos frases no coinciden.');
+    status.textContent = 'Cifrando…';
+    try {
+      const { core, crypto } = await hapiMods();
+      const { key, kdf } = await crypto.newKey(p1);
+      // La cuenta de la primera versión (sin cifrar) se conserva al cifrarla.
+      const legacy = hp.store?.legacy;
+      const account = legacy ? { ...core.emptyAccount(), plan: legacy.plan === 'prime' ? 'prime' : 'standard', ops: legacy.ops, snapshot: legacy.snapshot ?? null } : core.emptyAccount();
+      hp.key = key;
+      hp.kdf = kdf;
+      if ($('hp-remember').checked) await crypto.rememberKey(kdf.salt, key);
+      await saveHapi(account);
+      renderHapiLock();
+    } catch (err) {
+      hp.key = null;
+      status.textContent = err.message;
+    }
+  }
+
+  async function unlockHapi(e, status) {
+    e.preventDefault();
+    status.textContent = 'Abriendo…';
+    try {
+      const { crypto } = await hapiMods();
+      const key = await crypto.keyForBlob($('hp-pass1').value, hp.store.blob);
+      hp.account = await crypto.decryptAccount(hp.store.blob, key);
+      hp.key = key;
+      hp.kdf = hp.store.blob.kdf;
+      if ($('hp-remember').checked) await crypto.rememberKey(hp.kdf.salt, key);
+      renderHapiLock();
+    } catch (err) {
+      status.textContent = err.message;
+    }
+  }
+
+  async function lockHapi() {
+    const { crypto } = await hapiMods();
+    await crypto.forgetKeys();
+    Object.assign(hp, { key: null, kdf: null, account: null, proposal: null });
+    $('hp-import').hidden = true;
+    renderHapiLock();
+  }
+
+  async function wipeHapi() {
+    if (!window.confirm('¿Borrar tu cuenta Hapi de Rueda? Sin la frase no se puede recuperar: empezarás de cero.')) return;
+    try {
+      await api('/api/hapi', { method: 'DELETE' });
+      const { crypto } = await hapiMods();
+      await crypto.forgetKeys();
+      Object.assign(hp, { key: null, kdf: null, account: null, proposal: null });
+      await loadHapi();
+    } catch (err) {
+      window.alert(err.message);
+    }
+  }
+
+  /** Cifra y guarda la cuenta. Si otro equipo la cambió antes, recarga y avisa. */
+  async function saveHapi(account) {
+    const { crypto } = await hapiMods();
+    const blob = await crypto.encryptAccount(account, hp.key, hp.kdf);
+    try {
+      const r = await api('/api/hapi', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ blob, base: hp.store?.version ?? null }) });
+      hp.store = { blob, version: r.version, legacy: null };
+      hp.account = account;
+    } catch (err) {
+      if (err.status === 409) await loadHapi();
+      throw err;
+    }
+  }
+
+  /** Cambia la cuenta con `fn` (de hapi-core), la guarda y vuelve a dibujar. */
+  async function changeHapi(fn) {
+    try {
+      const { core } = await hapiMods();
+      await saveHapi(fn(core, hp.account));
+      hapiError(null);
+      renderHapi();
+      return true;
+    } catch (err) {
+      hapiError(err.message);
+      return false;
+    }
+  }
 
   async function submitHapi(e) {
     e.preventDefault();
@@ -2506,13 +2662,15 @@
     if (group !== 'trade') body.amount = val('hp-amount');
     if (group === 'transfer') body.pen = val('hp-pen');
     if (group === 'dividend') body.tax = val('hp-tax');
-    if (await loadHapi(jsonInit('POST', body))) for (const id of ['hp-qty', 'hp-price', 'hp-amount', 'hp-pen', 'hp-tax', 'hp-fee']) $(id).value = '';
+    if (await changeHapi((core, a) => core.addOps(a, [body], today()))) for (const id of ['hp-qty', 'hp-price', 'hp-amount', 'hp-pen', 'hp-tax', 'hp-fee']) $(id).value = '';
   }
 
   function hapiDetail(o) {
-    if (o.kind === 'buy' || o.kind === 'sell') return `${qtyFmt.format(o.qty)} ${o.symbol} a ${usd(o.price)}`;
-    if (o.kind === 'dividend') return `${o.symbol}: ${usd(o.amount)} bruto, retenido ${usd(o.tax)}`;
-    return o.pen != null ? `${pen(o.pen)} · ${usd(o.amount)}` : usd(o.amount);
+    let text;
+    if (o.kind === 'buy' || o.kind === 'sell') text = `${qtyFmt.format(o.qty)} ${o.symbol} a ${usd(o.price)}`;
+    else if (o.kind === 'dividend') text = `${o.symbol}: ${usd(o.amount)} bruto, retenido ${usd(o.tax)}`;
+    else text = o.pen != null ? `${pen(o.pen)} · ${usd(o.amount)}` : usd(o.amount);
+    return o.note ? `${text} · ${o.note}` : text;
   }
 
   /** Efecto en el efectivo de la cuenta. */
@@ -2525,24 +2683,46 @@
 
   function removeHapiOp(o) {
     if (!window.confirm(`¿Borrar ${HAPI_KINDS[o.kind].toLowerCase()} del ${fDayYear.format(day(o.date))} (${hapiDetail(o)})?`)) return;
-    loadHapi({ method: 'DELETE' }, `/api/hapi?id=${encodeURIComponent(o.id)}`);
+    changeHapi((core, a) => core.deleteOp(a, o.id));
   }
 
-  function renderHapi() {
-    const v = state.hapi;
-    const host = $('hp-body');
-    if (!v) return;
-    $('hp-plan').value = v.plan;
-    $('hp-csv').disabled = !v.ops.length;
-    if (v.snapshot) {
-      $('hp-snap-value').value = v.snapshot.value;
-      $('hp-snap-date').value = v.snapshot.date;
+  /**
+   * Precios para valorizar (solo el dueño: su navegador manda sus símbolos; el de los demás no manda nada) y el dólar
+   * del BCRP. Se piden de nuevo solo si cambian los símbolos.
+   */
+  async function hapiMarket(symbols) {
+    const owner = state.role === 'owner';
+    const key = owner ? symbols.join(',') : '';
+    if (hp.market && hp.marketKey === key) return hp.market;
+    try {
+      hp.market = await api(owner && symbols.length ? `/api/hapi/market?symbols=${encodeURIComponent(key)}` : '/api/hapi/market');
+    } catch {
+      hp.market = { prices: null, fx: null };
     }
-    $('hp-snap-clear').hidden = !v.snapshot;
-    if (!v.ops.length) {
-      host.replaceChildren(h('p', { class: 'muted' }, 'Todavía no anotaste nada. Empieza por tus depósitos y compras: con ellos sale cuánto pusiste, cuánto pagaste en costos y tu costo promedio.'));
+    hp.marketKey = key;
+    return hp.market;
+  }
+
+  async function renderHapi() {
+    const { core } = await hapiMods();
+    const a = hp.account;
+    if (!a) return;
+    $('hp-plan').value = a.plan;
+    $('hp-csv').disabled = !a.ops.length;
+    if (a.snapshot) {
+      $('hp-snap-value').value = a.snapshot.value;
+      $('hp-snap-date').value = a.snapshot.date;
+    }
+    $('hp-snap-clear').hidden = !a.snapshot;
+    const host = $('hp-body');
+    if (!a.ops.length) {
+      host.replaceChildren(h('p', { class: 'muted' }, 'Todavía no anotaste nada. Importa tu último estado de cuenta de Hapi o empieza por tus depósitos y compras.'));
       return;
     }
+    const symbols = [...core.holdings(a).keys()].sort();
+    const market = await hapiMarket(symbols);
+    const owner = state.role === 'owner';
+    const v = core.accountView(a, { prices: owner ? new Map(Object.entries(market.prices ?? {})) : null, fx: market.fx });
     const t = v.totals;
     const row = h('div', { class: 'metric-row hp-metrics' });
     // Valor de la cuenta: a precios de mercado (solo el dueño, si todo tiene precio) o el que anotaste de Hapi.
@@ -2550,7 +2730,7 @@
     const valueLabel = t.account != null ? 'Valor hoy' : v.snapshot ? `Según Hapi (${fDay.format(day(v.snapshot.date))})` : null;
     if (t.cash != null) row.append(metric('Depositado neto', usd(t.netDeposits), t.netPen != null ? `${pen(t.netPen)} en soles` : 'Anota los soles para ver el rendimiento en soles'));
     if (value != null && valueLabel) {
-      row.append(metric(valueLabel, usd(value), t.account != null ? `Posiciones ${usd(t.value)} · efectivo ${usd(t.cash)}` : 'El valor que anotaste'));
+      row.append(metric(valueLabel, usd(value), t.account != null ? `Posiciones ${usd(t.value)} · efectivo ${usd(t.cash)}` : v.snapshot?.source === 'estado de cuenta' ? 'Del estado de cuenta' : 'El valor que anotaste'));
       if (t.cash != null && t.netDeposits > 0) {
         const gain = value - t.netDeposits;
         const m = metric('Ganancia', pctFrac(gain / t.netDeposits), signedUsd(gain));
@@ -2605,14 +2785,13 @@
         ...v.ops.map((o) => {
           const del = h('button', { type: 'button', class: 'pf-del', 'aria-label': `Borrar ${HAPI_KINDS[o.kind].toLowerCase()} del ${o.date}` }, 'Borrar');
           del.addEventListener('click', () => removeHapiOp(o));
-          const cash = hapiCash(o);
           return h(
             'tr',
             {},
             h('th', { scope: 'row' }, fDayYear.format(day(o.date))),
             h('td', {}, HAPI_KINDS[o.kind]),
             h('td', {}, hapiDetail(o)),
-            h('td', {}, signedUsd(cash)),
+            h('td', {}, signedUsd(hapiCash(o))),
             h('td', {}, o.fee ? usd(o.fee) : '—'),
             h('td', {}, del),
           );
@@ -2620,7 +2799,7 @@
       ),
     );
     const notes = [...v.notes];
-    if (!priced) notes.push('Sin precios de mercado: la licencia de precios de Rueda no permite mostrarlos a otras personas. Para ver tu ganancia, anota el valor total que te muestra Hapi.');
+    if (!priced) notes.push('Sin precios de mercado: la licencia de precios de Rueda no permite mostrarlos a otras personas. Para ver tu ganancia, importa tu estado de cuenta o anota el valor total que te muestra Hapi.');
     host.replaceChildren(
       row,
       h(
@@ -2634,23 +2813,151 @@
     $('hp-csv').onclick = () =>
       downloadCsv(
         `hapi_${today()}.csv`,
-        ['fecha', 'tipo', 'simbolo', 'cantidad', 'precio_usd', 'monto_usd', 'soles', 'costo_usd', 'retencion_usd'],
-        [...v.ops].reverse().map((o) => [o.date, HAPI_KINDS[o.kind].toLowerCase(), o.symbol ?? '', o.qty ?? '', o.price ?? '', o.amount ?? '', o.pen ?? '', o.fee, o.tax ?? '']),
+        ['fecha', 'tipo', 'simbolo', 'cantidad', 'precio_usd', 'monto_usd', 'soles', 'costo_usd', 'retencion_usd', 'nota'],
+        [...v.ops].reverse().map((o) => [o.date, HAPI_KINDS[o.kind].toLowerCase(), o.symbol ?? '', o.qty ?? '', o.price ?? '', o.amount ?? '', o.pen ?? '', o.fee, o.tax ?? '', o.note ?? '']),
       );
+  }
+
+  // ---------- importar el estado de cuenta (PDF) en el navegador ----------
+  async function importHapiFile() {
+    const input = $('hp-file');
+    const file = input.files?.[0];
+    input.value = '';
+    if (!file) return;
+    const box = $('hp-import');
+    box.hidden = false;
+    box.replaceChildren(h('p', { class: 'muted' }, 'Leyendo tu estado de cuenta en este navegador (el PDF no se sube)…'));
+    try {
+      const { statement } = await hapiMods();
+      const st = await statement.readStatementFile(file);
+      hp.proposal = statement.proposeImport(st, hp.account);
+      renderHapiImport();
+    } catch (err) {
+      box.replaceChildren(h('p', { class: 'err' }, `No se pudo leer el PDF: ${err.message}`));
+    }
+  }
+
+  function renderHapiImport() {
+    const box = $('hp-import');
+    const p = hp.proposal;
+    if (!p) {
+      box.hidden = true;
+      return;
+    }
+    const period = `del ${fDay.format(day(p.period.from))} al ${fDayYear.format(day(p.period.to))}`;
+    const rows = p.items.map((it) => {
+      const check = h('input', { type: 'checkbox', checked: it.checked || null, 'aria-label': 'Agregar este movimiento' });
+      check.addEventListener('change', () => (it.checked = check.checked));
+      let sym = it.op.symbol ?? '';
+      if (it.info === 'Falta el símbolo') {
+        const input = h('input', { class: 'hp-sym-fix', maxlength: 12, placeholder: 'Símbolo', 'aria-label': `Símbolo de ${it.name}` });
+        input.addEventListener('input', () => {
+          it.op.symbol = input.value.trim().toUpperCase() || null;
+          it.checked = !!it.op.symbol;
+          check.checked = it.checked;
+        });
+        sym = input;
+      }
+      return h(
+        'tr',
+        {},
+        h('td', {}, check),
+        h('td', {}, fDayYear.format(day(it.op.date))),
+        h('td', {}, HAPI_KINDS[it.op.kind]),
+        h('td', {}, sym),
+        h('td', {}, it.op.kind === 'buy' || it.op.kind === 'sell' ? `${qtyFmt.format(it.op.qty)} a ${usd(it.op.price)}` : it.op.kind === 'dividend' ? `${usd(it.op.amount)} (retenido ${usd(it.op.tax)})` : usd(it.op.amount)),
+        h('td', { class: 'muted' }, it.info ?? it.op.note ?? it.name ?? ''),
+      );
+    });
+    const add = h('button', { type: 'button' }, 'Agregar a mi cuenta');
+    const cancel = h('button', { type: 'button', class: 'pf-del' }, 'Cancelar');
+    cancel.addEventListener('click', () => {
+      hp.proposal = null;
+      renderHapiImport();
+    });
+    add.addEventListener('click', async () => {
+      const { statement } = await hapiMods();
+      let result;
+      const ok = await changeHapi((core, a) => {
+        result = statement.applyImport(a, p, today());
+        return result.account;
+      });
+      if (ok) {
+        hp.proposal = null;
+        renderHapiDiffs(result.diffs);
+      }
+    });
+    const parts = [
+      h('p', { class: 'co-h' }, `Estado de cuenta ${period} · valor total ${usd(p.total)}`),
+      h(
+        'p',
+        { class: 'hint' },
+        p.mode === 'start'
+          ? `Tu cuenta está vacía: empieza con el saldo al ${fDayYear.format(day(p.period.to))} (lo que valía la cuenta, como depósito inicial, y cada posición a su precio de cierre). Los movimientos del mes ya están en ese saldo.`
+          : 'Marca lo que quieras agregar. Lo que ya estaba anotado queda sin marcar. Al agregar, el valor total del estado de cuenta pasa a ser tu valor «según Hapi».',
+      ),
+      h('div', { class: 'pf-tables' }, h('div', {}, h('table', { class: 'cmp-stats hp-import-table' }, h('tbody', {}, ...rows)))),
+    ];
+    if (p.unknown.length) {
+      parts.push(
+        h('p', { class: 'hint' }, `No reconocidos (anótalos a mano si hace falta): ${p.unknown.map((u) => `${u.type} del ${fDay.format(day(u.date))} (${usd(u.credit || u.debit || 0)})`).join('; ')}.`),
+      );
+    }
+    parts.push(h('div', { class: 'hp-tools' }, add, cancel), h('p', { class: 'hint' }, 'Se leyó en tu navegador: el PDF no se subió y de él solo se guardan estos movimientos, cifrados.'));
+    box.replaceChildren(...parts);
+  }
+
+  /** Después de importar: qué quedó distinto entre lo anotado y las posiciones del estado de cuenta. */
+  function renderHapiDiffs(diffs) {
+    const box = $('hp-import');
+    if (!diffs) return;
+    box.hidden = false;
+    box.replaceChildren(
+      diffs.length
+        ? h('p', { class: 'hint' }, `Agregado. Diferencias con el estado de cuenta: ${diffs.map((d) => `${d.symbol} (en Rueda ${qtyFmt.format(d.rueda)}, en Hapi ${qtyFmt.format(d.statement)})`).join('; ')}.`)
+        : h('p', { class: 'hint' }, 'Agregado: tus posiciones coinciden con las del estado de cuenta.'),
+    );
+  }
+
+  /** Cambiar la frase: se vuelve a cifrar todo con una clave nueva. */
+  async function changePassphrase(e) {
+    e.preventDefault();
+    const status = $('hp-pass-status');
+    const p1 = $('hp-new1').value;
+    if (p1.length < MIN_PASSPHRASE) return (status.textContent = `La frase debe tener ${MIN_PASSPHRASE} caracteres o más.`);
+    if (p1 !== $('hp-new2').value) return (status.textContent = 'Las dos frases no coinciden.');
+    status.textContent = 'Cifrando con la frase nueva…';
+    const old = { key: hp.key, kdf: hp.kdf };
+    try {
+      const { crypto } = await hapiMods();
+      const { key, kdf } = await crypto.newKey(p1);
+      Object.assign(hp, { key, kdf });
+      await saveHapi(hp.account);
+      await crypto.forgetKeys();
+      $('hp-new1').value = '';
+      $('hp-new2').value = '';
+      status.textContent = 'Listo: tu cuenta quedó cifrada con la frase nueva. En los otros equipos te la pedirá.';
+    } catch (err) {
+      Object.assign(hp, old);
+      status.textContent = err.message;
+    }
   }
 
   function setupHapi() {
     $('hp-kind').addEventListener('change', renderHapiForm);
     $('hp-form').addEventListener('submit', submitHapi);
-    $('hp-plan').addEventListener('change', () => loadHapi(jsonInit('PUT', { plan: $('hp-plan').value }), '/api/hapi/settings'));
+    $('hp-plan').addEventListener('change', () => changeHapi((core, a) => core.setPlan(a, $('hp-plan').value)));
     $('hp-snap-form').addEventListener('submit', (e) => {
       e.preventDefault();
-      loadHapi(jsonInit('PUT', { snapshot: { value: $('hp-snap-value').value, date: $('hp-snap-date').value } }), '/api/hapi/settings');
+      changeHapi((core, a) => core.setSnapshot(a, { value: $('hp-snap-value').value, date: $('hp-snap-date').value }, today()));
     });
     $('hp-snap-clear').addEventListener('click', () => {
       $('hp-snap-value').value = '';
-      loadHapi(jsonInit('PUT', { snapshot: null }), '/api/hapi/settings');
+      changeHapi((core, a) => core.setSnapshot(a, null, today()));
     });
+    $('hp-file').addEventListener('change', importHapiFile);
+    $('hp-lock-btn').addEventListener('click', lockHapi);
+    $('hp-pass-form').addEventListener('submit', changePassphrase);
     $('hp-snap-date').max = today();
     if (!$('hp-snap-date').value) $('hp-snap-date').value = today();
     renderHapiForm();
@@ -3386,6 +3693,15 @@
     }
   }
 
+  const REPO = 'https://github.com/ElFabrix2344/app-mercados';
+  /** Al pie: el commit publicado, para que cualquiera pueda revisar el código que corre en su navegador. */
+  function renderVersion(sha) {
+    const p = $('version');
+    const link = (href, text) => h('a', { href, target: '_blank', rel: 'noopener noreferrer' }, text);
+    if (!sha) p.replaceChildren('Código público en ', link(REPO, 'GitHub'), '.');
+    else p.replaceChildren('Versión publicada: ', link(`${REPO}/commit/${encodeURIComponent(sha)}`, sha.slice(0, 7)), ' (código público en GitHub).');
+  }
+
   // ---------- inicio ----------
   async function init() {
     renderClock();
@@ -3418,8 +3734,6 @@
     loadNews();
     // Resultados de empresas (SEC): públicos, también para los amigos.
     setupFinSection();
-    // Cuenta de Hapi: cada uno la suya (también los amigos).
-    setupHapi();
     setInterval(() => {
       if (document.visibilityState === 'visible') loadNews();
     }, 30 * 60_000);
@@ -3429,6 +3743,7 @@
     const readStatus = async () => {
       const st = await api('/api/status');
       state.marketOpen = st.market?.open ?? null;
+      renderVersion(st.version);
       renderMarket();
       return st;
     };
@@ -3437,6 +3752,9 @@
     } catch {
       /* si falla, sigue como dueño: las rutas protegidas responden con su propio error */
     }
+    state.role = role;
+    // Cuenta de Hapi: cada uno la suya, cifrada (también los amigos).
+    setupHapi();
     if (role !== 'owner') {
       document.body.classList.add('rol-amigo');
       $('fresh').textContent = 'Datos públicos';

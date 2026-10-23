@@ -32,7 +32,6 @@ import { factorGrades } from './services/factors';
 import { financials } from './services/financials';
 import { eodView, knownSymbols } from './services/eod';
 import { forecastView } from './services/forecasts';
-import { hapiView } from './services/hapi';
 import { companyCalendar, epsSurprise, MOMENT, quarterLabel } from './services/earnings';
 import { marketNews, newsQuery, quoteName, symbolNews, type NewsItem } from './services/news';
 import { kvSource, readTrades, valuePortfolio } from './services/portfolio';
@@ -100,7 +99,7 @@ export function handleMcp(req: Request, c: McpContext): Promise<Response> {
 
 export function buildServer(c: McpContext): McpServer {
   const owner = c.role === 'owner';
-  const server = new McpServer({ name: 'rueda', version: '0.11.0' }, { instructions: owner ? INSTRUCTIONS : INSTRUCTIONS_FRIEND });
+  const server = new McpServer({ name: 'rueda', version: '0.12.0' }, { instructions: owner ? INSTRUCTIONS : INSTRUCTIONS_FRIEND });
   const when: When = (iso) => localTime(iso, c.timeZone);
 
   // Precios e historial (Twelve Data): solo para el dueño, por la licencia del plan gratis.
@@ -762,56 +761,6 @@ function registerPublicTools(server: McpServer, c: McpContext, when: When): void
       }),
   );
 
-  server.registerTool(
-    'cuenta_hapi',
-    {
-      title: 'Mi cuenta de Hapi',
-      description:
-        'La cuenta de Hapi (el bróker) de quien usa el conector, tal como la anotó en Rueda: posiciones con costo promedio ' +
-        '(incluye los costos de Hapi), ganancia realizada, dividendos con la retención de EE. UU., depósitos y retiros (en US$ ' +
-        'y en soles si los anotó), costos pagados y el valor total que le muestra Hapi si lo anotó. Para el dueño, además, ' +
-        'el valor a precios de mercado con los precios guardados del panel. Privada: es solo de quien pregunta. Solo lectura.',
-      inputSchema: z.object({}),
-      annotations: { readOnlyHint: true, openWorldHint: false },
-    },
-    () =>
-      run(async () => {
-        if (!c.email) throw new ApiError('forbidden', 401, 'No se sabe quién pregunta: vuelve a conectar el conector.');
-        const v = await hapiView(deps.kv, c.email, {
-          prices: c.role === 'owner' ? (symbols) => (c.mock ? mockPriceSource(symbols, deps.now) : kvSource(deps)) : null,
-          usdPen: async () => {
-            const fx = (c.mock ? mockPeru(deps.now) : await peru(deps).catch(() => null))?.data.fx.at(-1);
-            return fx ? { rate: fx.sell, date: fx.date } : null;
-          },
-        });
-        const t = v.totals;
-        return {
-          plan: v.plan === 'prime' ? 'Prime' : 'Standard',
-          posiciones: v.positions
-            .filter((x) => x.qty > 0)
-            .map((x) => ({ simbolo: x.symbol, cantidad: x.qty, costo_promedio: x.avgCost, costo: x.cost, precio: x.price, valor: x.value, ganancia: x.gain, ganancia_realizada: x.realized })),
-          ganancia_realizada_de_posiciones_cerradas: v.positions.filter((x) => x.qty === 0).map((x) => ({ simbolo: x.symbol, ganancia_realizada: x.realized })),
-          totales_usd: t && {
-            depositado: t.deposits,
-            retirado: t.withdrawals,
-            depositado_neto: t.netDeposits,
-            soles_netos_depositados: t.netPen,
-            efectivo: t.cash,
-            costo_de_lo_que_queda: t.cost,
-            valor_a_precios_de_mercado: t.value,
-            cuenta_total: t.account,
-            ganancia_realizada: t.realized,
-            ganancia_no_realizada: t.unrealized,
-            dividendos: { bruto: t.dividends.gross, retenido: t.dividends.tax, neto: t.dividends.net },
-            costos_hapi: { ordenes: t.fees.orders, depositos_y_retiros: t.fees.transfers, total: t.fees.total },
-          },
-          valor_segun_hapi: v.snapshot && { fecha: v.snapshot.date, valor_usd: v.snapshot.value },
-          dolar_bcrp: v.fx,
-          movimientos_recientes: v.ops.slice(0, 20).map((o) => ({ fecha: o.date, tipo: o.kind, simbolo: o.symbol, cantidad: o.qty, precio: o.price, monto_usd: o.amount, soles: o.pen, costo: o.fee, retencion: o.tax })),
-          notas: v.notes,
-        };
-      }),
-  );
 }
 
 function registerCalendarTool(server: McpServer, c: McpContext): void {

@@ -70,7 +70,7 @@ describe('servidor MCP', () => {
     const init = await rpc(c, 'initialize', { protocolVersion: '2025-06-18', capabilities: {}, clientInfo: { name: 'test', version: '0' } });
     expect(init.result.serverInfo.name).toBe('rueda');
     const { result } = await rpc(c, 'tools/list');
-    expect(result.tools.map((t: { name: string }) => t.name)).toEqual(['precios', 'historial', 'comparar', 'cartera', 'empresa', 'lista_diaria', 'peru_bcrp', 'eeuu_fred', 'resultados_anuales', 'noticias', 'pronosticos', 'cuenta_hapi', ...CALENDAR_TOOL]);
+    expect(result.tools.map((t: { name: string }) => t.name)).toEqual(['precios', 'historial', 'comparar', 'cartera', 'empresa', 'lista_diaria', 'peru_bcrp', 'eeuu_fred', 'resultados_anuales', 'noticias', 'pronosticos', ...CALENDAR_TOOL]);
     for (const t of result.tools) expect(t.annotations.readOnlyHint).toBe(true);
   });
 
@@ -78,7 +78,7 @@ describe('servidor MCP', () => {
     const { f, calls } = quotesFetch();
     const { c } = ctx({ quotes: storedQuotes(LONG_AGO) }, f, undefined, 'friend');
     const { result } = await rpc(c, 'tools/list');
-    expect(result.tools.map((t: { name: string }) => t.name)).toEqual(['peru_bcrp', 'eeuu_fred', 'resultados_anuales', 'noticias', 'pronosticos', 'cuenta_hapi', ...CALENDAR_TOOL]);
+    expect(result.tools.map((t: { name: string }) => t.name)).toEqual(['peru_bcrp', 'eeuu_fred', 'resultados_anuales', 'noticias', 'pronosticos', ...CALENDAR_TOOL]);
     const intento = await rpc(c, 'tools/call', { name: 'precios', arguments: {} });
     expect(JSON.stringify(intento)).not.toContain('"precio"');
     expect(calls).toHaveLength(0);

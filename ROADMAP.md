@@ -138,13 +138,16 @@ Ideas sacadas de Bloomberg, Morningstar, Seeking Alpha, Simply Wall St y Trading
 - [x] **Notas por factores A–F** frente a las comparables (Finnhub), con el detalle de cada indicador.
 - [x] **Historia financiera** desde la SEC (hasta 12 años), pública: sección para todos con cualquier símbolo, bloque en la ficha y herramienta `resultados_anuales` en el conector.
 
-## 8d. Hapi, el bróker del grupo — en curso (23 de octubre)
+## 8d. Hapi, el bróker del grupo — hecho (23 de octubre)
 
 Hapi no tiene API pública ni exporta CSV: solo PDF (estado de cuenta mensual que emite Apex Clearing y una confirmación por operación, también por correo). Leer la cuenta con usuario y contraseña quedó descartado (términos y seguridad). El usuario eligió que **nadie más vea su cuenta** (sin liga del grupo).
 
-- [x] **Mi cuenta Hapi a mano**, privada para cada uno: compras, ventas, dividendos, depósitos y retiros con las comisiones de Hapi de 2026; rendimiento en US$ y en soles. Precios de mercado solo para el dueño. Herramienta `cuenta_hapi` en el conector.
+- [x] **Mi cuenta Hapi a mano**: compras, ventas, dividendos, depósitos y retiros con las comisiones de Hapi de 2026; rendimiento en US$ y en soles. Precios de mercado solo para el dueño.
+- [x] **Cifrada en el navegador con la frase de cada uno** (elegido por el usuario para que ni él pueda ver las cuentas de los demás): el servidor solo guarda texto ilegible. Se quitó la herramienta `cuenta_hapi` del conector, que ya no puede leerla.
+- [x] **Versión publicada al pie** (commit, con enlace a GitHub), para que cualquiera revise el código que corre.
 - [x] **Enlace «Ver en Hapi»** en la ficha y en «Resultados de empresas» (página pública; Hapi no tiene enlaces que abran la app).
-- [ ] **Leer el estado de cuenta mensual (PDF)** en el navegador (pdf.js servido por la app; el PDF no sale del equipo) para cargar los movimientos y el valor de fin de mes. Falta: un estado de cuenta de ejemplo del usuario (puede tapar el número de cuenta) para armar el lector.
+- [x] **Leer el estado de cuenta mensual (PDF)** en el navegador con pdf.js: periodo, valor total, posiciones y movimientos, con vista previa. Probado con el estado real de setiembre de 2026 del usuario (11 posiciones y 7 dividendos, cuadran con los totales).
+- [ ] Ver en un estado real cómo vienen las compras, ventas y depósitos (setiembre solo traía dividendos) y ajustar el lector si hace falta.
 - [ ] Idea: reporte anual para la declaración de impuestos (ganancias realizadas y dividendos en soles, con el tipo de cambio de cada fecha). Solo cálculos: el tratamiento tributario lo decide un contador.
 
 ## 9. Ideas para después

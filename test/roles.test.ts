@@ -84,7 +84,7 @@ describe('rutas según el rol (local, con datos de prueba)', () => {
     expect(status.credits).toBeUndefined();
   });
 
-  it('la cuenta de Hapi: un amigo anota la suya y la ve sin precios de mercado; el dueño, con precios', async () => {
+  it('la cuenta de Hapi: cada uno guarda la suya cifrada; los precios para valorizarla, solo el dueño', async () => {
     const e = env('friend');
     const call = (method: string, path: string, body?: unknown) =>
       worker.fetch(
@@ -92,19 +92,28 @@ describe('rutas según el rol (local, con datos de prueba)', () => {
         e,
         {} as ExecutionContext,
       );
-    const date = new Date(Date.now() - 5 * 86_400_000).toISOString().slice(0, 10);
-    expect((await call('POST', '/api/hapi', { kind: 'deposit', date, amount: 500, pen: 1900 })).status).toBe(200);
-    const v = (await (await call('POST', '/api/hapi', { kind: 'buy', date, symbol: 'scco', qty: 1, price: 150 })).json()) as Record<string, any>;
-    expect(v.priced).toBe(false);
-    expect(v.positions[0]).toMatchObject({ symbol: 'SCCO', cost: 150.1, value: null });
-    expect(v.totals).toMatchObject({ cash: 349.9, netPen: 1900 });
-    const del = (await (await call('DELETE', `/api/hapi?id=${v.ops[0].id}`)).json()) as Record<string, any>;
-    expect(del.ops).toHaveLength(1);
-    expect((await call('PUT', '/api/hapi/settings', { plan: 'prime' })).status).toBe(200);
-    expect((await call('POST', '/api/hapi', { kind: 'buy', date, symbol: 'USD/PEN', qty: 1, price: 1 })).status).toBe(400);
+    const blob = { v: 2, kdf: { salt: 'c2FsdHNhbHRzYWx0c2FsdA==', iterations: 600_000 }, iv: 'aXZpdml2aXZpdml2', ct: 'Y2lmcmFkbw==' };
+    expect(await (await call('GET', '/api/hapi')).json()).toEqual({ blob: null, version: null, legacy: null });
+    const saved = (await (await call('PUT', '/api/hapi', { blob, base: null })).json()) as Record<string, any>;
+    expect(saved.version).toEqual(expect.any(String));
+    expect((await call('PUT', '/api/hapi', { blob, base: null })).status).toBe(409);
+    expect(((await (await call('GET', '/api/hapi')).json()) as Record<string, any>).blob).toEqual(blob);
+    expect((await call('PUT', '/api/hapi', { blob: { ops: [] }, base: saved.version })).status).toBe(400);
+    // Un amigo no recibe precios aunque mande símbolos (su navegador ni los manda); sí el dólar del BCRP.
+    const market = (await (await call('GET', '/api/hapi/market?symbols=VOO,SCCO')).json()) as Record<string, any>;
+    expect(market.prices).toBeNull();
+    expect(market.fx.rate).toEqual(expect.any(Number));
+    expect((await call('DELETE', '/api/hapi')).status).toBe(200);
+    expect(((await (await call('GET', '/api/hapi')).json()) as Record<string, any>).blob).toBeNull();
 
-    const owner = (await (await get('/api/hapi')).json()) as Record<string, any>;
-    expect(owner.priced).toBe(true);
+    const owner = (await (await get('/api/hapi/market?symbols=voo,usd/pen')).json()) as Record<string, any>;
+    expect(Object.keys(owner.prices)).toEqual(['VOO']);
+  });
+
+  it('la versión publicada (commit) se ve en el estado, también para los amigos', async () => {
+    const e = { ...env('friend'), VERSION: 'abc1234def' } as Env;
+    const r = (await (await worker.fetch(new Request('http://localhost/api/status'), e, {} as ExecutionContext)).json()) as Record<string, any>;
+    expect(r.version).toBe('abc1234def');
   });
 
   it('un amigo sí ve los resultados anuales de la SEC, de cualquier acción', async () => {

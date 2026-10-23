@@ -9,7 +9,9 @@
     "noUncheckedIndexedAccess": true,
     "isolatedModules": true,
     "noEmit": true,
-    "skipLibCheck": true
+    "skipLibCheck": true,
+    // Las pruebas importan los módulos del navegador (public/hapi-*.js), que son JavaScript sin compilar.
+    "allowJs": true
   },
   "include": ["src/**/*.ts", "test/**/*.ts"]
 }

@@ -260,42 +260,59 @@
   <section class="screen" id="hapi" aria-labelledby="hp-h">
     <div class="screen-head">
       <h2 id="hp-h">Mi cuenta Hapi</h2>
-      <span class="src">Privada · solo tú</span>
+      <span class="src">Cifrada · solo tú</span>
       <details class="help">
         <summary aria-label="Cómo funciona tu cuenta Hapi">?</summary>
         <div class="help-body">
-          <p>Anota lo que haces en Hapi: compras, ventas, dividendos, depósitos y retiros. Tu cuenta es solo tuya: nadie más del grupo la ve, ni en el panel ni en el conector de Claude. Se guarda en Rueda asociada a tu correo.</p>
-          <p>Si dejas el costo vacío, se calcula con las comisiones de Hapi de 2026: US$ 0,10 por orden de acciones enteras y US$ 0,15 por fracciones (US$ 0,05 con Prime); en las ventas, además, los cargos de la SEC y de FINRA. Depósito en soles: US$ 1,99; retiro en soles: US$ 4,99. Si tu confirmación dice otra cosa, escribe el monto exacto.</p>
-          <p>En los depósitos va lo que llegó a Hapi; en los retiros, lo que salió de Hapi. Si anotas también los soles, ves tu rendimiento en soles, con el dólar del BCRP de hoy.</p>
-          <p>Dividendos: EE. UU. retiene el 30 % a quienes viven en el Perú (no hay convenio). Se calcula solo; corrígelo si tu estado de cuenta dice otra cosa.</p>
-          <p>Hapi no tiene una conexión directa (API): para comparar, anota el valor total que te muestra Hapi. Pronto: leer tu estado de cuenta mensual en PDF.</p>
+          <p>Tu cuenta se cifra en tu navegador con una frase que solo sabes tú. Rueda guarda solo texto ilegible: nadie más del grupo puede verla, ni el dueño de la app. Si olvidas la frase, no hay forma de recuperarla.</p>
+          <p>Importa el estado de cuenta mensual de Hapi (PDF): se lee en tu navegador, no se sube, y de él solo quedan los movimientos y el valor total. La primera vez, tu cuenta empieza con el saldo de ese mes.</p>
+          <p>También puedes anotar a mano compras, ventas, dividendos, depósitos y retiros. Si dejas el costo vacío, se calcula con las comisiones de Hapi de 2026: US$ 0,10 por orden de acciones enteras y US$ 0,15 por fracciones (US$ 0,05 con Prime); en las ventas, además, los cargos de la SEC y de FINRA. Depósito en soles: US$ 1,99; retiro en soles: US$ 4,99.</p>
+          <p>En los depósitos va lo que llegó a Hapi; en los retiros, lo que salió de Hapi. Si anotas también los soles, ves tu rendimiento en soles, con el dólar del BCRP de hoy. Dividendos: EE. UU. retiene el 30 % a quienes viven en el Perú.</p>
+          <p>El código que corre en tu navegador es público: al pie de la página está la versión exacta, con enlace a GitHub.</p>
         </div>
       </details>
       <button type="button" id="hp-csv" class="csv-btn" title="Movimientos de tu cuenta Hapi, para Excel" disabled>⤓ CSV</button>
     </div>
-    <form id="hp-form" class="pf-form">
-      <label>Movimiento <select id="hp-kind"><option value="buy">Compra</option><option value="sell">Venta</option><option value="dividend">Dividendo</option><option value="deposit">Depósito</option><option value="withdrawal">Retiro</option></select></label>
-      <label>Fecha <input type="date" id="hp-date" required></label>
-      <label data-for="trade dividend">Símbolo <input id="hp-symbol" maxlength="12" autocomplete="off" autocapitalize="characters" spellcheck="false" placeholder="VOO"></label>
-      <label data-for="trade">Cantidad <input type="number" id="hp-qty" min="0" step="any" inputmode="decimal"></label>
-      <label data-for="trade">Precio en US$ <input type="number" id="hp-price" min="0" step="any" inputmode="decimal"></label>
-      <label data-for="dividend transfer"><span id="hp-amount-label">Monto en US$</span> <input type="number" id="hp-amount" min="0" step="any" inputmode="decimal"></label>
-      <label data-for="transfer"><span id="hp-pen-label">Soles</span> <input type="number" id="hp-pen" min="0" step="any" inputmode="decimal" placeholder="Opcional"></label>
-      <label data-for="dividend">Retención en US$ <input type="number" id="hp-tax" min="0" step="any" inputmode="decimal" placeholder="30 %"></label>
-      <label data-for="trade transfer">Costo en US$ <input type="number" id="hp-fee" min="0" step="any" inputmode="decimal" placeholder="Se calcula"></label>
-      <button type="submit">Anotar</button>
-    </form>
-    <p class="err" id="hp-err" hidden></p>
-    <div class="hp-settings">
-      <label>Plan <select id="hp-plan"><option value="standard">Standard</option><option value="prime">Prime</option></select></label>
-      <form id="hp-snap-form" class="hp-snap">
-        <label>Valor total según Hapi (US$) <input type="number" id="hp-snap-value" min="0" step="any" inputmode="decimal" required></label>
-        <label>Al <input type="date" id="hp-snap-date" required></label>
-        <button type="submit">Guardar</button>
-        <button type="button" id="hp-snap-clear" class="pf-del" hidden>Quitar</button>
+    <div id="hp-lock"><p class="muted">Cargando…</p></div>
+    <div id="hp-open" hidden>
+      <div class="hp-tools">
+        <label class="csv-btn hp-file">⤒ Importar estado de cuenta (PDF)<input type="file" id="hp-file" accept="application/pdf,.pdf" hidden></label>
+        <button type="button" id="hp-lock-btn" class="pf-del" title="Cierra tu cuenta en este equipo y olvida la clave guardada">Bloquear</button>
+      </div>
+      <div id="hp-import" class="hp-import" hidden></div>
+      <form id="hp-form" class="pf-form">
+        <label>Movimiento <select id="hp-kind"><option value="buy">Compra</option><option value="sell">Venta</option><option value="dividend">Dividendo</option><option value="deposit">Depósito</option><option value="withdrawal">Retiro</option></select></label>
+        <label>Fecha <input type="date" id="hp-date" required></label>
+        <label data-for="trade dividend">Símbolo <input id="hp-symbol" maxlength="12" autocomplete="off" autocapitalize="characters" spellcheck="false" placeholder="VOO"></label>
+        <label data-for="trade">Cantidad <input type="number" id="hp-qty" min="0" step="any" inputmode="decimal"></label>
+        <label data-for="trade">Precio en US$ <input type="number" id="hp-price" min="0" step="any" inputmode="decimal"></label>
+        <label data-for="dividend transfer"><span id="hp-amount-label">Monto en US$</span> <input type="number" id="hp-amount" min="0" step="any" inputmode="decimal"></label>
+        <label data-for="transfer"><span id="hp-pen-label">Soles</span> <input type="number" id="hp-pen" min="0" step="any" inputmode="decimal" placeholder="Opcional"></label>
+        <label data-for="dividend">Retención en US$ <input type="number" id="hp-tax" min="0" step="any" inputmode="decimal" placeholder="30 %"></label>
+        <label data-for="trade transfer">Costo en US$ <input type="number" id="hp-fee" min="0" step="any" inputmode="decimal" placeholder="Se calcula"></label>
+        <button type="submit">Anotar</button>
       </form>
+      <p class="err" id="hp-err" hidden></p>
+      <div class="hp-settings">
+        <label>Plan <select id="hp-plan"><option value="standard">Standard</option><option value="prime">Prime</option></select></label>
+        <form id="hp-snap-form" class="hp-snap">
+          <label>Valor total según Hapi (US$) <input type="number" id="hp-snap-value" min="0" step="any" inputmode="decimal" required></label>
+          <label>Al <input type="date" id="hp-snap-date" required></label>
+          <button type="submit">Guardar</button>
+          <button type="button" id="hp-snap-clear" class="pf-del" hidden>Quitar</button>
+        </form>
+      </div>
+      <div id="hp-body"></div>
+      <details class="d-tool">
+        <summary>Cambiar la frase</summary>
+        <form id="hp-pass-form" class="hp-pass">
+          <label>Frase nueva <input type="password" id="hp-new1" minlength="10" required autocomplete="new-password"></label>
+          <label>Repítela <input type="password" id="hp-new2" minlength="10" required autocomplete="new-password"></label>
+          <button type="submit">Cambiar</button>
+        </form>
+        <p class="hint" id="hp-pass-status" role="status"></p>
+      </details>
     </div>
-    <div id="hp-body"><p class="muted">Cargando…</p></div>
   </section>
 
   <div class="macro">
@@ -387,6 +404,7 @@
   <footer class="foot">
     <p><span class="owner-only">Precios: Twelve Data. </span>Perú: Banco Central de Reserva del Perú (BCRPData). EE. UU.: FRED®, Federal Reserve Bank of St. Louis. Resultados de empresas: SEC EDGAR. Datos informativos; no es asesoría de inversión.</p>
     <p>Este producto usa la API de FRED® pero no está respaldado ni certificado por el Federal Reserve Bank of St. Louis.</p>
+    <p id="version"></p>
   </footer>
 </div>
 <div class="tooltip" id="tooltip" role="tooltip" hidden></div>

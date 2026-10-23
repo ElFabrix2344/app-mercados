@@ -6,6 +6,8 @@ export interface Env {
   TIMEZONE: string;
   /** Origen del Worker del conector de Claude (mercados-mcp), destino fijo del login del conector. */
   MCP_URL?: string;
+  /** Commit publicado (lo pone GitHub Actions al desplegar): se muestra al pie para que cualquiera revise el código. */
+  VERSION?: string;
 
   // secretos (panel de Cloudflare → Variables and Secrets, o `.env` en local)
   /** https://<equipo>.cloudflareaccess.com */
