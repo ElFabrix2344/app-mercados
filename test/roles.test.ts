@@ -136,6 +136,27 @@ describe('rutas según el rol (local, con datos de prueba)', () => {
     expect((await call('GET', '/api/history?symbol=TSLA')).status).toBe(400);
   });
 
+  it('pronósticos del grupo: también juegan los amigos, con nombre, y lo de los demás no se ve antes del cierre', async () => {
+    const e = env('friend');
+    const call = (method: string, path: string, body?: unknown) =>
+      worker.fetch(
+        new Request(`http://localhost${path}`, { method, headers: { 'Content-Type': 'application/json' }, body: body ? JSON.stringify(body) : undefined }),
+        e,
+        {} as ExecutionContext,
+      );
+    const before = (await (await call('GET', '/api/forecasts')).json()) as Record<string, any>;
+    expect(before.me.alias).toBeNull();
+    const open = before.questions.find((q: { status: string }) => q.status === 'open');
+    // Datos de prueba: Ana, Beto y Caro ya pronosticaron, pero no se ve qué.
+    expect(open).toMatchObject({ count: 3, entries: null, mine: null });
+    const value = open.type === 'choice' ? 'sube' : open.kind === 'dolar' ? 3.7 : 2.1;
+    expect((await call('POST', '/api/forecasts', { questionId: open.id, value })).status).toBe(400); // sin nombre
+    const named = (await (await call('PUT', '/api/forecasts/name', { alias: 'Fabri' })).json()) as Record<string, any>;
+    expect(named.me.alias).toBe('Fabri');
+    const after = (await (await call('POST', '/api/forecasts', { questionId: open.id, value })).json()) as Record<string, any>;
+    expect(after.questions.find((q: { id: string }) => q.id === open.id)).toMatchObject({ mine: value, count: 4, entries: null });
+  });
+
   it('el dueño ve todo', async () => {
     expect((await get('/api/quotes')).status).toBe(200);
     const status = (await (await get('/api/status')).json()) as Record<string, unknown>;

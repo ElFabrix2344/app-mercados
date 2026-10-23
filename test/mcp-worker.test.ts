@@ -196,7 +196,7 @@ describe('conector: login completo', () => {
       ? text.split('\n').find((l) => l.startsWith('data: '))!.slice(6)
       : text;
     const body = JSON.parse(raw) as { result: { tools: { name: string }[] } };
-    expect(body.result.tools.map((t) => t.name)).toEqual(['precios', 'historial', 'comparar', 'cartera', 'empresa', 'lista_diaria', 'peru_bcrp', 'eeuu_fred', 'noticias', ...CALENDAR_TOOL]);
+    expect(body.result.tools.map((t) => t.name)).toEqual(['precios', 'historial', 'comparar', 'cartera', 'empresa', 'lista_diaria', 'peru_bcrp', 'eeuu_fred', 'noticias', 'pronosticos', ...CALENDAR_TOOL]);
 
     // 7. Si el correo deja de ser dueño, el mismo token ya no sirve
     const revoked = await worker.fetch(

@@ -2,11 +2,13 @@
 // Son caminatas aleatorias con semilla fija: sirven para ver el diseño, no son precios reales.
 
 import type { EarningsRelease } from './lib/finnhub';
+import { CHOICES, questionsAt, readyToResolve, resolve, type ForecastValue } from './lib/forecasts';
 import { usMarketOpen } from './lib/market-hours';
 import { addDays, isoDate } from './lib/num';
 import type { DailyPoint, Quote } from './lib/twelvedata';
 import type { CompanyResult } from './services/company';
 import { getEodList, shapeEod, summarizeHistory, type EodRow, type EodView } from './services/eod';
+import type { Entry, Results } from './services/forecasts';
 import { EARNINGS_AHEAD_DAYS, shapeCompanies, type CompanyCalendar } from './services/earnings';
 import type { NewsData, NewsGroup, NewsItem } from './services/news';
 import type { PriceSource } from './services/portfolio';
@@ -162,7 +164,8 @@ export function mockPeru(now: Date): Fresh<PeruData> {
     date: `${addDays(today, -31 * (13 - i)).slice(0, 7)}-01`,
     value: Number((2 + Math.sin(i / 2)).toFixed(2)),
   }));
-  return fresh({ fx, policyRate: { date: addDays(today, -1), value: 4.5 }, inflation }, now);
+  const policyRates = Array.from({ length: 40 }, (_, i) => ({ date: addDays(today, i - 40), value: 4.5 }));
+  return fresh({ fx, policyRate: { date: addDays(today, -1), value: 4.5 }, policyRates, inflation }, now);
 }
 
 /** Titulares de prueba (no son noticias reales; los enlaces van a example.com). */
@@ -239,7 +242,8 @@ export function mockUsa(now: Date): Fresh<UsaData> {
     date: `${addDays(today, -31 * (14 - i)).slice(0, 7)}-01`,
     value: Number((2.5 + Math.cos(i / 3) * 0.5).toFixed(2)),
   }));
-  return fresh({ treasury10y, fedFunds: { date: addDays(today, -1), value: 4 }, cpiYoY }, now);
+  const fedTarget = Array.from({ length: 40 }, (_, i) => ({ date: addDays(today, i - 40), lower: 3.75, upper: 4 }));
+  return fresh({ treasury10y, fedFunds: { date: addDays(today, -1), value: 4 }, cpiYoY, fedTarget }, now);
 }
 
 /** ETF conocidos: no presentan resultados (en la API real simplemente no traen fechas). */
@@ -347,4 +351,37 @@ export async function mockEodView(kv: KVNamespace, now: Date): Promise<EodView> 
     if (row) rows[symbol] = row;
   }
   return shapeEod(symbols, { rows });
+}
+
+/**
+ * Pronósticos de prueba: tres jugadores inventados (Ana, Beto y Caro) que ya pronosticaron todo lo abierto, y los
+ * resultados que saldrían de los datos de prueba de Perú y EE. UU.
+ */
+export function mockForecastExtras(now: Date): { extra: { entries: Entry[]; aliases: Record<string, string> }; results: Results } {
+  const aliases: Record<string, string> = { 'demo-ana': 'Ana', 'demo-beto': 'Beto', 'demo-caro': 'Caro' };
+  const pe = mockPeru(now).data;
+  const us = mockUsa(now).data;
+  const center = { inei: pe.inflation.at(-1)?.value ?? 2, bls: us.cpiYoY.at(-1)?.value ?? 2.5, dolar: pe.fx.at(-1)?.sell ?? 3.7 };
+  const entries: Entry[] = [];
+  for (const q of questionsAt(now)) {
+    for (const pid of Object.keys(aliases)) {
+      const rand = rng(seedOf(`${pid}${q.id}`));
+      let value: ForecastValue;
+      if (q.type === 'choice') value = CHOICES[Math.min(2, Math.floor(rand() * 3))]!;
+      else {
+        const c = center[q.kind as 'inei' | 'bls' | 'dolar'];
+        const spread = q.kind === 'dolar' ? 0.04 : 0.4;
+        const dec = q.kind === 'dolar' ? 3 : q.kind === 'bls' ? 1 : 2;
+        value = Number((c + (rand() - 0.5) * spread).toFixed(dec));
+      }
+      entries.push({ qid: q.id, pid, value, at: now.toISOString() });
+    }
+  }
+  const data = { policyRates: pe.policyRates, inflationLima: pe.inflation, fx: pe.fx, fedTarget: us.fedTarget, cpiYoY: us.cpiYoY };
+  const results: Results = {};
+  for (const q of questionsAt(now)) {
+    const value = readyToResolve(q, now) ? resolve(q, data, now) : null;
+    if (value !== null) results[q.id] = { value, at: now.toISOString() };
+  }
+  return { extra: { entries, aliases }, results };
 }

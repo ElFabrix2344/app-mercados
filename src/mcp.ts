@@ -14,6 +14,7 @@ import {
   mockCompanyCalendar,
   mockCompare,
   mockEodView,
+  mockForecastExtras,
   mockHistory,
   mockNews,
   mockPeru,
@@ -25,6 +26,7 @@ import {
 } from './mock';
 import { companyData } from './services/company';
 import { eodView, knownSymbols } from './services/eod';
+import { forecastView } from './services/forecasts';
 import { companyCalendar, epsSurprise, MOMENT, quarterLabel } from './services/earnings';
 import { marketNews, newsQuery, quoteName, symbolNews, type NewsItem } from './services/news';
 import { kvSource, readTrades, valuePortfolio } from './services/portfolio';
@@ -60,12 +62,15 @@ export interface McpContext {
   timeZone: string;
   /** Los amigos solo reciben las herramientas de datos públicos (BCRP y FRED). */
   role: Role;
+  /** Correo de quien usa el conector: con él se busca su nombre y sus pronósticos del grupo. */
+  email?: string | null;
 }
 
 const INSTRUCTIONS =
   'Datos del panel personal «Rueda» del usuario: precios, historial con indicadores técnicos y comparación de los ' +
   'símbolos de su lista de seguimiento y de su lista diaria (Twelve Data), datos de sus empresas (Finnhub), ' +
-  'Perú (BCRP), EE. UU. (FRED) y el calendario económico. Los datos pueden venir de la caché del panel: al responder, di ' +
+  'Perú (BCRP), EE. UU. (FRED), el calendario económico y el juego de pronósticos del grupo. Los datos pueden venir de la ' +
+  'caché del panel: al responder, di ' +
   'la hora de «actualizado» y avisa si «dato_guardado» es true. Para símbolos fuera de la lista usa otra fuente (por ' +
   'ejemplo, el conector de Twelve Data).';
 
@@ -84,7 +89,7 @@ export function handleMcp(req: Request, c: McpContext): Promise<Response> {
 
 export function buildServer(c: McpContext): McpServer {
   const owner = c.role === 'owner';
-  const server = new McpServer({ name: 'rueda', version: '0.8.0' }, { instructions: owner ? INSTRUCTIONS : INSTRUCTIONS_FRIEND });
+  const server = new McpServer({ name: 'rueda', version: '0.9.0' }, { instructions: owner ? INSTRUCTIONS : INSTRUCTIONS_FRIEND });
   const when: When = (iso) => localTime(iso, c.timeZone);
 
   // Precios e historial (Twelve Data): solo para el dueño, por la licencia del plan gratis.
@@ -630,6 +635,43 @@ function registerPublicTools(server: McpServer, c: McpContext, when: When): void
           ...(Object.keys(r.data.errors).length ? { fuentes_con_error: r.data.errors } : {}),
           actualizado: when(r.fetchedAt),
           dato_guardado: r.stale,
+        };
+      }),
+  );
+
+  server.registerTool(
+    'pronosticos',
+    {
+      title: 'Pronósticos del grupo',
+      description:
+        'El juego de pronósticos del panel Rueda (sin plata, con datos públicos): decisiones de tasa del BCRP y de la Fed ' +
+        '(sube, mantiene o baja), inflación a 12 meses de Lima (INEI) y de EE. UU. (BLS, con un decimal) y el dólar ' +
+        'interbancario del BCRP al cierre de cada mes. Trae las preguntas abiertas (cuántos pronosticaron y el pronóstico ' +
+        'de quien pregunta; los de los demás se ven recién al cierre), las cerradas con lo que puso cada uno, las resueltas ' +
+        'con el resultado y los puntos, y el ranking. Puntos: 10 por acertar la decisión; en los números, 10 menos 1 por ' +
+        'cada 0,05 pp de error (inflación) o por cada medio céntimo (dólar). Solo lectura: se juega en el panel.',
+      inputSchema: z.object({}),
+      annotations: { readOnlyHint: true, openWorldHint: false },
+    },
+    () =>
+      run(async () => {
+        if (!c.email) throw new ApiError('forbidden', 401, 'No se sabe quién pregunta: vuelve a conectar el conector.');
+        const v = await forecastView(deps.kv, c.email, deps.now, c.mock ? mockForecastExtras(deps.now) : {});
+        const at = (iso: string) => localTime(iso, c.timeZone);
+        const entries = (q: (typeof v.questions)[number]) => q.entries?.map((e) => ({ nombre: e.alias, pronostico: e.value, ...(e.points !== null ? { puntos: e.points } : {}) }));
+        return {
+          zona_horaria: c.timeZone,
+          tu_nombre: v.me.alias,
+          abiertas: v.questions
+            .filter((q) => q.status === 'open')
+            .map((q) => ({ pregunta: q.title, fecha: q.date, cierra: at(q.closesAt), pronosticaron: q.count, tu_pronostico: q.mine })),
+          cerradas: v.questions
+            .filter((q) => q.status === 'closed')
+            .map((q) => ({ pregunta: q.title, fecha: q.date, pronosticos: entries(q), consenso: q.consensus, tu_pronostico: q.mine })),
+          resueltas: v.questions
+            .filter((q) => q.status === 'resolved')
+            .map((q) => ({ pregunta: q.title, fecha: q.date, resultado: q.result, pronosticos: entries(q), tus_puntos: q.minePoints })),
+          ranking: v.ranking.map((r) => ({ nombre: r.alias, puntos: r.points, pronosticos_resueltos: r.count, ...(r.mine ? { eres_tu: true } : {}) })),
         };
       }),
   );

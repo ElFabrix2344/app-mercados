@@ -114,13 +114,21 @@ El 22 de octubre se comparó Rueda con Yahoo Finance, Google Finance, TradingVie
   - [x] **Datos de la empresa** en la ficha (Finnhub, solo el dueño): PER, capitalización, beta, dividendo, márgenes, recomendación de analistas, sorpresas de BPA de los últimos 4 trimestres y comparables. Pendiente si BAP vuelve a la lista (hoy está VTI en su lugar): comparar su PER y capitalización con Yahoo, porque Credicorp reporta en soles y Finnhub podría mezclar monedas en las ADR.
   - [x] **Velas, volumen y MACD** en la ficha. Volumen verificado contra Nasdaq y MACD contra Twelve Data.
   - [x] **Lista ampliada** («Lista diaria»): hasta 20 símbolos más, actualizados una vez al día después del cierre por una tarea programada (1 crédito por símbolo al día). Falta verla funcionar en producción tras el primer cierre.
-- **No elegido por ahora** (queda en ideas): alertas al celular por Telegram, pronósticos del grupo (juego sin plata con datos públicos, para los amigos), gráfico del día (1D y 5D), reportes oficiales de la SEC y la SMV, dividendos en la cartera simulada.
+- **No elegido por ahora** (queda en ideas): alertas al celular por Telegram, gráfico del día (1D y 5D), reportes oficiales de la SEC y la SMV, dividendos en la cartera simulada. Los pronósticos del grupo se hicieron después (sección 8b).
 - **Descartado:** buscador de acciones, mapa de calor y lo que más sube o baja (necesitan datos de todo el mercado, que no entran en ningún plan gratis); IA dentro de la app (el conector ya lo hace); widgets del celular (necesitan una app nativa).
+
+## 8b. Pronósticos del grupo — hecho el 23 de octubre
+
+Elegido por el usuario antes de abrir la app a los chicos, con las opciones recomendadas: preguntas de tasas (BCRP y Fed), inflación (Lima y EE. UU.) y dólar a fin de mes; hasta 10 puntos por pregunta; lo de los demás oculto hasta el cierre.
+
+- [x] Preguntas automáticas desde el calendario, nombre para el ranking, pronósticos ocultos hasta el cierre, consenso, puntos y ranking.
+- [x] Resolución automática con la tarea programada (BCRP, FRED e INEI vía BCRP).
+- [x] Conector: herramienta `pronosticos` (solo lectura).
+- [ ] Ver resolverse en producción la primera pregunta: la decisión de la Fed del 28 de octubre (se resuelve desde el 29).
 
 ## 9. Ideas para después
 
 - **Alertas al celular por Telegram:** precio, % del día, dólar, MM200/RSI y «mañana presenta resultados». Tarea programada cada 15 min con la bolsa abierta, unos 100–150 créditos al día. Es lo que tienen todas las apps comparadas y Rueda no.
-- **Pronósticos del grupo:** cada amigo pronostica, sin plata, la tasa del BCRP, la inflación o el dólar del viernes, con ranking. Solo datos públicos, así que los amigos pueden jugar.
 - **Gráfico del día** (1D y 5D): 1 crédito cada 5 min, solo con la ficha abierta.
 - **Reportes oficiales:** SEC (6-K, 10-Q), gratis y públicos; hechos de importancia de la SMV, falta probar si su web deja leerse.
 - **Dividendos en la cartera simulada:** anotados a mano (Finnhub los cobra).

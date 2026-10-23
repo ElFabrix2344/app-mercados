@@ -10,6 +10,7 @@ import {
   mockCompanyCalendar,
   mockCompare,
   mockEodView,
+  mockForecastExtras,
   mockHistory,
   mockNews,
   mockPeru,
@@ -22,6 +23,7 @@ import {
 import { companyData } from './services/company';
 import { companyCalendar } from './services/earnings';
 import { EOD_NEW_NOW, eodView, knownSymbols, refreshEod, validateEodList } from './services/eod';
+import { forecastView, resolveForecasts, setAlias, submitForecast, type Store } from './services/forecasts';
 import { marketNews, quoteName, symbolNews } from './services/news';
 import { addTrade, deleteTrade, kvSource, readTrades, valuePortfolio } from './services/portfolio';
 import {
@@ -85,13 +87,27 @@ export default {
     return withSecurityHeaders(res);
   },
 
-  // Tarea programada (triggers de wrangler.jsonc, cada 10 minutos): renueva la lista diaria después del cierre.
+  // Tarea programada (triggers de wrangler.jsonc, cada 10 minutos): renueva la lista diaria después del cierre y
+  // resuelve los pronósticos del grupo cuando sale el dato. Casi siempre solo lee unos pocos registros de KV.
   async scheduled(controller: ScheduledController, rawEnv: Env, ctx: ExecutionContext): Promise<void> {
     const env = trimSecrets(rawEnv);
-    const deps: Deps = { kv: env.CACHE, now: new Date(controller.scheduledTime), twelveKey: env.TWELVE_DATA_API_KEY, finnhubKey: env.FINNHUB_API_KEY };
+    const deps: Deps = {
+      kv: env.CACHE,
+      now: new Date(controller.scheduledTime),
+      twelveKey: env.TWELVE_DATA_API_KEY,
+      fredKey: env.FRED_API_KEY,
+      finnhubKey: env.FINNHUB_API_KEY,
+    };
     ctx.waitUntil(
-      refreshEod(deps).then((r) => {
-        if (Object.keys(r.errors).length) console.warn('Lista diaria:', JSON.stringify(r.errors));
+      Promise.allSettled([
+        refreshEod(deps).then((r) => {
+          if (Object.keys(r.errors).length) console.warn('Lista diaria:', JSON.stringify(r.errors));
+        }),
+        resolveForecasts(deps).then((done) => {
+          if (done.length) console.log('Pronósticos resueltos:', done.join(', '));
+        }),
+      ]).then((rs) => {
+        for (const r of rs) if (r.status === 'rejected') console.error('Tarea programada:', r.reason);
       }),
     );
   },
@@ -205,6 +221,10 @@ async function route(req: Request, env: Env, url: URL, role: Role, email: string
       case '/api/usa':
         return json(mock ? mockUsa(now) : await usa(deps));
 
+      // Pronósticos del grupo: datos públicos, juegan el dueño y los amigos.
+      case '/api/forecasts':
+        return json(await forecastView(env.CACHE, needEmail(email), now, mock ? mockForecastExtras(now) : {}));
+
       case '/api/calendar': {
         // Fechas oficiales cargadas en el código (sin APIs) y, solo para el dueño, los resultados de las
         // acciones de su lista (Finnhub: sus términos no permiten mostrarlos a otras personas).
@@ -239,6 +259,26 @@ async function route(req: Request, env: Env, url: URL, role: Role, email: string
     if (req.method === 'POST') await addTrade(deps, src, await req.json().catch(() => null), list);
     else await deleteTrade(deps, url.searchParams.get('id') ?? '');
     return json(await valuePortfolio(await readTrades(env.CACHE), src));
+  }
+
+  // Pronósticos: guardar uno (POST) o el nombre para el ranking (PUT /api/forecasts/name). Responde todo actualizado.
+  if ((p === '/api/forecasts' && req.method === 'POST') || (p === '/api/forecasts/name' && req.method === 'PUT')) {
+    sameOrigin(req, url);
+    const who = needEmail(email);
+    const body = await req.json().catch(() => null);
+    const extra: Partial<Store> = {};
+    if (p === '/api/forecasts') extra.entries = [await submitForecast(env.CACHE, who, now, body)];
+    else {
+      const a = await setAlias(env.CACHE, who, (body as { alias?: unknown } | null)?.alias);
+      extra.aliases = { [a.pid]: a.alias };
+    }
+    const demo = mock ? mockForecastExtras(now) : null;
+    return json(
+      await forecastView(env.CACHE, who, now, {
+        extra: { entries: [...(demo?.extra.entries ?? []), ...(extra.entries ?? [])], aliases: { ...demo?.extra.aliases, ...extra.aliases } },
+        results: demo?.results,
+      }),
+    );
   }
 
   // Guarda la lista diaria y pide ya los cierres de hasta 4 símbolos nuevos (el resto, la tarea programada).
@@ -281,6 +321,12 @@ async function connectorIdentity(url: URL, env: Env, role: Role, email: string |
   target.searchParams.set('state', state);
   target.searchParams.set('identidad', await signPayload({ state, email, exp: Date.now() + 2 * 60_000 }, env.LOGIN_LINK_SECRET));
   return new Response(null, { status: 302, headers: { Location: target.toString(), 'Cache-Control': 'no-store' } });
+}
+
+/** El correo de Access (en local, dev@localhost): identifica al jugador de los pronósticos. */
+function needEmail(email: string | null): string {
+  if (!email) throw new ApiError('forbidden', 401, 'Sin sesión: vuelve a entrar a Rueda.');
+  return email;
 }
 
 function rangeParam(url: URL): Range {

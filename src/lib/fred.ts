@@ -10,6 +10,8 @@ export const FRED_SERIES = {
   treasury10y: 'DGS10', // rendimiento del bono del Tesoro a 10 años (%, diario)
   fedFunds: 'DFF', // tasa efectiva de fondos federales (%, diario)
   cpi: 'CPIAUCSL', // IPC; con units=pc1 es la variación % frente a un año antes (mensual)
+  fedTargetUpper: 'DFEDTARU', // rango objetivo de la Fed, límite superior (%, diario)
+  fedTargetLower: 'DFEDTARL', // rango objetivo de la Fed, límite inferior (%, diario)
 } as const;
 
 export interface FredPoint {

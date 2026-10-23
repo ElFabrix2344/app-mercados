@@ -36,6 +36,12 @@ Claude ─► Worker «mercados-mcp» (OAuth propio) ─────────
   - **Lista:** un aviso «Resultados en N d» cuando faltan 7 días o menos.
   - El BPA y los ingresos son ajustados (no GAAP) y van en la moneda en que reporta cada empresa; el trimestre es el fiscal.
 - **Datos de la empresa** (solo el dueño, `services/company.ts`): en la ficha, perfil (sector, país, bolsa, web), capitalización, PER y BPA de los últimos 12 meses, precio/valor contable, beta, dividendo, margen neto, ROE, crecimiento de ingresos, rango de 52 semanas, recomendación de los analistas (y cómo estaba unos meses antes), sorpresas del BPA de los últimos 4 trimestres y comparables. De Finnhub, guardado 24 h por símbolo en KV (`company:<símbolo>`): cinco pedidos al abrir la ficha, una escritura como mucho al día por símbolo. Si falla una parte se muestran las demás. Sin `FINNHUB_API_KEY` la ficha muestra cómo prenderlo; divisas y cripto no tienen esta sección, y los ETF casi no traen datos.
+- **Pronósticos del grupo** (`lib/forecasts.ts` y `services/forecasts.ts`): un juego sin plata con datos públicos, así que juegan el dueño y los amigos.
+  - **Preguntas:** salen solas del calendario: cada decisión de tasa del BCRP y de la Fed (sube, mantiene o baja), cada dato de inflación a 12 meses del INEI (Lima) y del BLS (EE. UU., con un decimal), más el dólar interbancario del BCRP (venta) al cierre de cada mes. Se abren 45 días antes y se cierran a la medianoche de Lima anterior al anuncio; el dólar, una semana antes de su último día hábil. Lo que cerró antes del 23 oct 2026 (`GAME_START`) no cuenta.
+  - **Puntos:** hasta 10 por pregunta. Acertar la decisión da 10; en los números, 10 menos 1 por cada 0,05 pp de error en la inflación o por cada medio céntimo en el dólar. El ranking suma todo lo resuelto.
+  - **Reglas de juego:** cada uno elige un nombre para el ranking (sin repetir); el jugador es el hash de su correo de Access, que no se guarda ni se muestra. Lo que puso cada uno se ve recién al cierre, junto con el consenso (cuántos eligieron cada opción o la mediana).
+  - **Resultados:** los calcula la tarea programada con las cachés de Perú y EE. UU.: la tasa del BCRP día por día, el rango objetivo de la Fed (`DFEDTARU`/`DFEDTARL` de FRED), la inflación de Lima, el IPC de EE. UU. y el dólar.
+  - **KV:** cada pronóstico es una clave propia con el valor en la metadata (`pron:f:<pregunta>:<jugador>`), igual que cada nombre (`pron:p:<jugador>`), así dos amigos que juegan a la vez no se pisan; un solo `list` trae todo. Los resultados van en `pron-results` y solo los escribe la tarea programada.
 - **Encabezado «Rueda»:** logo de rueda (también `icon.svg`), estado «Rueda abierta / cerrada» según el horario de la NYSE (lo da `/api/status`, sin usar Twelve Data) y una cinta de precios. En la cinta, el dueño ve su lista con los precios guardados, sin gastar créditos; todos ven el dólar, el cobre, el oro y la BVL del BCRP, y el bono a 10 años de FRED. Un botón ▶/⏸ al inicio la mueve o la detiene (se recuerda en el navegador); sin elegir, sigue lo que pide el sistema: con «reducir movimiento» o los efectos de animación de Windows apagados, arranca quieta.
 - **Cartera simulada** (solo el dueño, `services/portfolio.ts`): compras y ventas con fecha, cantidad y precio guardadas en KV (`portfolio`). Si no se escribe el precio, se usa el cierre de ese día; si la fecha es hoy, el precio guardado de la lista.
   - Se valoriza con los precios ya guardados, así que no gasta créditos.
@@ -61,7 +67,7 @@ Claude ─► Worker «mercados-mcp» (OAuth propio) ─────────
 | Rol | Quién | Qué ve |
 |---|---|---|
 | Dueño | Los correos de `OWNER_EMAILS` | Todo: precios, historial, comparación, cartera simulada y lista (Twelve Data), resultados y datos de empresas (Finnhub), Perú y EE. UU. |
-| Amigo | El resto de `ALLOWED_EMAILS` (y de la política de Access) | Solo datos públicos: Perú (BCRP) y EE. UU. (FRED) |
+| Amigo | El resto de `ALLOWED_EMAILS` (y de la política de Access) | Solo datos públicos: Perú (BCRP) y EE. UU. (FRED), noticias generales, calendario, y juegan a los pronósticos del grupo |
 
 La licencia gratis de Twelve Data no permite mostrar sus datos a otras personas ni compartir la clave (§2.2 y §2.3 de sus [términos](https://twelvedata.com/terms)). Por eso el servidor responde **403** a los amigos en `/api/quotes`, `/api/history`, `/api/compare`, `/api/portfolio`, `/api/news/symbol`, `/api/company`, `/api/eod` y `/api/watchlist`, y el conector solo les ofrece las herramientas de datos públicos (`peru_bcrp`, `eeuu_fred`, `noticias` generales y `calendario`); no es solo un ocultamiento en pantalla. Si `OWNER_EMAILS` está vacío, nadie ve los precios (falla cerrado). Con Finnhub pasa lo mismo: `/api/calendar` y la herramienta `calendario` solo suman los resultados de empresas cuando quien pide es el dueño.
 
@@ -86,6 +92,8 @@ Todas las rutas exigen sesión de Cloudflare Access. Las marcadas con 🔒 son s
 | GET | `/api/news/symbol?symbol=BAP` 🔒 | Titulares de un símbolo de la lista (Yahoo Finance y Google News), sin guardar |
 | GET | `/api/peru` | Dólar interbancario, tasa de referencia e inflación (BCRP) |
 | GET | `/api/peru-markets` | Cobre, oro, reservas internacionales e índice de la BVL: un año diario, último dato y variaciones a 1 y 12 meses (BCRP) |
+| GET / POST | `/api/forecasts` | Pronósticos del grupo: preguntas, lo propio, lo de los demás desde el cierre, resultados y ranking. POST `{"questionId", "value"}` guarda o cambia un pronóstico (pide nombre) |
+| PUT | `/api/forecasts/name` | Nombre para el ranking (`{"alias": "Fabri"}`), de 2 a 20 caracteres y sin repetir |
 | GET | `/api/calendar?days=120` | Próximos eventos del calendario económico (`loaded: false` mientras no haya fechas cargadas). Al dueño, además, los resultados de su lista (eventos `empresa` y `companies`: estado, último resultado del mes y notas) |
 | GET | `/api/usa` | Bono a 10 años, tasa de la Fed e inflación (FRED) |
 | GET | `/conector/identidad?state=…` 🔒 | Paso del login del conector: firma tu correo y vuelve a `mercados-mcp` |
@@ -102,6 +110,7 @@ Vive en un **Worker aparte, `mercados-mcp`** (`src/mcp-worker.ts`, `wrangler.mcp
 | `cartera` | La cartera simulada valorizada: posiciones, ganancia, totales en US$ y soles y comparación con el SPY (solo lectura) |
 | `empresa` | Datos de una acción de la lista (Finnhub): perfil, capitalización, PER, márgenes, ROE, beta, dividendo, analistas, sorpresas del BPA y comparables |
 | `lista_diaria` | Cierres guardados de la lista diaria: último cierre, fecha, variación y rendimiento de 1 año. Sus símbolos también sirven en `historial`, `comparar`, `empresa` y `noticias` |
+| `pronosticos` | El juego de pronósticos del grupo: preguntas abiertas (con el pronóstico propio), cerradas, resueltas con puntos y ranking. Solo lectura |
 | `noticias` | Titulares generales por grupo y, para el dueño, los de un símbolo de la lista, con medio, hora, enlace y resumen corto |
 | `peru_bcrp` | Dólar interbancario, tasa de referencia, inflación de Lima y, en `mercados`, cobre, oro, reservas y BVL con sus variaciones y cierres mensuales (BCRP) |
 | `calendario` | Próximas decisiones de tasas (BCRP, Fed) y publicaciones de inflación (INEI, BLS). Para el dueño, también los resultados de su lista (Finnhub): fecha, momento, BPA e ingresos esperados y el último resultado del mes con la sorpresa. Aparece mientras haya fechas cargadas |
@@ -129,6 +138,8 @@ src/
   services/earnings.ts  resultados de empresas de la lista (Finnhub, solo el dueño) para el calendario y la ficha
   services/company.ts   datos de la empresa para la ficha (Finnhub, solo el dueño)
   services/eod.ts       lista diaria: cierres de hasta 20 símbolos más y la tarea programada que los renueva
+  lib/forecasts.ts      pronósticos del grupo: preguntas desde el calendario, puntos y cómo se resuelve cada una
+  services/forecasts.ts pronósticos del grupo: jugadores, pronósticos en KV, lo que ve cada uno y la resolución automática
   lib/finnhub.ts        cliente de Finnhub (calendario de resultados y datos de empresa)
   lib/rss.ts            lector de RSS por stream (corta apenas tiene los titulares que necesita)
   lib/twelvedata.ts     cliente de Twelve Data
@@ -155,7 +166,7 @@ Con `DEV_MODE=true` la validación de Access se salta **solo** si la petición l
 
 ## Despliegue
 
-Cada push a `main` ejecuta GitHub Actions: typecheck, pruebas y `wrangler deploy` de los **dos** Workers (`mercados` y `mercados-mcp`). Los pull requests solo ejecutan las pruebas. `mercados` tiene una tarea programada (cron cada 10 minutos, para la lista diaria) que el despliegue registra solo; se ve en Workers → mercados → Settings → Trigger events.
+Cada push a `main` ejecuta GitHub Actions: typecheck, pruebas y `wrangler deploy` de los **dos** Workers (`mercados` y `mercados-mcp`). Los pull requests solo ejecutan las pruebas. `mercados` tiene una tarea programada (cron cada 10 minutos: lista diaria y resultados de los pronósticos) que el despliegue registra solo; se ve en Workers → mercados → Settings → Trigger events.
 
 - **Secretos del repo** (GitHub → Settings → Secrets and variables → Actions): `CLOUDFLARE_API_TOKEN` (plantilla «Edit Cloudflare Workers») y `CLOUDFLARE_ACCOUNT_ID`.
 - **Secretos de `mercados`** (panel de Cloudflare → Workers → mercados → Settings → Variables and Secrets, tipo **Secret**): `ACCESS_TEAM_DOMAIN`, `ACCESS_AUD`, `ALLOWED_EMAILS`, `OWNER_EMAILS`, `TWELVE_DATA_API_KEY`, `FRED_API_KEY`, `LOGIN_LINK_SECRET` y, opcional, `FINNHUB_API_KEY` (clave gratis de finnhub.io, para los resultados de empresas). El despliegue los conserva. Para comprobarlos: `/api/status` → `config`.

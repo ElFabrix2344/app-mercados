@@ -192,6 +192,7 @@ export const apiHandler = {
       mock: false,
       timeZone: env.TIMEZONE || 'America/Lima',
       role: 'owner',
+      email,
     });
   },
 };

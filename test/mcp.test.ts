@@ -3,6 +3,7 @@ import type { Env } from '../src/env';
 import worker from '../src/index';
 import { handleMcp, localTime, monthEnds, type McpContext } from '../src/mcp';
 import { EVENTS } from '../src/lib/calendar';
+import { setAlias, submitForecast } from '../src/services/forecasts';
 import { DAILY_CREDIT_CAP, DEFAULT_WATCHLIST, summarize, type Deps } from '../src/services/market';
 import { fakeFetch, memoryKV } from './helpers';
 
@@ -69,7 +70,7 @@ describe('servidor MCP', () => {
     const init = await rpc(c, 'initialize', { protocolVersion: '2025-06-18', capabilities: {}, clientInfo: { name: 'test', version: '0' } });
     expect(init.result.serverInfo.name).toBe('rueda');
     const { result } = await rpc(c, 'tools/list');
-    expect(result.tools.map((t: { name: string }) => t.name)).toEqual(['precios', 'historial', 'comparar', 'cartera', 'empresa', 'lista_diaria', 'peru_bcrp', 'eeuu_fred', 'noticias', ...CALENDAR_TOOL]);
+    expect(result.tools.map((t: { name: string }) => t.name)).toEqual(['precios', 'historial', 'comparar', 'cartera', 'empresa', 'lista_diaria', 'peru_bcrp', 'eeuu_fred', 'noticias', 'pronosticos', ...CALENDAR_TOOL]);
     for (const t of result.tools) expect(t.annotations.readOnlyHint).toBe(true);
   });
 
@@ -77,7 +78,7 @@ describe('servidor MCP', () => {
     const { f, calls } = quotesFetch();
     const { c } = ctx({ quotes: storedQuotes(LONG_AGO) }, f, undefined, 'friend');
     const { result } = await rpc(c, 'tools/list');
-    expect(result.tools.map((t: { name: string }) => t.name)).toEqual(['peru_bcrp', 'eeuu_fred', 'noticias', ...CALENDAR_TOOL]);
+    expect(result.tools.map((t: { name: string }) => t.name)).toEqual(['peru_bcrp', 'eeuu_fred', 'noticias', 'pronosticos', ...CALENDAR_TOOL]);
     const intento = await rpc(c, 'tools/call', { name: 'precios', arguments: {} });
     expect(JSON.stringify(intento)).not.toContain('"precio"');
     expect(calls).toHaveLength(0);
@@ -345,6 +346,32 @@ describe('herramienta lista_diaria', () => {
   });
 });
 
+describe('herramienta pronosticos', () => {
+  it('da tus pronósticos y cuántos jugaron, sin mostrar los de los demás antes del cierre', async () => {
+    const { c, mem } = ctx();
+    c.email = 'yo@example.com';
+    await setAlias(mem.kv, 'yo@example.com', 'Fabri');
+    await setAlias(mem.kv, 'ana@example.com', 'Ana');
+    await submitForecast(mem.kv, 'yo@example.com', NOW, { questionId: 'fed-2026-10-28', value: 'baja' });
+    await submitForecast(mem.kv, 'ana@example.com', NOW, { questionId: 'fed-2026-10-28', value: 'sube' });
+    const r = await callTool(c, 'pronosticos');
+    expect(r.data.tu_nombre).toBe('Fabri');
+    expect(r.data.abiertas.find((q: { fecha: string }) => q.fecha === '2026-10-28')).toMatchObject({
+      pregunta: '¿La Fed sube, mantiene o baja su tasa?',
+      cierra: '2026-10-28 00:00',
+      pronosticaron: 2,
+      tu_pronostico: 'baja',
+    });
+    expect(JSON.stringify(r.data)).not.toContain('Ana');
+    expect(r.data.ranking).toEqual([]);
+  });
+
+  it('sin saber quién pregunta no responde', async () => {
+    const r = await callTool(ctx().c, 'pronosticos');
+    expect(r.isError).toBe(true);
+  });
+});
+
 describe('herramientas de Perú y EE. UU.', () => {
   it('peru_bcrp usa la caché y da el último dólar interbancario', async () => {
     const { f, calls } = quotesFetch();
@@ -353,6 +380,7 @@ describe('herramientas de Perú y EE. UU.', () => {
       data: {
         fx: [{ date: '2026-10-13', buy: 3.43, sell: 3.432 }, { date: '2026-10-14', buy: 3.4372, sell: 3.4391 }],
         policyRate: { date: '2026-10-14', value: 4.25 },
+        policyRates: [{ date: '2026-10-14', value: 4.25 }],
         inflation: [{ date: '2026-09-01', value: 1.54865469481509 }],
       },
     };

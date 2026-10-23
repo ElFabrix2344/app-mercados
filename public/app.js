@@ -32,6 +32,8 @@
     symbolNews: new Map(), // símbolo → { items } | { error } | 'cargando' (se piden al abrir la ficha)
     company: new Map(), // símbolo → respuesta de /api/company | { error } | 'cargando' (al abrir la ficha)
     eod: null, // respuesta de /api/eod (lista diaria: cierres, no precios en vivo)
+    forecasts: null, // respuesta de /api/forecasts (pronósticos del grupo)
+    fcEditName: false, // cambiando el nombre del ranking
     marketOpen: null, // ¿la bolsa de Nueva York está en sesión? (de /api/status y de cada pedido de precios)
     calendar: null, // respuesta de /api/calendar
     notes: new Map(), // clave → { text, kind }
@@ -1832,6 +1834,7 @@
       state.peruData = r.data;
       renderCalendar();
       renderTape();
+      refreshForecastContext();
       const { fx, policyRate, inflation } = r.data;
       const lastFx = fx.at(-1);
       const lastInf = inflation.at(-1);
@@ -1871,6 +1874,7 @@
       state.usaData = r.data;
       renderCalendar();
       renderTape();
+      refreshForecastContext();
       const { treasury10y, fedFunds, cpiYoY } = r.data;
       const t10 = treasury10y.at(-1);
       const cpi = cpiYoY.at(-1);
@@ -2102,6 +2106,209 @@
     }
   }
 
+  // ---------- pronósticos del grupo ----------
+  const FC_KIND = { bcrp: 'BCRP', fed: 'Fed', inei: 'INEI', bls: 'BLS', dolar: 'Dólar' };
+  const FC_CHOICES = ['sube', 'mantiene', 'baja'];
+  const CHOICE_LABEL = { sube: '▲ Sube', mantiene: '■ Mantiene', baja: '▼ Baja' };
+  const fcClose = fmt({ weekday: 'short', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit', hourCycle: 'h23', timeZone: TZ });
+
+  /** Un pronóstico o resultado como se lee: «▲ Sube», «2.15%», «S/ 3.712». */
+  function fcValue(q, v) {
+    if (v == null) return '—';
+    if (q.type === 'choice') return CHOICE_LABEL[v] ?? v;
+    return q.unit === 'S/' ? `S/ ${nf(3).format(v)}` : rate(v, q.step === 0.1 ? 1 : 2);
+  }
+
+  /** Lo que la pregunta puede mover hoy (sale de lo que ya cargaron Perú y EE. UU.). */
+  function fcContext(q) {
+    const pe = state.peruData;
+    const us = state.usaData;
+    if (q.kind === 'bcrp' && pe?.policyRate) return `Hoy: ${rate(pe.policyRate.value)}`;
+    if (q.kind === 'fed') {
+      const t = us?.fedTarget?.at(-1);
+      return t ? `Hoy: ${nf(2).format(t.lower)}–${rate(t.upper)}` : null;
+    }
+    const last = q.kind === 'inei' ? pe?.inflation?.at(-1) : q.kind === 'bls' ? us?.cpiYoY?.at(-1) : null;
+    if (last) return `Último dato: ${rate(last.value, q.kind === 'bls' ? 1 : 2)} (${fMonthYear.format(day(last.date))})`;
+    const fx = q.kind === 'dolar' ? pe?.fx?.at(-1) : null;
+    return fx ? `Hoy: S/ ${nf(3).format(fx.sell)}` : null;
+  }
+
+  /** «cierra en 3 días (mié 11 nov 23:59)»: se muestra un minuto antes de la medianoche del cierre. */
+  function fcCloses(iso) {
+    const ms = Date.parse(iso) - Date.now();
+    const days = Math.floor(ms / 86_400_000);
+    const left = ms < 3_600_000 ? 'en menos de 1 h' : days < 1 ? `en ${Math.floor(ms / 3_600_000)} h` : days === 1 ? 'mañana' : `en ${days} días`;
+    return `cierra ${left} (${fcClose.format(new Date(Date.parse(iso) - 60_000)).replace(/[.,]/g, '')})`;
+  }
+
+  async function loadForecasts() {
+    try {
+      state.forecasts = await api('/api/forecasts');
+      renderForecasts();
+    } catch (e) {
+      $('fc-open').replaceChildren(h('p', { class: 'err' }, e.message));
+    }
+  }
+
+  /** Guarda un pronóstico o el nombre; el servidor responde todo actualizado. */
+  async function sendForecast(path, method, body, errEl) {
+    try {
+      state.forecasts = await api(path, { method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+      state.fcEditName = false;
+      renderForecasts();
+    } catch (e) {
+      errEl.textContent = e.message;
+      errEl.hidden = false;
+    }
+  }
+
+  /** Cuando llegan Perú o EE. UU., las tarjetas suman el dato de hoy (salvo que estés escribiendo en una). */
+  function refreshForecastContext() {
+    if (state.forecasts && !$('forecasts').contains(document.activeElement)) renderForecasts();
+  }
+
+  function renderForecasts() {
+    const v = state.forecasts;
+    if (!v) return;
+    renderFcName(v);
+    const open = v.questions.filter((q) => q.status === 'open');
+    $('fc-open').replaceChildren(
+      ...(open.length ? open.map((q) => fcCard(q, v)) : [h('p', { class: 'muted' }, 'No hay preguntas abiertas: cada una se abre 45 días antes de su anuncio.')]),
+    );
+    const past = v.questions.filter((q) => q.status !== 'open').reverse();
+    $('fc-past').replaceChildren(...(past.length ? [h('p', { class: 'co-h' }, 'Cerradas y resueltas'), ...past.map(fcPast)] : []));
+    renderFcRanking(v);
+  }
+
+  function renderFcName(v) {
+    const host = $('fc-me');
+    if (v.me.alias && !state.fcEditName) {
+      const change = h('button', { type: 'button', class: 'linkish' }, 'cambiar');
+      change.addEventListener('click', () => {
+        state.fcEditName = true;
+        renderFcName(v);
+      });
+      host.replaceChildren(h('p', { class: 'hint fc-who' }, 'Juegas como ', h('strong', {}, v.me.alias), ' · ', change));
+      return;
+    }
+    const input = h('input', { id: 'fc-name', maxlength: 20, autocomplete: 'nickname', value: v.me.alias ?? '', placeholder: 'Tu nombre' });
+    const err = h('p', { class: 'err', hidden: true });
+    const form = h(
+      'form',
+      { class: 'fc-name' },
+      h('label', { for: 'fc-name' }, v.me.alias ? 'Tu nombre en el ranking' : 'Para jugar, elige el nombre con el que te verán los demás en el ranking'),
+      h('div', { class: 'wl-row' }, input, h('button', { type: 'submit' }, 'Guardar')),
+      err,
+    );
+    form.addEventListener('submit', (e) => {
+      e.preventDefault();
+      sendForecast('/api/forecasts/name', 'PUT', { alias: input.value }, err);
+    });
+    host.replaceChildren(form);
+  }
+
+  function fcCard(q, v) {
+    const err = h('p', { class: 'err', hidden: true });
+    const off = !v.me.alias; // sin nombre no se puede jugar
+    let control;
+    if (q.type === 'choice') {
+      control = h(
+        'div',
+        { class: 'fc-choices', role: 'group', 'aria-label': 'Tu pronóstico' },
+        ...FC_CHOICES.map((c) => {
+          const b = h('button', { type: 'button', 'aria-pressed': String(q.mine === c), disabled: off }, CHOICE_LABEL[c]);
+          b.addEventListener('click', () => sendForecast('/api/forecasts', 'POST', { questionId: q.id, value: c }, err));
+          return b;
+        }),
+      );
+    } else {
+      const input = h('input', { type: 'number', inputmode: 'decimal', step: q.step, min: q.min, max: q.max, value: q.mine ?? '', 'aria-label': `Tu pronóstico (${q.unit})`, disabled: off });
+      control = h(
+        'form',
+        { class: 'fc-number' },
+        q.unit === 'S/' ? h('span', { class: 'muted' }, 'S/') : null,
+        input,
+        q.unit === '%' ? h('span', { class: 'muted' }, '%') : null,
+        h('button', { type: 'submit', disabled: off }, q.mine == null ? 'Guardar' : 'Cambiar'),
+      );
+      control.addEventListener('submit', (e) => {
+        e.preventDefault();
+        sendForecast('/api/forecasts', 'POST', { questionId: q.id, value: input.value }, err);
+      });
+    }
+    const ctx = fcContext(q);
+    const who = q.count ? `${q.count} del grupo ya ${q.count === 1 ? 'pronosticó' : 'pronosticaron'}` : 'Nadie pronosticó todavía';
+    return h(
+      'article',
+      { class: 'fc-card' },
+      h('div', { class: 'fc-head' }, h('span', { class: 'cal-src' }, FC_KIND[q.kind]), h('span', { class: 'fc-when' }, `${calDay(q.date)}${q.tentative ? ' (tentativa)' : ''}`)),
+      h('h3', {}, q.title),
+      ctx ? h('p', { class: 'hint' }, ctx) : null,
+      control,
+      err,
+      h('p', { class: 'hint' }, [q.mine != null ? `Tu pronóstico: ${fcValue(q, q.mine)}` : null, who, fcCloses(q.closesAt)].filter(Boolean).join(' · ')),
+    );
+  }
+
+  /** Cerradas (con lo que puso cada uno) y resueltas (con el resultado y los puntos). */
+  function fcPast(q) {
+    const status = q.status === 'resolved' ? `Resultado: ${fcValue(q, q.result)}${q.minePoints != null ? ` · tú: ${nf(1).format(q.minePoints)} pts` : ''}` : 'Esperando el dato';
+    const group =
+      q.consensus == null
+        ? null
+        : q.type === 'choice'
+          ? FC_CHOICES.filter((c) => q.consensus[c]).map((c) => `${CHOICE_LABEL[c]}: ${q.consensus[c]}`).join(' · ')
+          : `Mediana del grupo: ${fcValue(q, q.consensus)}`;
+    const rows = (q.entries ?? []).map((e) =>
+      h(
+        'li',
+        { class: e.mine ? 'mine' : null },
+        h('span', {}, e.mine ? `${e.alias} (tú)` : e.alias),
+        h('span', {}, fcValue(q, e.value)),
+        h('span', { class: 'pts' }, e.points != null ? `${nf(1).format(e.points)} pts` : ''),
+      ),
+    );
+    return h(
+      'details',
+      { class: 'fc-past' },
+      h('summary', {}, h('span', { class: 'cal-src' }, FC_KIND[q.kind]), h('span', { class: 'fc-title' }, q.title), h('span', { class: 'fc-res' }, status)),
+      group ? h('p', { class: 'hint' }, group) : null,
+      rows.length ? h('ol', { class: 'fc-entries' }, ...rows) : h('p', { class: 'muted' }, 'Nadie pronosticó esta pregunta.'),
+    );
+  }
+
+  function renderFcRanking(v) {
+    const host = $('fc-rank');
+    if (!v.ranking.length) {
+      host.replaceChildren(h('p', { class: 'hint' }, 'El ranking empieza con la primera pregunta resuelta.'));
+      return;
+    }
+    host.replaceChildren(
+      h('p', { class: 'co-h' }, 'Ranking'),
+      h(
+        'table',
+        { class: 'co-table fc-rank' },
+        h('thead', {}, h('tr', {}, ...['#', 'Nombre', 'Puntos', 'Resueltos', 'Promedio'].map((t) => h('th', { scope: 'col' }, t)))),
+        h(
+          'tbody',
+          {},
+          ...v.ranking.map((r, i) =>
+            h(
+              'tr',
+              { class: r.mine ? 'mine' : null },
+              h('td', {}, String(i + 1)),
+              h('td', {}, r.mine ? `${r.alias} (tú)` : r.alias),
+              h('td', {}, nf(1).format(r.points)),
+              h('td', {}, String(r.count)),
+              h('td', {}, nf(1).format(r.points / r.count)),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
   // ---------- lista diaria ----------
   /** Fila de la lista diaria con cierre (null si no está o todavía no se cargó). */
   const eodRowFor = (sym) => state.eod?.rows.find((r) => r.symbol === sym && !r.pending) ?? null;
@@ -2279,6 +2486,7 @@
       loadUsa();
       loadPeruMarkets();
       loadCalendar();
+      loadForecasts();
       setInterval(renderClock, 30_000);
       // Sin precios no hay pedidos periódicos: la rueda abre y cierra según el estado del servidor.
       setInterval(() => readStatus().catch(() => {}), QUOTE_POLL_MS);
@@ -2302,6 +2510,7 @@
     loadUsa();
     loadPeruMarkets();
     loadCalendar();
+    loadForecasts();
     renderPortfolioForm();
     await loadQuotes(false);
     loadPortfolio();

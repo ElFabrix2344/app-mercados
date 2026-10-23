@@ -474,6 +474,8 @@ export async function compare(d: Deps, symbols: string[], range: Range): Promise
 export interface PeruData {
   fx: { date: string; buy: number; sell: number }[];
   policyRate: { date: string; value: number } | null;
+  /** Tasa de referencia día por día (últimos ~60 días): resuelve los pronósticos de las decisiones del BCRP. */
+  policyRates: { date: string; value: number }[];
   inflation: { date: string; value: number }[];
 }
 
@@ -482,19 +484,27 @@ export function shapePeru(daily: BcrpPoint[], monthly: BcrpPoint[]): PeruData {
     .filter((p) => p.values[0] != null && p.values[1] != null)
     .map((p) => ({ date: p.date, buy: p.values[0]!, sell: p.values[1]! }))
     .slice(-30);
+  const policyRates = daily.filter((p) => p.values[2] != null).map((p) => ({ date: p.date, value: p.values[2]! }));
   const inflation = monthly.filter((p) => p.values[0] != null).map((p) => ({ date: p.date, value: p.values[0]! }));
-  return { fx, policyRate: lastWithValue(daily, 2), inflation };
+  return { fx, policyRate: lastWithValue(daily, 2), policyRates, inflation };
 }
 
 export async function peru(d: Deps): Promise<Fresh<PeruData>> {
   const today = isoDate(d.now);
-  return cached<PeruData>(d, 'peru', MACRO_TTL_MS, async () => {
-    const [daily, monthly] = await Promise.all([
-      getBcrp([BCRP_SERIES.fxBuy, BCRP_SERIES.fxSell, BCRP_SERIES.policyRate], addDays(today, -60), today, d.fetch),
-      getBcrp([BCRP_SERIES.inflation12m], addDays(today, -430).slice(0, 7), today.slice(0, 7), d.fetch),
-    ]);
-    return shapePeru(daily, monthly);
-  });
+  // Lo guardado antes del 23 oct no traía la tasa día por día: se renueva una vez.
+  return cached<PeruData>(
+    d,
+    'peru',
+    MACRO_TTL_MS,
+    async () => {
+      const [daily, monthly] = await Promise.all([
+        getBcrp([BCRP_SERIES.fxBuy, BCRP_SERIES.fxSell, BCRP_SERIES.policyRate], addDays(today, -60), today, d.fetch),
+        getBcrp([BCRP_SERIES.inflation12m], addDays(today, -430).slice(0, 7), today.slice(0, 7), d.fetch),
+      ]);
+      return shapePeru(daily, monthly);
+    },
+    { valid: (p) => Array.isArray(p.policyRates) },
+  );
 }
 
 // ---------- Perú: cobre, oro, reservas, BVL, bonos y riesgo país (BCRP) ----------
@@ -602,19 +612,32 @@ export interface UsaData {
   treasury10y: FredPoint[];
   fedFunds: FredPoint | null;
   cpiYoY: FredPoint[];
+  /** Rango objetivo de la Fed día por día (últimos ~60 días): resuelve los pronósticos de sus decisiones. */
+  fedTarget: { date: string; lower: number; upper: number }[];
 }
 
 export async function usa(d: Deps): Promise<Fresh<UsaData>> {
   const today = isoDate(d.now);
-  return cached<UsaData>(d, 'usa', MACRO_TTL_MS, async () => {
-    const key = needKey(d.fredKey, 'FRED_API_KEY', 'fred');
-    const [t10, dff, cpi] = await Promise.all([
-      getFred(FRED_SERIES.treasury10y, { start: addDays(today, -95) }, key, d.fetch),
-      getFred(FRED_SERIES.fedFunds, { start: addDays(today, -20) }, key, d.fetch),
-      getFred(FRED_SERIES.cpi, { start: addDays(today, -430), units: 'pc1' }, key, d.fetch),
-    ]);
-    return { treasury10y: t10.slice(-60), fedFunds: dff.at(-1) ?? null, cpiYoY: cpi.slice(-13) };
-  });
+  // Lo guardado antes del 23 oct no traía el rango objetivo: se renueva una vez.
+  return cached<UsaData>(
+    d,
+    'usa',
+    MACRO_TTL_MS,
+    async () => {
+      const key = needKey(d.fredKey, 'FRED_API_KEY', 'fred');
+      const [t10, dff, cpi, upper, lower] = await Promise.all([
+        getFred(FRED_SERIES.treasury10y, { start: addDays(today, -95) }, key, d.fetch),
+        getFred(FRED_SERIES.fedFunds, { start: addDays(today, -20) }, key, d.fetch),
+        getFred(FRED_SERIES.cpi, { start: addDays(today, -430), units: 'pc1' }, key, d.fetch),
+        getFred(FRED_SERIES.fedTargetUpper, { start: addDays(today, -60) }, key, d.fetch),
+        getFred(FRED_SERIES.fedTargetLower, { start: addDays(today, -60) }, key, d.fetch),
+      ]);
+      const low = new Map(lower.map((p) => [p.date, p.value]));
+      const fedTarget = upper.filter((p) => low.has(p.date)).map((p) => ({ date: p.date, lower: low.get(p.date)!, upper: p.value }));
+      return { treasury10y: t10.slice(-60), fedFunds: dff.at(-1) ?? null, cpiYoY: cpi.slice(-13), fedTarget };
+    },
+    { valid: (u) => Array.isArray(u.fedTarget) },
+  );
 }
 
 export type { Quote };
