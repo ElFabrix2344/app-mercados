@@ -5,7 +5,7 @@
 // El PDF viene girado (apaisado): cada trozo de texto se ubica como se ve en pantalla y las tablas se arman por
 // filas y columnas, con las columnas tomadas de los encabezados (CANTIDAD, PRECIO, DÉBITO, CRÉDITO…).
 
-import { addOps, holdings, setSnapshot } from './hapi-core.js';
+import { addOps, holdings, setMarks, setSnapshot } from './hapi-core.js';
 
 const MONTHS = { January: '01', February: '02', March: '03', April: '04', May: '05', June: '06', July: '07', August: '08', September: '09', October: '10', November: '11', December: '12' };
 const PERIOD_RE = /^([A-Z][a-z]+) (\d{1,2}), (\d{4}) - ([A-Z][a-z]+) (\d{1,2}), (\d{4})$/;
@@ -339,22 +339,33 @@ export function proposeImport(st, account) {
     }
     for (const m of st.moves) items.push({ checked: false, info: 'Ya está en el saldo inicial', op: m.op, name: m.name });
   } else {
+    // Lo que pasó hasta el saldo inicial ya está en él (por ejemplo, al volver a importar el mismo mes).
+    const opening = account.ops.filter((o) => o.note === OPENING_NOTE).reduce((d, o) => (o.date > d ? o.date : d), '');
     for (const m of st.moves) {
-      const dup = isDuplicate(m.op, account.ops);
-      const needsSymbol = m.op.kind !== 'deposit' && m.op.kind !== 'withdrawal' && !m.op.symbol;
-      items.push({ checked: !dup && !needsSymbol, info: dup ? 'Ya está anotado' : needsSymbol ? 'Falta el símbolo' : null, op: m.op, name: m.name });
+      const before = m.op.date <= opening;
+      const dup = !before && isDuplicate(m.op, account.ops);
+      const needsSymbol = !before && !dup && m.op.kind !== 'deposit' && m.op.kind !== 'withdrawal' && !m.op.symbol;
+      const info = before ? 'Ya está en el saldo inicial' : dup ? 'Ya está anotado' : needsSymbol ? 'Falta el símbolo' : null;
+      items.push({ checked: !info, info, op: m.op, name: m.name });
     }
   }
   return { mode: start ? 'start' : 'update', period: st.period, total: st.total, cash: st.cash, positions: st.positions, items, unknown: st.unknown };
 }
 
-/** Aplica lo marcado y el valor total del estado de cuenta; devuelve la cuenta nueva y las diferencias que queden. */
+/**
+ * Aplica lo marcado, el valor total y los precios de cierre del estado de cuenta (con ellos se valoriza la cuenta de
+ * quien no recibe precios en vivo); devuelve la cuenta nueva y las diferencias que queden.
+ */
 export function applyImport(account, proposal, today) {
   const chosen = proposal.items.filter((x) => x.checked).map((x) => x.op);
   let next = addOps(account, chosen, today);
   if (!next.snapshot || next.snapshot.date <= proposal.period.to) {
     next = setSnapshot(next, { date: proposal.period.to, value: proposal.total, source: 'estado de cuenta' }, today);
   }
+  const prices = Object.fromEntries(
+    proposal.positions.filter((p) => p.qty > 0 && (p.price > 0 || p.value > 0)).map((p) => [p.symbol, p.price > 0 ? p.price : p.value / p.qty]),
+  );
+  next = setMarks(next, { date: proposal.period.to, prices }, today);
   return { account: next, diffs: reconcile(next, proposal.positions) };
 }
 

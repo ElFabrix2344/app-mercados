@@ -2724,14 +2724,32 @@
     const owner = state.role === 'owner';
     const v = core.accountView(a, { prices: owner ? new Map(Object.entries(market.prices ?? {})) : null, fx: market.fx });
     const t = v.totals;
+    const open = v.positions.filter((x) => x.qty > 0);
+    const pr = v.pricing;
     const row = h('div', { class: 'metric-row hp-metrics' });
-    // Valor de la cuenta: a precios de mercado (solo el dueño, si todo tiene precio) o el que anotaste de Hapi.
-    const value = t.account ?? v.snapshot?.value ?? null;
-    const valueLabel = t.account != null ? 'Valor hoy' : v.snapshot ? `Según Hapi (${fDay.format(day(v.snapshot.date))})` : null;
+    // Valor de la cuenta: con precios en vivo (solo el dueño) o con los del último estado de cuenta. Si alguna posición
+    // quedó sin precio, mejor el valor que se anotó de Hapi; si tampoco hay, a costo y sin ganancia.
+    let value = null;
+    let valueLabel = null;
+    let valueSub = null;
+    if (t.account != null && open.length && !pr.cost) {
+      value = t.account;
+      valueLabel = !pr.statement ? 'Valor hoy' : pr.live ? 'Valor estimado' : `Valor (precios al ${fDay.format(day(pr.marksDate))})`;
+      valueSub = `Posiciones ${usd(t.value)} · efectivo ${usd(t.cash)}`;
+    } else if (v.snapshot) {
+      value = v.snapshot.value;
+      valueLabel = `Según Hapi (${fDay.format(day(v.snapshot.date))})`;
+      valueSub = v.snapshot.source === 'estado de cuenta' ? 'Del estado de cuenta' : 'El valor que anotaste';
+    } else if (t.account != null && open.length) {
+      value = t.account;
+      valueLabel = 'Valor a costo';
+      valueSub = 'Sin precios: importa tu estado de cuenta';
+    }
+    const atCost = valueLabel === 'Valor a costo';
     if (t.cash != null) row.append(metric('Depositado neto', usd(t.netDeposits), t.netPen != null ? `${pen(t.netPen)} en soles` : 'Anota los soles para ver el rendimiento en soles'));
     if (value != null && valueLabel) {
-      row.append(metric(valueLabel, usd(value), t.account != null ? `Posiciones ${usd(t.value)} · efectivo ${usd(t.cash)}` : v.snapshot?.source === 'estado de cuenta' ? 'Del estado de cuenta' : 'El valor que anotaste'));
-      if (t.cash != null && t.netDeposits > 0) {
+      row.append(metric(valueLabel, usd(value), valueSub));
+      if (!atCost && t.cash != null && t.netDeposits > 0) {
         const gain = value - t.netDeposits;
         const m = metric('Ganancia', pctFrac(gain / t.netDeposits), signedUsd(gain));
         m.querySelector('.value').classList.add(trend(gain));
@@ -2751,12 +2769,16 @@
     row.append(metric('Costos de Hapi', usd(t.fees.total), `Órdenes ${usd(t.fees.orders)} · depósitos y retiros ${usd(t.fees.transfers)}`));
 
     const head = (...cols) => h('thead', {}, h('tr', {}, ...cols.filter(Boolean).map((c) => h('th', { scope: 'col' }, c))));
-    const open = v.positions.filter((x) => x.qty > 0);
-    const priced = v.priced;
+    // De dónde sale cada precio: en vivo, sin marca; del estado de cuenta, *; sin precio (a costo), †.
+    const priceCell = (x) => {
+      const mark = x.priceSource === 'statement' ? '*' : x.priceSource === 'cost' ? '†' : '';
+      const title = x.priceSource === 'statement' ? `Precio de cierre del estado de cuenta (${fDayYear.format(day(pr.marksDate))})` : x.priceSource === 'cost' ? 'Sin precio: lo que pagaste' : null;
+      return h('td', { title }, `${fmtPrice(x.price)}${mark}`);
+    };
     const positions = h(
       'table',
       { class: 'cmp-stats' },
-      head('Símbolo', 'Cantidad', 'Costo prom.', 'Costo', priced && 'Precio', priced && 'Valor', priced && 'Ganancia'),
+      head('Símbolo', 'Cantidad', 'Costo prom.', 'Costo', 'Precio', 'Valor', 'Ganancia'),
       h(
         'tbody',
         {},
@@ -2768,9 +2790,9 @@
             h('td', {}, qtyFmt.format(x.qty)),
             h('td', {}, fmtPrice(x.avgCost)),
             h('td', {}, usd(x.cost)),
-            priced ? h('td', {}, x.price == null ? '—' : fmtPrice(x.price)) : null,
-            priced ? h('td', {}, usd(x.value)) : null,
-            priced ? h('td', { class: x.gain == null ? 'flat' : trend(x.gain) }, x.gain == null ? '—' : `${signedUsd(x.gain)} (${pctFrac(x.ret)})`) : null,
+            priceCell(x),
+            h('td', {}, usd(x.value)),
+            h('td', { class: x.gain == null ? 'flat' : trend(x.gain) }, x.gain == null ? '—' : `${signedUsd(x.gain)} (${pctFrac(x.ret)})`),
           ),
         ),
       ),
@@ -2799,7 +2821,9 @@
       ),
     );
     const notes = [...v.notes];
-    if (!priced) notes.push('Sin precios de mercado: la licencia de precios de Rueda no permite mostrarlos a otras personas. Para ver tu ganancia, importa tu estado de cuenta o anota el valor total que te muestra Hapi.');
+    if (pr.statement) notes.push(`* Precio de cierre de tu estado de cuenta del ${fDayYear.format(day(pr.marksDate))}.${v.priced ? '' : ' Importa el siguiente para actualizarlo.'}`);
+    if (pr.cost) notes.push('† Sin precio (no estaba en tu último estado de cuenta): se valoriza a lo que pagaste.');
+    if (!v.priced && !pr.marksDate && open.length) notes.push('Importa tu estado de cuenta de Hapi para valorizar tus posiciones con sus precios de cierre: Rueda no puede mostrarte precios en vivo, su licencia no lo permite.');
     host.replaceChildren(
       row,
       h(
@@ -2869,7 +2893,7 @@
         h('td', { class: 'muted' }, it.info ?? it.op.note ?? it.name ?? ''),
       );
     });
-    const add = h('button', { type: 'button' }, 'Agregar a mi cuenta');
+    const add = h('button', { type: 'button' }, 'Guardar en mi cuenta');
     const cancel = h('button', { type: 'button', class: 'pf-del' }, 'Cancelar');
     cancel.addEventListener('click', () => {
       hp.proposal = null;
@@ -2894,7 +2918,7 @@
         { class: 'hint' },
         p.mode === 'start'
           ? `Tu cuenta está vacía: empieza con el saldo al ${fDayYear.format(day(p.period.to))} (lo que valía la cuenta, como depósito inicial, y cada posición a su precio de cierre). Los movimientos del mes ya están en ese saldo.`
-          : 'Marca lo que quieras agregar. Lo que ya estaba anotado queda sin marcar. Al agregar, el valor total del estado de cuenta pasa a ser tu valor «según Hapi».',
+          : 'Marca lo que quieras agregar; lo que ya estaba anotado queda sin marcar. Al guardar, también se actualizan el valor total y los precios de cierre con que se valorizan tus posiciones.',
       ),
       h('div', { class: 'pf-tables' }, h('div', {}, h('table', { class: 'cmp-stats hp-import-table' }, h('tbody', {}, ...rows)))),
     ];

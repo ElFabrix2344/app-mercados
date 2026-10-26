@@ -45,7 +45,7 @@ export function orderFee(side, qty, price, date, plan) {
 
 /**
  * @typedef {{ id: string, kind: string, date: string, symbol?: string, qty?: number, price?: number, amount?: number, pen?: number, fee: number, tax?: number, note?: string }} Op
- * @typedef {{ v: number, plan: string, ops: Op[], snapshot: { date: string, value: number, source?: string } | null }} Account
+ * @typedef {{ v: number, plan: string, ops: Op[], snapshot: { date: string, value: number, source?: string } | null, marks?: { date: string, prices: Record<string, number> } | null }} Account
  */
 
 /** @returns {Account} */
@@ -189,47 +189,83 @@ export function setSnapshot(account, snapshot, today) {
 }
 
 /**
- * Lo que se muestra de la cuenta. `prices`: Map símbolo → precio (solo el dueño, con los precios del panel) o null.
- * `fx`: dólar del BCRP { rate, date } o null.
+ * Precios de cierre de un estado de cuenta (su fecha y el precio de cada símbolo): valorizan la cuenta de quien no
+ * recibe precios en vivo. Solo los reemplaza un estado de cuenta igual o más nuevo.
+ * @param {Account} account
+ * @param {{ date: string, prices: Record<string, number> }} marks
+ * @param {string} today
+ * @returns {Account}
  */
+export function setMarks(account, marks, today) {
+  const date = String(marks?.date ?? '');
+  validDate(date, today);
+  if (account.marks && account.marks.date > date) return account;
+  /** @type {Record<string, number>} */
+  const prices = {};
+  for (const [s, p] of Object.entries(marks.prices ?? {})) {
+    const symbol = String(s).trim().toUpperCase();
+    if (TICKER_RE.test(symbol) && Number.isFinite(p) && p > 0 && p < 1e9) prices[symbol] = round(p);
+  }
+  return { ...account, marks: { date, prices } };
+}
+
 /**
+ * Lo que se muestra de la cuenta. El precio de cada posición sale, en este orden, de `prices` (solo el dueño: los
+ * precios del panel), de los precios de cierre del último estado de cuenta importado o, si no hay, de lo que se pagó.
+ * `fx`: dólar del BCRP { rate, date } o null.
  * @param {Account} account
  * @param {{ prices?: Map<string, number> | null, fx?: { rate: number, date: string } | null }} [opts]
  */
 export function accountView(account, { prices = null, fx = null } = {}) {
   const l = accountLedger(account.ops);
+  const marks = account.marks ?? null;
   const notes = [];
   const positions = [];
-  let value = prices ? 0 : null;
+  let value = 0;
   let cost = 0;
   let realized = 0;
   for (const [symbol, p] of l.positions) {
     realized += p.realized;
     if (p.qty <= 0) {
-      if (Math.abs(p.realized) > EPS) positions.push({ symbol, qty: 0, avgCost: 0, cost: 0, price: null, value: null, gain: null, ret: null, realized: money(p.realized) });
+      if (Math.abs(p.realized) > EPS) positions.push({ symbol, qty: 0, avgCost: 0, cost: 0, price: null, priceSource: null, value: null, gain: null, ret: null, realized: money(p.realized) });
       continue;
     }
     cost += p.cost;
-    let price = null;
-    if (prices) {
-      price = prices.get(symbol) ?? null;
-      if (price === null) notes.push(`Sin precio guardado de ${symbol}: agrégalo a tu lista diaria para valorizarlo.`);
+    let price = prices?.get(symbol) ?? null;
+    let priceSource = price === null ? null : 'live';
+    if (price === null && marks?.prices?.[symbol]) {
+      price = marks.prices[symbol];
+      priceSource = 'statement';
     }
-    const v = price === null ? null : p.qty * price;
-    if (value !== null) value = v === null ? null : value + v;
+    if (price === null) {
+      price = p.cost / p.qty;
+      priceSource = 'cost';
+    }
+    const v = p.qty * price;
+    value += v;
+    // A costo no hay ganancia que mostrar: no se sabe cuánto vale.
+    const known = priceSource !== 'cost';
     positions.push({
       symbol,
       qty: round(p.qty),
       avgCost: round(p.cost / p.qty, 4),
       cost: money(p.cost),
-      price,
-      value: v === null ? null : money(v),
-      gain: v === null ? null : money(v - p.cost),
-      ret: v === null || p.cost <= 0 ? null : v / p.cost - 1,
+      price: round(price, 4),
+      priceSource,
+      value: money(v),
+      gain: known ? money(v - p.cost) : null,
+      ret: known && p.cost > 0 ? v / p.cost - 1 : null,
       realized: money(p.realized),
     });
   }
-  positions.sort((x, y) => (y.value ?? y.cost) - (x.value ?? x.cost));
+  positions.sort((x, y) => (y.value ?? 0) - (x.value ?? 0));
+  const open = positions.filter((x) => x.qty > 0);
+  const bySource = (s) => open.filter((x) => x.priceSource === s).map((x) => x.symbol);
+  const pricing = { live: bySource('live').length, statement: bySource('statement').length, cost: bySource('cost').length, marksDate: marks?.date ?? null };
+  if (prices) {
+    const missing = open.filter((x) => x.priceSource !== 'live').map((x) => x.symbol);
+    if (missing.length) notes.push(`Sin precio en vivo de ${missing.join(', ')}: agrégalos a tu lista diaria para verlos al día.`);
+  }
   const cash = l.transfers ? money(l.cash) : null;
   if (cash !== null && cash < -0.5) notes.push('El efectivo da negativo: falta anotar algún depósito.');
   return {
@@ -244,17 +280,20 @@ export function accountView(account, { prices = null, fx = null } = {}) {
           netPen: l.transfers && l.pen !== null ? money(l.pen) : null,
           cash,
           cost: money(cost),
-          value: value === null ? null : money(value),
-          account: value === null || cash === null ? null : money(value + cash),
+          value: money(value),
+          account: cash === null ? null : money(value + cash),
           realized: money(realized),
-          unrealized: value === null ? null : money(value - cost),
+          unrealized: money(open.filter((x) => x.gain !== null).reduce((s, x) => s + x.gain, 0)),
           dividends: { gross: money(l.dividends.gross), tax: money(l.dividends.tax), net: money(l.dividends.net) },
           fees: { orders: money(l.fees.orders), transfers: money(l.fees.transfers), total: money(l.fees.orders + l.fees.transfers) },
         }
       : null,
     snapshot: account.snapshot,
     fx,
+    /** Si quien mira recibe precios en vivo (solo el dueño). */
     priced: prices !== null,
+    /** Cuántas posiciones se valorizan con cada fuente y la fecha de los precios del estado de cuenta. */
+    pricing,
     notes,
   };
 }

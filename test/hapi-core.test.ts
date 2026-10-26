@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { accountLedger, accountView, addOps, deleteOp, emptyAccount, orderFee, setPlan, setSnapshot, validateOp } from '../public/hapi-core.js';
+import { accountLedger, accountView, addOps, deleteOp, emptyAccount, orderFee, setMarks, setPlan, setSnapshot, validateOp } from '../public/hapi-core.js';
 
 const TODAY = '2026-10-23';
 type Op = Parameters<typeof accountLedger>[0][number];
@@ -114,19 +114,36 @@ describe('accountView', () => {
   it('el dueño la ve a precios de mercado', () => {
     const v = accountView(base(), { prices: new Map([['VOO', 450]]), fx: { rate: 3.8, date: '2026-10-22' } });
     expect(v.priced).toBe(true);
-    expect(v.positions[0]).toMatchObject({ symbol: 'VOO', qty: 2, cost: 800.1, price: 450, value: 900, gain: 99.9 });
+    expect(v.positions[0]).toMatchObject({ symbol: 'VOO', qty: 2, cost: 800.1, price: 450, priceSource: 'live', value: 900, gain: 99.9 });
     expect(v.totals).toMatchObject({ netDeposits: 1000, netPen: 3700, cash: 199.9, value: 900, account: 1099.9, unrealized: 99.9 });
     expect(v.totals!.fees).toEqual({ orders: 0.1, transfers: 1.99, total: 2.09 });
   });
 
-  it('los demás, sin precios de mercado: a costo; sin precio de una posición no hay valor total y se avisa', () => {
-    const friend = accountView(base(), {});
-    expect(friend.priced).toBe(false);
-    expect(friend.positions[0]).toMatchObject({ cost: 800.1, price: null, value: null });
-    expect(friend.totals).toMatchObject({ cash: 199.9, value: null, account: null });
-    const a = addOps(base(), [{ kind: 'buy', date: '2026-09-03', symbol: 'SCCO', qty: 1, price: 150 }], TODAY);
-    const v = accountView(a, { prices: new Map([['VOO', 450]]) });
-    expect(v.totals).toMatchObject({ value: null, account: null });
-    expect(v.notes.join(' ')).toContain('SCCO');
+  it('sin precios en vivo, con los precios de cierre del último estado de cuenta', () => {
+    const a = setMarks(base(), { date: '2026-09-30', prices: { VOO: 420, AMZN: 249.15 } }, TODAY);
+    const v = accountView(a, {});
+    expect(v.priced).toBe(false);
+    expect(v.positions[0]).toMatchObject({ symbol: 'VOO', price: 420, priceSource: 'statement', value: 840, gain: 39.9 });
+    expect(v.totals).toMatchObject({ value: 840, account: 1039.9, unrealized: 39.9 });
+    expect(v.pricing).toEqual({ live: 0, statement: 1, cost: 0, marksDate: '2026-09-30' });
+  });
+
+  it('lo que no estaba en el estado de cuenta va a lo que se pagó, sin ganancia; el dueño ve qué le falta en vivo', () => {
+    const a = setMarks(addOps(base(), [{ kind: 'buy', date: '2026-10-05', symbol: 'SCCO', qty: 1, price: 150 }], TODAY), { date: '2026-09-30', prices: { VOO: 420 } }, TODAY);
+    const friend = accountView(a, {});
+    expect(friend.positions.find((x) => x.symbol === 'SCCO')).toMatchObject({ price: 150.1, priceSource: 'cost', value: 150.1, gain: null });
+    expect(friend.totals).toMatchObject({ value: 990.1, unrealized: 39.9 });
+    const owner = accountView(a, { prices: new Map([['VOO', 450]]) });
+    expect(owner.positions.map((x) => [x.symbol, x.priceSource])).toEqual([
+      ['VOO', 'live'],
+      ['SCCO', 'cost'],
+    ]);
+    expect(owner.notes.join(' ')).toContain('Sin precio en vivo de SCCO');
+  });
+
+  it('los precios de un estado de cuenta más viejo no reemplazan a los de uno más nuevo', () => {
+    const a = setMarks(base(), { date: '2026-09-30', prices: { VOO: 420 } }, TODAY);
+    expect(setMarks(a, { date: '2026-08-31', prices: { VOO: 380 } }, TODAY).marks).toEqual({ date: '2026-09-30', prices: { VOO: 420 } });
+    expect(setMarks(a, { date: '2026-10-31', prices: { VOO: 430, 'mal símbolo': 1, X: -2 } }, '2026-11-02').marks).toEqual({ date: '2026-10-31', prices: { VOO: 430 } });
   });
 });

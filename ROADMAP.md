@@ -147,6 +147,7 @@ Hapi no tiene API pública ni exporta CSV: solo PDF (estado de cuenta mensual qu
 - [x] **Versión publicada al pie** (commit, con enlace a GitHub), para que cualquiera revise el código que corre.
 - [x] **Enlace «Ver en Hapi»** en la ficha y en «Resultados de empresas» (página pública; Hapi no tiene enlaces que abran la app).
 - [x] **Leer el estado de cuenta mensual (PDF)** en el navegador con pdf.js: periodo, valor total, posiciones y movimientos, con vista previa. Probado con el estado real de setiembre de 2026 del usuario (11 posiciones y 7 dividendos, cuadran con los totales).
+- [x] **Valor de la cuenta con los precios del último estado de cuenta** (26 oct), para los que no reciben precios en vivo: cada importación guarda los precios de cierre en la cuenta cifrada. Reimportar el mismo mes ya no repite los movimientos del saldo inicial.
 - [ ] Ver en un estado real cómo vienen las compras, ventas y depósitos (setiembre solo traía dividendos) y ajustar el lector si hace falta.
 - [ ] Idea: reporte anual para la declaración de impuestos (ganancias realizadas y dividendos en soles, con el tipo de cambio de cada fecha). Solo cálculos: el tratamiento tributario lo decide un contador.
 

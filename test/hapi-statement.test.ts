@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { addOps, emptyAccount } from '../public/hapi-core.js';
+import { accountView, addOps, emptyAccount } from '../public/hapi-core.js';
 import { applyImport, numberOf, OPENING_NOTE, parseStatement, proposeImport } from '../public/hapi-statement.js';
 
 // Estado de cuenta INVENTADO con la forma de los de Hapi (Apex Clearing): mismas columnas y posiciones que uno real,
@@ -229,6 +229,18 @@ describe('proposeImport / applyImport', () => {
     expect(diffs).toEqual([]);
     expect(account.snapshot).toEqual({ date: '2026-08-31', value: 1234.56, source: 'estado de cuenta' });
     expect(account.ops).toHaveLength(4);
+    // Los precios de cierre quedan guardados para valorizar la cuenta sin precios en vivo.
+    expect(account.marks).toEqual({ date: '2026-08-31', prices: { IVV: 600, SHY: 82, SCCO: 139.08 } });
+    expect(accountView(account, {}).totals).toMatchObject({ value: 1225.39, account: 1234.56 });
+  });
+
+  it('volver a importar el mismo mes no duplica lo que ya está en el saldo inicial', () => {
+    const { account } = applyImport(emptyAccount(), proposeImport(st, emptyAccount()), '2026-10-23');
+    const again = proposeImport(st, account);
+    expect(again.mode).toBe('update');
+    expect(again.items.every((i) => !i.checked && i.info === 'Ya está en el saldo inicial')).toBe(true);
+    const { account: same } = applyImport(account, again, '2026-10-23');
+    expect(same.ops).toHaveLength(4);
   });
 
   it('cuenta con movimientos: agrega lo nuevo y deja sin marcar lo que ya estaba anotado', () => {
