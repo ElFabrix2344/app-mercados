@@ -29,6 +29,15 @@ body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--f-mono);fo
 .wrap{max-width:1180px;margin:0 auto;padding:16px 16px 40px;display:flex;flex-direction:column;gap:16px}
 .wrap.simple{max-width:40rem;padding-top:3rem}
 .wrap.simple h1{color:var(--accent);text-transform:uppercase;letter-spacing:.08em;font-size:1.1rem}
+/* Términos y privacidad: texto corrido en Plex Sans. */
+.legal{gap:10px}
+.legal h2{color:var(--accent);margin-top:14px}
+.legal p,.legal li{font-family:var(--f-sans);line-height:1.55}
+.legal p{margin:0}
+.legal ul{margin:0;padding-left:1.2rem;display:flex;flex-direction:column;gap:6px}
+/* Bienvenida de los amigos. */
+.welcome{margin:4px 0 0;padding-left:1.2rem;display:flex;flex-direction:column;gap:6px;font-family:var(--f-sans);line-height:1.5}
+.welcome strong{font-weight:500;color:var(--ink)}
 h1,h2,h3{margin:0;font-weight:500;font-size:inherit}
 .muted{color:var(--muted)}
 p.muted,li.muted{font-family:var(--f-sans)}
@@ -104,6 +113,8 @@ button[disabled]{opacity:.6;cursor:default}
 .screen-head > :last-child{margin-left:auto}
 .screen-head .help{margin-left:auto}
 .screen-head .help + :last-child{margin-left:0}
+/* Un título solo (sin botones) queda a la izquierda, como los demás. */
+.screen-head > :only-child{margin-left:0}
 .src,.mkt{font-size:.78rem;color:var(--muted);text-transform:uppercase;letter-spacing:.06em}
 .mkt.open{color:var(--up)}
 

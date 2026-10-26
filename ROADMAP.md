@@ -56,19 +56,18 @@ Las tres preguntas pendientes las respondió Claude con la opción más simple, 
 - [x] **Conector reconectado en claude.ai** (23 oct): ya aparecen `comparar`, `cartera`, `empresa`, `lista_diaria`, `noticias` y `calendario`.
 - [ ] **Probar en el celular** la medición con dos dedos: hasta ahora solo se probó simulada.
 
-## 5. Al final: abrir la app a los chicos del grupo
+## 5. Abrir la app a los chicos del grupo — la app está lista (26 de octubre); faltan los pasos del panel
 
-Solo cuando las secciones 1 a 4 estén terminadas.
-
-- [ ] **Revisar los términos de FRED** antes de mostrarles sus datos.
-- [ ] **Acceso con código por correo.** Hoy Access pide una cuenta de Cloudflare.
-  1. Zero Trust → **Integrations → Identity providers** → **Add new identity provider** → **One-time PIN**.
-  2. **Access controls → Applications** → la app de `mercados.mercados.workers.dev`. Edita esa misma, no crees otra: una app nueva cambia el AUD y la app dejaría de dejarte entrar.
-  3. En sus métodos de inicio de sesión, marca **One-time PIN**. En **Policies**, agrega una regla **Include → Emails** con tu correo y los de tus amigos.
-  4. Workers & Pages → mercados → Settings → Variables and Secrets: reescribe **`ALLOWED_EMAILS`** con la lista completa, incluido tu correo. `OWNER_EMAILS` queda solo con el tuyo.
-  5. Prueba en una ventana de incógnito. El código llega de `noreply@notify.cloudflare.com` y vale 10 minutos.
-- [ ] **Probar la vista de amigo** con el correo de uno de ellos: debe ver solo los datos públicos (Perú, EE. UU., cobre, oro, BVL, reservas, calendario y la cinta pública).
-- [ ] **Pasarles la dirección** y avisarles que entran con su correo y un código.
+- [x] **Términos de FRED** revisados (26 oct): se pueden mostrar sus datos a otras personas si la app muestra el enlace a sus términos, sus usuarios los aceptan y hay política de privacidad. Hecho: pie con el aviso exacto («This product uses the FRED® API but is not endorsed or certified by the Federal Reserve Bank of St. Louis.»), el enlace y la página `/terminos.html` (términos y privacidad). Las series usadas (DGS*, DFF, DFEDTAR*, CPIAUCSL) son de dominio público; solo piden citar la fuente (Junta de la Reserva Federal y BLS).
+- [x] **Vista de amigo probada en local** (`DEV_ROLE=friend`): bienvenida, noticias, Mi cuenta Hapi, Perú, EE. UU., mercados del Perú, resultados de empresas, calendario y pronósticos; sin errores y sin pedidos a rutas del dueño.
+- [ ] **Acceso con código por correo** (panel de Cloudflare, lo hace el dueño):
+  1. Zero Trust → **Integrations → Identity providers**: que exista **One-time PIN** (la pantalla de entrada ya muestra «Send login code», así que probablemente ya está).
+  2. **Access controls → Applications** → la app de `mercados.mercados.workers.dev`. Edita esa misma, no crees otra: una app nueva cambia el AUD y la app dejaría de dejarte entrar. Opcional: cámbiale el nombre a «Rueda» (es lo que dice la pantalla de entrada) y sube la duración de la sesión (por ejemplo, 1 mes) para que no pidan código a cada rato.
+  3. En sus métodos de inicio de sesión, marca **One-time PIN**. En **Policies**, en la regla que permite entrar, agrega **Include → Emails** con los correos de los chicos (y el tuyo).
+  4. Workers & Pages → mercados → Settings → Variables and Secrets: reescribe **`ALLOWED_EMAILS`** con la lista completa, incluido tu correo, separados por comas. `OWNER_EMAILS` queda solo con el tuyo.
+  5. Prueba en una ventana de incógnito con un correo de la lista que no sea el tuyo. El código llega de `noreply@notify.cloudflare.com` (a veces a spam) y vale 10 minutos.
+- [ ] **Pasarles la dirección** (https://mercados.mercados.workers.dev) y avisarles: entran con su correo y un código; la frase de su cuenta Hapi no se puede recuperar.
+- Opcional, después: abrir el conector de Claude a los amigos (hoy `/conector/identidad` solo deja pasar al dueño; ellos verían solo las herramientas públicas).
 
 ## 6. Noticias — hecho el 22 de octubre
 

@@ -86,7 +86,7 @@ Claude ─► Worker «mercados-mcp» (OAuth propio) ─────────
 
 La licencia gratis de Twelve Data no permite mostrar sus datos a otras personas ni compartir la clave (§2.2 y §2.3 de sus [términos](https://twelvedata.com/terms)). Por eso el servidor responde **403** a los amigos en `/api/quotes`, `/api/history`, `/api/compare`, `/api/portfolio`, `/api/news/symbol`, `/api/company`, `/api/eod` y `/api/watchlist`, y el conector solo les ofrece las herramientas de datos públicos (`peru_bcrp`, `eeuu_fred`, `resultados_anuales`, `noticias` generales y `calendario`); no es solo un ocultamiento en pantalla. Si `OWNER_EMAILS` está vacío, nadie ve los precios (falla cerrado). Con Finnhub pasa lo mismo: `/api/calendar` y la herramienta `calendario` solo suman los resultados de empresas cuando quien pide es el dueño.
 
-**Agregar un amigo:** su correo va en la política de Access de la app (regla *Allow* → *Emails*) **y** en `ALLOWED_EMAILS`. Al editar ese secreto hay que volver a escribir toda la lista, incluido tu correo: el panel no muestra el valor anterior.
+**Agregar un amigo:** su correo va en la política de Access de la app (regla *Allow* → *Emails*, con el inicio de sesión *One-time PIN*: entran con un código que les llega por correo) **y** en `ALLOWED_EMAILS`. Al editar ese secreto hay que volver a escribir toda la lista, incluido tu correo: el panel no muestra el valor anterior. Los amigos ven una bienvenida con lo que pueden hacer y, al pie, los términos y la privacidad (`/terminos.html`), que piden los términos de la API de FRED para apps con otros usuarios.
 
 ## API
 
