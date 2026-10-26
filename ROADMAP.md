@@ -66,6 +66,7 @@ Las tres preguntas pendientes las respondió Claude con la opción más simple, 
   3. En sus métodos de inicio de sesión, marca **One-time PIN**. En **Policies**, en la regla que permite entrar, agrega **Include → Emails** con los correos de los chicos (y el tuyo).
   4. Workers & Pages → mercados → Settings → Variables and Secrets: reescribe **`ALLOWED_EMAILS`** con la lista completa, incluido tu correo, separados por comas. `OWNER_EMAILS` queda solo con el tuyo.
   5. Prueba en una ventana de incógnito con un correo de la lista que no sea el tuyo. El código llega de `noreply@notify.cloudflare.com` (a veces a spam) y vale 10 minutos.
+  - **Si a alguien no le llega el código:** Cloudflare solo lo manda si el correo está en la política de Access, pero la pantalla dice «A code has been emailed» igual. Revisa que su correo esté en la regla (paso 3), que mire en spam y que use el último código: pedir otro anula el anterior. Si le llega pero Rueda le dice «Entraste con …, pero ese correo no está en la lista», falta en `ALLOWED_EMAILS` (paso 4). El 26 de octubre se pidió un código de prueba para el correo del dueño.
 - [ ] **Pasarles la dirección** (https://mercados.mercados.workers.dev) y avisarles: entran con su correo y un código; la frase de su cuenta Hapi no se puede recuperar.
 - Opcional, después: abrir el conector de Claude a los amigos (hoy `/conector/identidad` solo deja pasar al dueño; ellos verían solo las herramientas públicas).
 
