@@ -84,7 +84,9 @@ export default {
     if (!local) {
       const auth = await verifyAccess(req, env);
       if (!auth.ok) {
-        return withSecurityHeaders(htmlPage('Acceso restringido', `<p>${escapeHtml(auth.reason)}</p>`, auth.status));
+        // Con un correo que no está en la lista, un enlace para salir de Access y entrar con otro.
+        const other = auth.status === 403 ? '<p><a href="/cdn-cgi/access/logout">Salir y entrar con otro correo</a></p>' : '';
+        return withSecurityHeaders(htmlPage('Acceso restringido', `<p>${escapeHtml(auth.reason)}</p>${other}`, auth.status));
       }
       role = roleFor(auth.email, env);
       email = auth.email;

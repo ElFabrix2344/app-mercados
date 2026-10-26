@@ -43,7 +43,8 @@ function readCookie(req: Request, name: string): string | null {
   return null;
 }
 
-export async function verifyAccess(req: Request, env: Env): Promise<AccessResult> {
+/** `keys`: las llaves con que Access firma (por defecto, las de su equipo; las pruebas pasan unas locales). */
+export async function verifyAccess(req: Request, env: Env, keys?: JWTVerifyGetKey): Promise<AccessResult> {
   const team = teamDomain(env);
   const aud = (env.ACCESS_AUD ?? '').trim();
   const allowed = allowedEmails(env);
@@ -54,7 +55,7 @@ export async function verifyAccess(req: Request, env: Env): Promise<AccessResult
   const token = req.headers.get('Cf-Access-Jwt-Assertion') ?? readCookie(req, 'CF_Authorization');
   if (!token) return { ok: false, status: 401, reason: 'Falta el token de Cloudflare Access.' };
 
-  let jwks = jwksByTeam.get(team);
+  let jwks = keys ?? jwksByTeam.get(team);
   if (!jwks) {
     jwks = createRemoteJWKSet(new URL(`${team}/cdn-cgi/access/certs`));
     jwksByTeam.set(team, jwks);
@@ -62,8 +63,10 @@ export async function verifyAccess(req: Request, env: Env): Promise<AccessResult
   try {
     const { payload } = await jwtVerify(token, jwks, { issuer: team, audience: aud, algorithms: ['RS256'] });
     const email = typeof payload.email === 'string' ? payload.email.toLowerCase() : null;
-    if (!email || !allowed.includes(email)) {
-      return { ok: false, status: 403, reason: 'Este correo no está autorizado.' };
+    if (!email) return { ok: false, status: 403, reason: 'Access no informó con qué correo entraste.' };
+    // Access dejó pasar el correo (le llegó el código), pero no está en la lista de la app: que sepa cuál usó.
+    if (!allowed.includes(email)) {
+      return { ok: false, status: 403, reason: `Entraste con ${email}, pero ese correo no está en la lista de Rueda. Pídele al dueño de la app que lo agregue, o sal y vuelve a entrar con el correo que le diste.` };
     }
     return { ok: true, email };
   } catch (e) {

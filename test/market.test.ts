@@ -1,3 +1,4 @@
+import { createLocalJWKSet, exportJWK, generateKeyPair, SignJWT } from 'jose';
 import { describe, expect, it } from 'vitest';
 import { verifyAccess } from '../src/auth/access';
 import type { Env } from '../src/env';
@@ -380,6 +381,24 @@ describe('verifyAccess', () => {
   it('falla cerrado si ALLOWED_EMAILS está vacío', async () => {
     const env = { ACCESS_TEAM_DOMAIN: 'https://x.cloudflareaccess.com', ACCESS_AUD: 'a'.repeat(64), ALLOWED_EMAILS: ' ' } as Env;
     expect(await verifyAccess(new Request('https://m.example/'), env)).toMatchObject({ ok: false, status: 503 });
+  });
+
+  it('tras el código de Access: entra un correo de la lista; a uno que no está se le dice con cuál entró', async () => {
+    const team = 'https://x.cloudflareaccess.com';
+    const aud = 'a'.repeat(64);
+    const { publicKey, privateKey } = await generateKeyPair('RS256');
+    const keys = createLocalJWKSet({ keys: [{ ...(await exportJWK(publicKey)), kid: 'k1', alg: 'RS256' }] });
+    const token = (email: string, audience = aud) =>
+      new SignJWT({ email }).setProtectedHeader({ alg: 'RS256', kid: 'k1' }).setIssuer(team).setAudience(audience).setExpirationTime('10m').sign(privateKey);
+    const req = async (email: string, audience?: string) => new Request('https://m.example/', { headers: { 'Cf-Access-Jwt-Assertion': await token(email, audience) } });
+    const env = { ACCESS_TEAM_DOMAIN: team, ACCESS_AUD: aud, ALLOWED_EMAILS: 'yo@example.com, Amiga@Example.com ' } as Env;
+
+    expect(await verifyAccess(await req('amiga@example.com'), env, keys)).toEqual({ ok: true, email: 'amiga@example.com' });
+    const denied = await verifyAccess(await req('Otro@Example.com'), env, keys);
+    expect(denied).toMatchObject({ ok: false, status: 403 });
+    expect(!denied.ok && denied.reason).toContain('Entraste con otro@example.com');
+    // Un token de otra app de Access (otro AUD) no sirve.
+    expect(await verifyAccess(await req('yo@example.com', 'b'.repeat(64)), env, keys)).toMatchObject({ ok: false, status: 401 });
   });
 });
 
