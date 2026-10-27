@@ -6,12 +6,16 @@
   <title>Rueda</title>
   <meta name="theme-color" content="#0A0A0A">
   <meta name="color-scheme" content="dark">
+  <meta name="mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black">
   <meta name="apple-mobile-web-app-title" content="Rueda">
   <meta name="robots" content="noindex,nofollow">
+  <!-- App instalable. Todo está detrás de Cloudflare Access: el manifiesto se pide con la sesión (use-credentials). -->
   <link rel="manifest" href="/manifest.webmanifest" crossorigin="use-credentials">
+  <link rel="icon" href="/icons/icon-32.png" sizes="32x32" type="image/png">
   <link rel="icon" href="/icon.svg" type="image/svg+xml">
+  <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500&display=swap">
@@ -31,8 +35,20 @@
       <span class="status" id="fresh" aria-live="polite">Cargando…</span>
       <span class="pill owner-only" id="credits" title="Créditos de Twelve Data que usó la app hoy (freno: 600 de 800)">— / 600 créditos</span>
       <button type="button" id="refresh-btn" class="owner-only"><span class="ico" aria-hidden="true">↻</span> Actualizar</button>
+      <button type="button" id="install-btn" aria-controls="install-panel" aria-expanded="false" hidden><span class="ico" aria-hidden="true">↓</span> Instalar app</button>
     </div>
   </header>
+
+  <!-- Instalar Rueda como app, sin tienda de apps: los pasos según el equipo los pone app.js. -->
+  <section class="screen install" id="install-panel" aria-labelledby="install-h" tabindex="-1" hidden>
+    <div class="screen-head">
+      <h2 id="install-h">Instalar como app</h2>
+      <button type="button" id="install-close">Cerrar</button>
+    </div>
+    <ol class="welcome" id="install-steps"></ol>
+    <p class="hint" id="install-note" hidden></p>
+    <p class="hint">¿Ya la instalaste? Ábrela desde su ícono: ahí este botón no aparece.</p>
+  </section>
 
   <!-- Cinta de precios, como la pizarra de la bolsa. Repite datos que están más abajo: los lectores de pantalla saltan los precios. -->
   <div class="tape" id="tape" hidden>
@@ -50,6 +66,7 @@
       <li><strong>Mi cuenta Hapi:</strong> importa tu estado de cuenta en PDF o anota tus operaciones. Se cifra con tu frase: nadie más la puede ver, tampoco el dueño de la app.</li>
       <li><strong>Resultados de empresas:</strong> ingresos y utilidades de los últimos años de cualquier acción que reporte a la SEC.</li>
       <li><strong>Perú y EE. UU.:</strong> dólar, tasas, inflación, cobre, oro, BVL, bonos y la curva del Tesoro, con el calendario de anuncios y las noticias.</li>
+      <li id="welcome-install"><strong>Como app:</strong> con «Instalar app», arriba, Rueda queda en tu celular o computadora con su ícono y se abre a pantalla completa.</li>
     </ul>
     <p class="hint">Los precios de las acciones no se pueden compartir: la licencia gratis de su proveedor no lo permite. <a href="/terminos.html">Términos y privacidad</a>.</p>
   </section>

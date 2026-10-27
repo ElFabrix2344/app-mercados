@@ -63,6 +63,9 @@
     },
   };
 
+  // iPhone o iPad (el iPad se presenta como Mac, pero con pantalla táctil). Ahí todos los navegadores son Safari.
+  const isIos = () => /iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+
   // ---------- formato ----------
   const nfCache = new Map();
   const nf = (dec) => {
@@ -2981,8 +2984,7 @@
     });
     $('hp-file').addEventListener('change', importHapiFile);
     // En iPhone y iPad el selector de archivos solo ve la app Archivos: el PDF de Hapi tiene que estar guardado ahí.
-    const ios = /iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
-    $('hp-ios-hint').hidden = !ios;
+    $('hp-ios-hint').hidden = !isIos();
     $('hp-lock-btn').addEventListener('click', lockHapi);
     $('hp-pass-form').addEventListener('submit', changePassphrase);
     $('hp-snap-date').max = today();
@@ -3729,9 +3731,95 @@
     else p.replaceChildren('Versión publicada: ', link(`${REPO}/commit/${encodeURIComponent(sha)}`, sha.slice(0, 7)), ' (código público en GitHub).');
   }
 
+  // ---------- app instalable ----------
+  // Rueda se instala desde el navegador, sin tienda de apps. Si Chrome o Edge ofrecen su diálogo de instalación, el
+  // botón lo abre; si no (iPhone, iPad, Safari de Mac…), muestra los pasos. Abierta como app, el botón no aparece.
+  const isStandalone = () => matchMedia('(display-mode: standalone)').matches || navigator.standalone === true;
+
+  /** Pasos para instalar según el equipo y el navegador: { steps: [[texto o nodo, …], …], note }. */
+  function installGuide() {
+    const ua = navigator.userAgent;
+    const b = (t) => h('strong', {}, t);
+    if (isIos())
+      return {
+        steps: [
+          ['Abre ', b('Compartir'), ': el cuadrado con la flecha hacia arriba. En Safari de iOS 26 está dentro del botón ', b('⋯'), '.'],
+          ['Elige ', b('Agregar a inicio'), '. Si no aparece, toca ', b('Ver más'), ' o baja en la lista.'],
+          ['Deja activado ', b('Abrir como app web'), ' y toca ', b('Agregar'), '.'],
+        ],
+        note: 'La app no comparte la sesión con el navegador: la primera vez que la abras desde el ícono, entra con tu correo y el código, como siempre. Tu frase de Hapi también se pide una vez.',
+      };
+    if (/Android/.test(ua))
+      return {
+        steps: [
+          ['Abre el menú del navegador: ', b('⋮'), ', arriba a la derecha.'],
+          ['Elige ', b('Instalar app'), ' o ', b('Agregar a la pantalla principal'), ' y confirma.'],
+        ],
+        note: 'Queda junto a tus otras apps y se abre a pantalla completa, con la misma sesión del navegador.',
+      };
+    if (/Firefox\//.test(ua)) return { steps: [['Firefox no instala apps web en computadora: abre Rueda en Chrome, Edge o Safari y toca ', b('Instalar app'), ' ahí.']], note: '' };
+    if (/Macintosh/.test(ua) && /Version\/[\d.]+.*Safari\//.test(ua))
+      return {
+        steps: [['En la barra de menús de Safari: ', b('Archivo'), ' → ', b('Agregar al Dock'), ' (macOS Sonoma o más nuevo).']],
+        note: 'Se abre en su propia ventana. La primera vez puede pedirte entrar otra vez con tu correo y el código.',
+      };
+    return {
+      steps: [['Toca el ícono de instalar al final de la barra de direcciones (una pantalla con una flecha), o busca ', b('Instalar'), ' en el menú del navegador.']],
+      note: 'Se abre en su propia ventana, con la misma sesión del navegador.',
+    };
+  }
+
+  function setupInstall() {
+    // El service worker solo muestra un aviso sin conexión: no guarda nada ni toca los pedidos (public/sw.js).
+    if ('serviceWorker' in navigator) window.addEventListener('load', () => navigator.serviceWorker.register('/sw.js', { updateViaCache: 'none' }).catch(() => {}));
+    if (isStandalone()) {
+      $('welcome-install').hidden = true;
+      return;
+    }
+    const btn = $('install-btn');
+    const panel = $('install-panel');
+    let offer = null; // diálogo de instalación de Chrome o Edge, si lo ofrecen (sirve una sola vez)
+    window.addEventListener('beforeinstallprompt', (e) => {
+      e.preventDefault();
+      offer = e;
+    });
+    const close = () => {
+      panel.hidden = true;
+      btn.setAttribute('aria-expanded', 'false');
+    };
+    window.addEventListener('appinstalled', () => {
+      offer = null;
+      close();
+      btn.hidden = true;
+    });
+    btn.hidden = false;
+    btn.addEventListener('click', async () => {
+      if (offer) {
+        const o = offer;
+        offer = null;
+        o.prompt();
+        await o.userChoice;
+        return;
+      }
+      if (!panel.hidden) return close();
+      const { steps, note } = installGuide();
+      $('install-steps').replaceChildren(...steps.map((s) => h('li', {}, ...s)));
+      $('install-note').textContent = note;
+      $('install-note').hidden = !note;
+      panel.hidden = false;
+      btn.setAttribute('aria-expanded', 'true');
+      panel.focus();
+    });
+    $('install-close').addEventListener('click', () => {
+      close();
+      btn.focus();
+    });
+  }
+
   // ---------- inicio ----------
   async function init() {
     renderClock();
+    setupInstall();
     $('refresh-btn').addEventListener('click', () => loadQuotes(true));
     $('edit-btn').addEventListener('click', () => openEditor($('wl-form').hidden));
     $('wl-cancel').addEventListener('click', () => openEditor(false));

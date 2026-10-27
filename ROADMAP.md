@@ -152,6 +152,20 @@ Hapi no tiene API pública ni exporta CSV: solo PDF (estado de cuenta mensual qu
 - [ ] Ver en un estado real cómo vienen las compras, ventas y depósitos (setiembre solo traía dividendos) y ajustar el lector si hace falta.
 - [ ] Idea: reporte anual para la declaración de impuestos (ganancias realizadas y dividendos en soles, con el tipo de cambio de cada fecha). Solo cálculos: el tratamiento tributario lo decide un contador.
 
+## 8e. Rueda como app — hecho el 26 de octubre
+
+El usuario pidió poder bajar la app desde Rueda. Lo realista es una **app web instalable**: se instala desde el navegador, sin tienda, gratis, en iPhone, iPad, Android y computadora, y se actualiza sola con cada push.
+
+- [x] Botón **«Instalar app»** en la barra: abre el diálogo de Chrome o Edge si lo ofrecen; si no, los pasos de cada equipo (en iPhone y iPad, Compartir → «Agregar a inicio»). Abierta como app no aparece.
+- [x] Íconos PNG (192, 512, «maskable» para Android y el de iPhone) con el dibujo de la rueda, manifiesto completo y un service worker mínimo que solo muestra un aviso sin conexión (no guarda nada).
+- [ ] **Probarla en un iPhone o iPad:** agregarla a inicio, abrirla desde el ícono y entrar con el código **dentro de la app** (no comparte la sesión con Safari). Y en un Android: menú → «Instalar app».
+- [ ] **Subir la duración de la sesión de Access** (sección 5, paso 2; por ejemplo, 1 mes): con la app instalada, una sesión corta pide el código a cada rato. Si se pierde un celular, la sesión se corta desde Zero Trust.
+- **Descartado por ahora:**
+  - **APK de Android** (TWA, con PWABuilder o Bubblewrap): se puede armar desde Windows y pasar como archivo (o subir a Play Store por US$ 25), pero aporta poco: Chrome ya instala una app de verdad. Además pide dejar `/.well-known/assetlinks.json` fuera de Access.
+  - **App Store o TestFlight:** US$ 99 al año, una Mac con Xcode y la revisión de Apple, que suele rechazar apps que solo muestran una web. No es realista para un grupo de amigos.
+  - **App nativa nueva:** meses de trabajo para lo mismo.
+- Idea: **notificaciones** de la app instalada (alertas de precio, resultados, pronósticos que cierran). En iPhone y iPad solo funcionan con la app agregada a inicio (iOS 16.4 o más nuevo). Necesitan claves VAPID (secreto) y guardar las suscripciones en KV.
+
 ## 9. Ideas para después
 
 - **Alertas al celular por Telegram:** precio, % del día, dólar, MM200/RSI y «mañana presenta resultados». Tarea programada cada 15 min con la bolsa abierta, unos 100–150 créditos al día. Es lo que tienen todas las apps comparadas y Rueda no.

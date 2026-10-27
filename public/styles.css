@@ -20,7 +20,7 @@
 html{background:var(--bg)}
 body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--f-mono);font-size:15px;line-height:1.5;
   font-variant-numeric:tabular-nums;-webkit-font-smoothing:antialiased;
-  padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+  padding:env(safe-area-inset-top,0px) env(safe-area-inset-right,0px) env(safe-area-inset-bottom,0px) env(safe-area-inset-left,0px)}
 [hidden]{display:none!important}
 /* Roles: el dueño ve todo; los amigos («rol-amigo» en <body>) solo los datos públicos. */
 .friend-only{display:none}
@@ -82,6 +82,8 @@ button[disabled]{opacity:.6;cursor:default}
 .status.stale::before{content:"○";color:var(--muted)}
 .pill{font-size:.8rem;color:var(--muted);border:1px solid var(--line);border-radius:var(--r);padding:3px 8px}
 .pill.warn{color:var(--accent);border-color:var(--accent)}
+/* Instalar como app: el panel con los pasos se enfoca por código al abrirlo (sin anillo). */
+.install:focus{outline:none}
 #refresh-btn .ico{display:inline-block}
 #refresh-btn[disabled] .ico{animation:spin 1s linear infinite}
 @keyframes spin{to{transform:rotate(360deg)}}
