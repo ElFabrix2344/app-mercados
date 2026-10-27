@@ -65,13 +65,13 @@ async function callTool(c: McpContext, name: string, args: Record<string, unknow
 }
 
 describe('servidor MCP', () => {
-  it('responde a initialize y lista sus herramientas de solo lectura', async () => {
+  it('responde a initialize y lista sus herramientas: solo publicar_resumen escribe', async () => {
     const { c } = ctx();
     const init = await rpc(c, 'initialize', { protocolVersion: '2025-06-18', capabilities: {}, clientInfo: { name: 'test', version: '0' } });
     expect(init.result.serverInfo.name).toBe('rueda');
     const { result } = await rpc(c, 'tools/list');
-    expect(result.tools.map((t: { name: string }) => t.name)).toEqual(['precios', 'historial', 'comparar', 'cartera', 'empresa', 'lista_diaria', 'peru_bcrp', 'eeuu_fred', 'resultados_anuales', 'noticias', 'pronosticos', ...CALENDAR_TOOL]);
-    for (const t of result.tools) expect(t.annotations.readOnlyHint).toBe(true);
+    expect(result.tools.map((t: { name: string }) => t.name)).toEqual(['precios', 'historial', 'comparar', 'cartera', 'empresa', 'lista_diaria', 'peru_bcrp', 'eeuu_fred', 'resultados_anuales', 'noticias', 'pronosticos', 'publicar_resumen', ...CALENDAR_TOOL]);
+    for (const t of result.tools) expect(t.annotations.readOnlyHint).toBe(t.name !== 'publicar_resumen');
   });
 
   it('a un amigo solo le ofrece las herramientas de datos públicos', async () => {
@@ -82,6 +82,46 @@ describe('servidor MCP', () => {
     const intento = await rpc(c, 'tools/call', { name: 'precios', arguments: {} });
     expect(JSON.stringify(intento)).not.toContain('"precio"');
     expect(calls).toHaveLength(0);
+  });
+});
+
+describe('herramienta publicar_resumen', () => {
+  // Noticias ya guardadas (vigentes): la herramienta saca de ahí el titular y el medio de cada enlace.
+  const storedNews = {
+    fetchedAt: '2026-10-15T14:55:00.000Z',
+    data: {
+      items: [{ title: 'El cobre sube por la demanda china', url: 'https://gestion.pe/economia/cobre-1', source: 'Gestión', group: 'latam', publishedAt: '2026-10-15T13:00:00.000Z', summary: null }],
+      errors: {},
+    },
+  };
+  const args = {
+    titulo: 'El cobre sube y el dólar cierra estable',
+    texto: 'El cobre subió en Londres por la demanda china y en Lima el dólar terminó casi sin cambios. En Nueva York los índices cerraron mixtos.',
+    fuentes: [{ enlace: 'https://gestion.pe/economia/cobre-1' }],
+  };
+
+  it('el dueño publica el resumen de hoy (hora de Lima) y queda guardado para el panel', async () => {
+    const { c, mem } = ctx({ news: storedNews });
+    const r = await callTool(c, 'publicar_resumen', args);
+    expect(r.isError).toBe(false);
+    expect(r.data).toMatchObject({ publicado: true, fecha: '2026-10-15', fuentes: [{ medio: 'Gestión', titular: 'El cobre sube por la demanda china' }], dias_guardados: 1 });
+    const saved = JSON.parse(mem.store.get('resumen')!);
+    expect(saved.items[0]).toMatchObject({ date: '2026-10-15', title: args.titulo, points: [] });
+  });
+
+  it('rechaza enlaces de dominios desconocidos con un mensaje que Claude puede corregir', async () => {
+    const { c, mem } = ctx({ news: storedNews });
+    const r = await callTool(c, 'publicar_resumen', { ...args, fuentes: [{ enlace: 'https://phishing.example/x' }] });
+    expect(r.isError).toBe(true);
+    expect(r.text).toContain('phishing.example');
+    expect(mem.store.has('resumen')).toBe(false);
+  });
+
+  it('un amigo no puede publicar', async () => {
+    const { c, mem } = ctx({ news: storedNews }, undefined, undefined, 'friend');
+    const r = await rpc(c, 'tools/call', { name: 'publicar_resumen', arguments: args });
+    expect(JSON.stringify(r)).not.toContain('"publicado"');
+    expect(mem.store.has('resumen')).toBe(false);
   });
 });
 

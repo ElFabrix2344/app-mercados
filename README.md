@@ -68,6 +68,11 @@ Claude ─► Worker «mercados-mcp» (OAuth propio) ─────────
   - **Generales:** Gestión (economía), Bloomberg Línea (mercados), WSJ, MarketWatch, CNBC y Bloomberg. Se guardan juntas en KV (`news`) cada 30 minutos, unas 48 escrituras al día. Si una fuente falla, se muestran las demás. Son públicas: las ven también los amigos.
   - **Por acción:** en la ficha, titulares de Yahoo Finance (por símbolo) y de Google News (por nombre, en español). Se piden al abrirla y no se guardan.
   - **Por qué se leen de a poco:** Gestión y Bloomberg Línea mandan la nota completa en cada ítem y pesan ~1 MB. El lector lee el stream y corta apenas tiene los primeros titulares, para respetar el límite de procesador del plan gratis (10 ms por pedido).
+- **Resumen del día** (público, `services/summary.ts`, `/api/resumen`): un título, un párrafo y hasta 4 puntos sobre lo de ayer y lo que viene hoy, arriba del panel.
+  - **Quién lo escribe:** Claude, cada mañana a las 7:00 (hora de Lima), con una tarea programada del dueño en la nube de Anthropic (incluida en su plan Max). La tarea usa el conector: lee `noticias`, `peru_bcrp`, `eeuu_fred` y `calendario`, y publica con `publicar_resumen`. El Worker no llama a ninguna IA ni guarda claves de Anthropic: usar la cuenta de Max desde un programa propio va contra los términos de Claude.
+  - **Qué valida el servidor:** largos (título de 10 a 120 caracteres, texto de 80 a 1.200), sin Markdown ni caracteres de control, y enlaces solo de los medios de las noticias o de fuentes oficiales (BCRP, INEI, SMV, Fed, BLS, FRED, SEC). Si el enlace está en la caché de noticias, el titular y el medio salen de ahí. La fecha la pone el servidor (hoy en Lima).
+  - **KV:** los últimos 7 días en un solo registro (`resumen`): una escritura por resumen.
+  - **Panel:** el titular, el párrafo, las cifras públicas de Rueda (las mismas de la cinta, no las escribe Claude), las fuentes, «Profundiza en Claude» (abre claude.ai con la pregunta escrita, con la cuenta de quien lo usa) y los días anteriores. Sin resumen guardado, la sección no aparece.
 - **Tipografía (legibilidad, 22 oct):** números, títulos y datos en IBM Plex Mono; frases, etiquetas y ayudas en IBM Plex Sans. Base de 15 px y nada por debajo de 12 px. Las explicaciones de uso van en un «?» por sección (`<details class="help">`) en vez de quedar siempre a la vista.
 - **Cartera en los gráficos y señales:** la ficha marca tus compras (▲) y ventas (▼) de la cartera simulada a su precio, y el tooltip las detalla. En la lista, junto al nombre, se ve si el último cierre está sobre o bajo su media de 200 días y, solo en zona extrema (70 o más, 30 o menos), el RSI. Sale del `latest` que `/api/history` devuelve siempre.
 - **Medir entre dos días:** en cualquier gráfico interactivo, arrastrar con el mouse (en el celular, dos dedos; con el teclado, Mayús + flechas) muestra las fechas, la duración y la variación entre ambos días: en % y en precio en la ficha, por símbolo en Comparar y en puntos porcentuales en las tasas. Queda fija hasta un clic fuera o Esc.
@@ -83,7 +88,7 @@ Claude ─► Worker «mercados-mcp» (OAuth propio) ─────────
 | Rol | Quién | Qué ve |
 |---|---|---|
 | Dueño | Los correos de `OWNER_EMAILS` | Todo: precios, historial, comparación, cartera simulada y lista (Twelve Data), resultados y datos de empresas (Finnhub), resultados anuales (SEC), Perú y EE. UU., y su cuenta de Hapi a precios de mercado |
-| Amigo | El resto de `ALLOWED_EMAILS` (y de la política de Access) | Solo datos públicos: Perú (BCRP) y EE. UU. (FRED), resultados anuales de empresas (SEC), noticias generales, calendario, y juegan a los pronósticos del grupo. Además, su propia cuenta de Hapi (sin precios de mercado) |
+| Amigo | El resto de `ALLOWED_EMAILS` (y de la política de Access) | Solo datos públicos: Perú (BCRP) y EE. UU. (FRED), resultados anuales de empresas (SEC), noticias generales, el resumen del día, calendario, y juegan a los pronósticos del grupo. Además, su propia cuenta de Hapi (sin precios de mercado) |
 
 La licencia gratis de Twelve Data no permite mostrar sus datos a otras personas ni compartir la clave (§2.2 y §2.3 de sus [términos](https://twelvedata.com/terms)). Por eso el servidor responde **403** a los amigos en `/api/quotes`, `/api/history`, `/api/compare`, `/api/portfolio`, `/api/news/symbol`, `/api/company`, `/api/eod` y `/api/watchlist`, y el conector solo les ofrece las herramientas de datos públicos (`peru_bcrp`, `eeuu_fred`, `resultados_anuales`, `noticias` generales y `calendario`); no es solo un ocultamiento en pantalla. Si `OWNER_EMAILS` está vacío, nadie ve los precios (falla cerrado). Con Finnhub pasa lo mismo: `/api/calendar` y la herramienta `calendario` solo suman los resultados de empresas cuando quien pide es el dueño.
 
@@ -108,6 +113,7 @@ Todas las rutas exigen sesión de Cloudflare Access. Las marcadas con 🔒 son s
 | GET | `/api/company/factors?symbol=BAP` 🔒 | Notas por factores A–F frente a las comparables de Finnhub, con el detalle de cada indicador |
 | GET | `/api/news` | Titulares generales (todas las fuentes, guardados 30 min), con su grupo: `latam`, `eeuu` o `global` |
 | GET | `/api/news/symbol?symbol=BAP` 🔒 | Titulares de un símbolo de la lista (Yahoo Finance y Google News), sin guardar |
+| GET | `/api/resumen` | Resumen del día y los anteriores (hasta 7), del más nuevo al más viejo. Lo publica la tarea programada del dueño con `publicar_resumen` |
 | GET | `/api/peru` | Dólar interbancario, tasa de referencia e inflación (BCRP) |
 | GET | `/api/peru-markets` | Cobre, oro, reservas internacionales e índice de la BVL: un año diario, último dato y variaciones a 1 y 12 meses (BCRP) |
 | GET / POST | `/api/forecasts` | Pronósticos del grupo: preguntas, lo propio, lo de los demás desde el cierre, resultados y ranking. POST `{"questionId", "value"}` guarda o cambia un pronóstico (pide nombre) |
@@ -122,7 +128,7 @@ Todas las rutas exigen sesión de Cloudflare Access. Las marcadas con 🔒 son s
 
 ## Conector de Claude (MCP)
 
-Vive en un **Worker aparte, `mercados-mcp`** (`src/mcp-worker.ts`, `wrangler.mcp.jsonc`), en `https://mercados-mcp.mercados.workers.dev/mcp`: un servidor MCP remoto (Streamable HTTP, sin estado; SDK `@modelcontextprotocol/server`) para usar Mercados desde claude.ai, el celular o Claude Code. Herramientas, todas de solo lectura:
+Vive en un **Worker aparte, `mercados-mcp`** (`src/mcp-worker.ts`, `wrangler.mcp.jsonc`), en `https://mercados-mcp.mercados.workers.dev/mcp`: un servidor MCP remoto (Streamable HTTP, sin estado; SDK `@modelcontextprotocol/server`) para usar Mercados desde claude.ai, el celular o Claude Code. Herramientas, todas de solo lectura menos `publicar_resumen`:
 
 | Herramienta | Qué devuelve |
 |---|---|
@@ -138,6 +144,7 @@ Vive en un **Worker aparte, `mercados-mcp`** (`src/mcp-worker.ts`, `wrangler.mcp
 | `calendario` | Próximas decisiones de tasas (BCRP, Fed) y publicaciones de inflación (INEI, BLS). Para el dueño, también los resultados de su lista (Finnhub): fecha, momento, BPA e ingresos esperados y el último resultado del mes con la sorpresa. Aparece mientras haya fechas cargadas |
 | `eeuu_fred` | Bono del Tesoro a 10 años, tasa de la Fed e inflación (FRED) |
 | `resultados_anuales` | Ingresos, utilidad operativa, utilidad neta y margen neto por año fiscal de cualquier acción que reporte a la SEC (también para los amigos) |
+| `publicar_resumen` | Guarda el resumen del día que ven todos en el panel (solo el dueño; la usa su tarea programada de cada mañana). Reemplaza el de hoy y rechaza enlaces de dominios desconocidos |
 
 - **Mismos datos y reglas que el panel:** lee la misma caché de KV, renueva solo lo vencido con las mismas reglas (acciones solo con la bolsa abierta) y cuenta para el mismo freno de 600 créditos. Solo responde por los símbolos de la lista; para otros, Claude debe usar el conector oficial de Twelve Data.
 - **Por qué un Worker aparte:** Access no deja pasar a los servidores de Claude, y su login para conectores (*Managed OAuth*) falla en claude.ai web y móvil ([anthropics/claude-ai-mcp#410](https://github.com/anthropics/claude-ai-mcp/issues/410)). `mercados-mcp` no está detrás de Access: es su propio servidor OAuth 2.1, con la librería oficial `@cloudflare/workers-oauth-provider` (DCR, CIMD, PKCE, tokens guardados como hash en la KV `OAUTH_KV`).
@@ -158,6 +165,7 @@ src/
   services/market.ts    caché en KV, freno de créditos y qué símbolos renovar
   services/portfolio.ts cartera simulada: operaciones, costo promedio, valorización y comparación con el SPY
   services/news.ts      noticias: fuentes RSS, caché de las generales y titulares por acción
+  services/summary.ts   resumen del día: validación, enlaces permitidos y los últimos 7 días
   services/earnings.ts  resultados de empresas de la lista (Finnhub, solo el dueño) para el calendario y la ficha
   services/company.ts   datos de la empresa para la ficha (Finnhub, solo el dueño)
   services/factors.ts   notas por factores A–F frente a las comparables (Finnhub, solo el dueño)
@@ -217,5 +225,6 @@ Cada push a `main` ejecuta GitHub Actions: typecheck, pruebas y `wrangler deploy
 | Desde 2028, gasto de créditos en feriados de EE. UU. | El calendario de la NYSE está cargado hasta `NYSE_CALENDAR_UNTIL` (2027; `/api/status` → `marketCalendarUntil`) | Agregar el año nuevo en `lib/market-hours.ts`, desde nyse.com/markets/hours-calendars |
 | Claude no logra conectar el conector | `LOGIN_LINK_SECRET` distinto en los dos Workers, o tu correo no está en `OWNER_EMAILS` de `mercados-mcp` | Vuelve a cargar el secreto igual en ambos; revisa `OWNER_EMAILS` |
 | El conector responde «Falta TWELVE_DATA_API_KEY» | `mercados-mcp` tiene sus propios secretos | Carga la clave también en `mercados-mcp` |
+| El resumen del día no cambia (se queda el de ayer) | Falló la tarea programada: permiso del conector vencido, límite de uso del plan o la tarea apagada | En claude.ai/code/routines, abre la tarea y mira su última ejecución. Si el conector pide permiso, reconéctalo en claude.ai |
 | La app instalada en iPhone o iPad pide el código otra vez | Agregada a inicio, no comparte la sesión ni lo guardado con Safari | Entrar una vez dentro de la app (y escribir ahí la frase de Hapi). Para que no lo pida tan seguido, subir la duración de la sesión de Access |
 | El freno cuenta unos créditos de menos | El panel (desde Lima) y Claude (desde EE. UU.) escriben el contador en KV, que tarda hasta 60 s en propagarse | Aceptado: el margen de 200 créditos lo cubre |

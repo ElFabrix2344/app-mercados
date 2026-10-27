@@ -92,7 +92,7 @@ function consentPage(d: ConsentDescription, handle: string): string {
   const loopback = d.redirectIsLoopback
     ? '<p class="warn">El acceso irá a una app de tu computadora. Continúa solo si acabas de conectar desde ella (por ejemplo, Claude Code).</p>'
     : '';
-  return `<p>${who} quiere leer los datos de tu panel Rueda: precios e historial de tu lista, Perú (BCRP) y EE. UU. (FRED). Solo lectura.</p>
+  return `<p>${who} quiere leer los datos de tu panel Rueda: precios e historial de tu lista, Perú (BCRP) y EE. UU. (FRED). Solo lectura, salvo el resumen del día, que puede publicar en el panel.</p>
 <p>El acceso se enviará a <strong>${escapeHtml(d.redirectHost)}</strong>.</p>${loopback}
 <p class="muted">Si permites, se abrirá el inicio de sesión de tu app Rueda para confirmar tu correo.</p>
 <form method="post"><input type="hidden" name="handle" value="${escapeHtml(handle)}">

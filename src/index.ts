@@ -20,10 +20,12 @@ import {
   mockPeruMarkets,
   mockPriceSource,
   mockQuotes,
+  mockSummary,
   mockSymbolNews,
   mockUsa,
 } from './mock';
 import { companyData } from './services/company';
+import { readSummaries } from './services/summary';
 import { portfolioXray, type ProfileOf } from './services/xray';
 import { factorGrades } from './services/factors';
 import { financials } from './services/financials';
@@ -220,6 +222,11 @@ async function route(req: Request, env: Env, url: URL, role: Role, email: string
       // Titulares públicos (RSS): también para los amigos.
       case '/api/news':
         return json(mock ? mockNews(now) : await marketNews(deps));
+
+      // Resumen del día: lo publica cada mañana la tarea programada del dueño (conector, `publicar_resumen`) con
+      // titulares y datos públicos, así que lo ven todos. Solo se lee lo guardado.
+      case '/api/resumen':
+        return json(mock ? mockSummary(now) : await readSummaries(env.CACHE));
 
       // Titulares de un símbolo de la lista (la lista es del dueño).
       case '/api/news/symbol': {

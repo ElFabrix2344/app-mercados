@@ -58,6 +58,36 @@
 
   <div class="banner" id="banner" role="status" hidden></div>
 
+  <!-- Resumen del día: lo escribe Claude cada mañana (tarea programada del dueño) con titulares y datos públicos. Lo ven todos. -->
+  <section class="screen summary" id="summary" aria-labelledby="sum-h" hidden>
+    <div class="screen-head">
+      <h2 id="sum-h">Resumen del día</h2>
+      <span class="src" id="sum-date"></span>
+      <details class="help">
+        <summary aria-label="Cómo se hace el resumen">?</summary>
+        <div class="help-body">
+          <p>Lo escribe Claude cada mañana a las 7:00 (hora de Lima) con los titulares de «Noticias» y los datos públicos del BCRP y de FRED. No usa precios con licencia ni datos de nadie.</p>
+          <p>Es automático y puede equivocarse: revisa las fuentes. Las cifras de abajo no las escribe Claude: salen de los datos de Rueda.</p>
+        </div>
+      </details>
+    </div>
+    <h3 class="sum-title" id="sum-title"></h3>
+    <p class="sum-text" id="sum-text"></p>
+    <ul class="sum-points" id="sum-points" hidden></ul>
+    <ul class="sum-figs" id="sum-figs" aria-label="Cifras de Rueda" hidden></ul>
+    <div class="sum-foot">
+      <details class="sum-sources">
+        <summary id="sum-sources-label">Fuentes</summary>
+        <ol class="news" id="sum-sources-list"></ol>
+      </details>
+      <a class="sum-deeper" id="sum-deeper" href="https://claude.ai/new" target="_blank" rel="noopener noreferrer">Profundiza en Claude ↗</a>
+    </div>
+    <details class="sum-older" id="sum-older" hidden>
+      <summary>Días anteriores</summary>
+      <div id="sum-older-list"></div>
+    </details>
+  </section>
+
   <!-- Vista de amigos: la licencia gratis de Twelve Data no permite mostrar sus precios a otras personas. -->
   <section class="screen friend-only" aria-labelledby="pub-h">
     <div class="screen-head"><h2 id="pub-h">Qué puedes hacer en Rueda</h2></div>

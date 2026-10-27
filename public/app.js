@@ -27,6 +27,7 @@
     peruMarkets: null, // cobre, oro, BVL y reservas (también van en la cinta)
     portfolio: null, // respuesta de /api/portfolio (cartera simulada, solo el dueño)
     news: null, // respuesta de /api/news (titulares generales)
+    summary: null, // respuesta de /api/resumen (resumen del día, lo ven todos)
     newsGroup: 'todas',
     newsShown: 6,
     symbolNews: new Map(), // símbolo → { items } | { error } | 'cargando' (se piden al abrir la ficha)
@@ -770,6 +771,23 @@
   /** Variación del último dato contra el anterior de una serie [fecha, valor][]. */
   const lastChange = (pts) => (pts?.length >= 2 ? pts.at(-1)[1] / pts.at(-2)[1] - 1 : null);
 
+  /** Datos públicos del BCRP y de FRED: van en la cinta y en el resumen del día, también para los amigos. */
+  function publicFigures() {
+    const items = [];
+    const fx = state.peruData?.fx;
+    if (fx?.length) items.push({ sym: 'Dólar BCRP', value: nf(4).format(fx.at(-1).sell), ch: fx.length > 1 ? fx.at(-1).sell / fx.at(-2).sell - 1 : null, date: fx.at(-1).date });
+    const pm = state.peruMarkets;
+    for (const [key, label] of [['copper', 'Cobre'], ['gold', 'Oro'], ['bvl', 'BVL']]) {
+      const pts = pm?.[key]?.points;
+      if (pts?.length) items.push({ sym: label, value: nf(2).format(pts.at(-1)[1]), ch: lastChange(pts), date: pts.at(-1)[0] });
+    }
+    const pe10 = pm?.bond10pen?.points;
+    if (pe10?.length) items.push({ sym: 'Bono Perú 10A', value: rate(pe10.at(-1)[1]), pp: pe10.length > 1 ? pe10.at(-1)[1] - pe10.at(-2)[1] : null, date: pe10.at(-1)[0] });
+    const t10 = state.usaData?.treasury10y;
+    if (t10?.length) items.push({ sym: 'Bono EE. UU. 10A', value: rate(t10.at(-1).value), pp: t10.length > 1 ? t10.at(-1).value - t10.at(-2).value : null, date: t10.at(-1).date });
+    return items;
+  }
+
   /**
    * Lo que pasa por la cinta: la lista del dueño (precios ya guardados, sin gastar créditos) y, para todos,
    * los datos públicos del BCRP y de FRED. Los amigos no tienen lista: la licencia de Twelve Data no lo permite.
@@ -780,18 +798,14 @@
       const q = quoteFor(sym);
       if (q?.price != null) items.push({ sym, value: fmtPrice(q.price), ch: q.changePct != null ? q.changePct / 100 : null });
     }
-    const fx = state.peruData?.fx;
-    if (fx?.length) items.push({ sym: 'Dólar BCRP', value: nf(4).format(fx.at(-1).sell), ch: fx.length > 1 ? fx.at(-1).sell / fx.at(-2).sell - 1 : null });
-    const pm = state.peruMarkets;
-    for (const [key, label] of [['copper', 'Cobre'], ['gold', 'Oro'], ['bvl', 'BVL']]) {
-      const pts = pm?.[key]?.points;
-      if (pts?.length) items.push({ sym: label, value: nf(2).format(pts.at(-1)[1]), ch: lastChange(pts) });
-    }
-    const pe10 = pm?.bond10pen?.points;
-    if (pe10?.length) items.push({ sym: 'Bono Perú 10A', value: rate(pe10.at(-1)[1]), pp: pe10.length > 1 ? pe10.at(-1)[1] - pe10.at(-2)[1] : null });
-    const t10 = state.usaData?.treasury10y;
-    if (t10?.length) items.push({ sym: 'Bono EE. UU. 10A', value: rate(t10.at(-1).value), pp: t10.length > 1 ? t10.at(-1).value - t10.at(-2).value : null });
-    return items;
+    return [...items, ...publicFigures()];
+  }
+
+  /** Variación de un dato de la cinta o del resumen: en %, o en puntos porcentuales si es una tasa. */
+  function figureChange(it) {
+    const d = it.pp ?? it.ch;
+    if (d == null) return null;
+    return it.pp != null ? `${arrowOf(d)} ${sign(d)}${nf(2).format(Math.abs(d))} pp` : `${arrowOf(d)} ${pctFrac(d, 2)}`;
   }
 
   /** ¿La cinta se mueve? Lo que elegiste en este navegador o, si no, lo que pide el sistema («menos movimiento» = quieta). */
@@ -811,6 +825,8 @@
   }
 
   function renderTape() {
+    // Las cifras del resumen del día salen de los mismos datos: llegan cuando llegan los de la cinta.
+    renderSummaryFigures();
     const items = tapeItems();
     $('tape').hidden = !items.length;
     if (!items.length) return;
@@ -819,9 +835,8 @@
         'span',
         { class: 'tape-half' },
         ...items.map((it) => {
-          const d = it.pp ?? it.ch;
-          const text = d == null ? null : it.pp != null ? `${arrowOf(d)} ${sign(d)}${nf(2).format(Math.abs(d))} pp` : `${arrowOf(d)} ${pctFrac(d, 2)}`;
-          return h('span', { class: 'tape-item' }, h('span', { class: 'tape-sym' }, it.sym), it.value, text ? h('span', { class: trend(d) }, text) : null);
+          const text = figureChange(it);
+          return h('span', { class: 'tape-item' }, h('span', { class: 'tape-sym' }, it.sym), it.value, text ? h('span', { class: trend(it.pp ?? it.ch) }, text) : null);
         }),
       );
     const track = $('tape-track');
@@ -1779,6 +1794,81 @@
       $('news-list').replaceChildren(h('li', { class: 'err' }, e.message));
     }
     renderNews();
+  }
+
+  // ---------- resumen del día ----------
+  /** Lo escribe Claude cada mañana (tarea programada del dueño, con el conector) con titulares y datos públicos: lo ven todos. */
+  async function loadSummary() {
+    try {
+      state.summary = await api('/api/resumen');
+    } catch {
+      state.summary = null; // sin resumen la sección queda oculta: no hace falta avisar
+    }
+    renderSummary();
+  }
+
+  /** Abre Claude con la pregunta ya escrita, con la cuenta de quien lo usa: a Rueda no le cuesta nada. */
+  function claudeLink(s) {
+    const q = `Rueda resumió así el mercado del ${fDayYear.format(day(s.date))}: «${s.title}». ${s.text} Explícame con más detalle estas noticias y su contexto.`;
+    return `https://claude.ai/new?q=${encodeURIComponent(q)}`;
+  }
+
+  /** Fuentes de un día anterior: el nombre del medio con su enlace, separados por comas. */
+  const sourceLinks = (sources) =>
+    sources.flatMap((x, i) => [
+      i ? ', ' : null,
+      /^https?:\/\//.test(x.url) ? h('a', { href: x.url, target: '_blank', rel: 'noopener noreferrer', title: x.title }, x.source) : x.source,
+    ]);
+
+  function olderSummary(s) {
+    return h(
+      'article',
+      { class: 'sum-old' },
+      h('h4', {}, h('span', { class: 'sum-old-date' }, fDay.format(day(s.date))), s.title),
+      h('p', { class: 'sum-text' }, s.text),
+      s.points?.length ? h('ul', { class: 'sum-points' }, ...s.points.map((p) => h('li', {}, p))) : null,
+      s.sources?.length ? h('p', { class: 'hint' }, 'Fuentes: ', ...sourceLinks(s.sources)) : null,
+    );
+  }
+
+  function renderSummary() {
+    const items = state.summary?.items ?? [];
+    $('summary').hidden = !items.length;
+    if (!items.length) return;
+    const [s, ...older] = items;
+    const at = fTime.format(new Date(s.publishedAt));
+    const when = s.date === limaDate(new Date()) ? `Hoy · ${at}` : s.date === limaDate(new Date(Date.now() - 86_400_000)) ? `Ayer · ${at}` : fDayYear.format(day(s.date));
+    $('sum-date').textContent = when;
+    $('sum-title').textContent = s.title;
+    $('sum-text').textContent = s.text;
+    const pts = $('sum-points');
+    pts.hidden = !s.points?.length;
+    pts.replaceChildren(...(s.points ?? []).map((p) => h('li', {}, p)));
+    $('sum-sources-label').textContent = `Fuentes (${s.sources.length})`;
+    $('sum-sources-list').replaceChildren(...s.sources.map((x) => newsItem({ title: x.title, url: x.url, source: x.source, publishedAt: null })));
+    $('sum-deeper').href = claudeLink(s);
+    $('sum-older').hidden = !older.length;
+    $('sum-older-list').replaceChildren(...older.map(olderSummary));
+    renderSummaryFigures();
+  }
+
+  /** Las cifras de la tarjeta no las escribe Claude: son los datos públicos de Rueda (los mismos de la cinta). */
+  function renderSummaryFigures() {
+    const ul = $('sum-figs');
+    const items = state.summary?.items?.length ? publicFigures() : [];
+    ul.hidden = !items.length;
+    ul.replaceChildren(
+      ...items.map((it) => {
+        const text = figureChange(it);
+        return h(
+          'li',
+          { title: it.date ? `Último dato: ${fDayYear.format(day(it.date))}` : null },
+          h('span', { class: 'sum-fig-sym' }, it.sym),
+          ` ${it.value}`,
+          text ? h('span', { class: trend(it.pp ?? it.ch) }, ` ${text}`) : null,
+        );
+      }),
+    );
   }
 
   /** Titulares de una acción: se piden una vez por sesión, al abrir su ficha. */
@@ -3845,12 +3935,15 @@
     });
     const savedGroup = prefs.get('mercados.noticias', 'todas');
     if (NEWS_GROUPS.some(([id]) => id === savedGroup)) state.newsGroup = savedGroup;
-    // Noticias para todos (son públicas); el servidor las renueva cada 30 minutos.
+    // Noticias y resumen del día para todos (son públicos); el servidor renueva las noticias cada 30 minutos.
     loadNews();
+    loadSummary();
     // Resultados de empresas (SEC): públicos, también para los amigos.
     setupFinSection();
     setInterval(() => {
-      if (document.visibilityState === 'visible') loadNews();
+      if (document.visibilityState !== 'visible') return;
+      loadNews();
+      loadSummary();
     }, 30 * 60_000);
 
     // Amigos: solo datos públicos (BCRP y FRED). El servidor igual les niega los precios de Twelve Data.

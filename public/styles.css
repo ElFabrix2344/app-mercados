@@ -315,6 +315,24 @@ a.news-title:hover{color:var(--accent);text-decoration:underline}
 }
 .news-foot{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-top:8px}
 .news-foot .hint{margin:0}
+
+/* ---------- resumen del día ---------- */
+/* El titular va en Plex Mono (es un título); el párrafo y los puntos, en Plex Sans, como las demás frases. */
+.sum-title{margin:0 0 6px;font-size:1.05rem;line-height:1.4;color:var(--ink)}
+.sum-text{margin:0;font-family:var(--f-sans);line-height:1.6;color:var(--ink)}
+.sum-points{margin:8px 0 0;padding-left:1.2rem;display:flex;flex-direction:column;gap:4px;font-family:var(--f-sans);line-height:1.5}
+.sum-figs{list-style:none;margin:10px 0 0;padding:8px 0 0;border-top:1px solid var(--hair);display:flex;flex-wrap:wrap;gap:4px 16px;font-size:.85rem}
+.sum-fig-sym{color:var(--muted);text-transform:uppercase;letter-spacing:.04em}
+.sum-foot{display:flex;flex-wrap:wrap;align-items:baseline;justify-content:space-between;gap:8px 16px;margin-top:10px}
+.sum-sources > summary,.sum-older > summary{cursor:pointer;font-family:var(--f-sans);font-size:.85rem;color:var(--muted)}
+.sum-sources > summary:hover,.sum-older > summary:hover{color:var(--accent)}
+.sum-sources[open]{flex-basis:100%}
+.sum-sources .news{margin-top:6px}
+.sum-deeper{font-family:var(--f-sans);font-size:.85rem}
+.sum-older{margin-top:10px;border-top:1px solid var(--hair);padding-top:8px}
+.sum-old{margin-top:12px}
+.sum-old h4{margin:0 0 4px;font-size:.92rem;font-weight:500;line-height:1.4}
+.sum-old-date{color:var(--muted);margin-right:8px}
 /* Ficha: bloques plegables (estacionalidad y estrategia). */
 .d-tool{margin-top:12px;border-top:1px solid var(--line);padding-top:8px}
 .d-tool > summary{cursor:pointer;color:var(--accent);font-family:var(--f-sans)}

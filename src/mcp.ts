@@ -35,6 +35,7 @@ import { forecastView } from './services/forecasts';
 import { companyCalendar, epsSurprise, MOMENT, quarterLabel } from './services/earnings';
 import { marketNews, newsQuery, quoteName, symbolNews, type NewsItem } from './services/news';
 import { kvSource, readTrades, valuePortfolio } from './services/portfolio';
+import { buildSummary, publishSummary, SUMMARY_DAYS, SUMMARY_LIMITS } from './services/summary';
 import {
   COMPARE_MAX,
   DAILY_CREDIT_CAP,
@@ -78,7 +79,7 @@ const INSTRUCTIONS =
   'Datos del panel personal «Rueda» del usuario: precios, historial con indicadores técnicos y comparación de los ' +
   'símbolos de su lista de seguimiento y de su lista diaria (Twelve Data), datos de sus empresas (Finnhub), resultados ' +
   'anuales de cualquier empresa que reporte a la SEC, Perú (BCRP), EE. UU. (FRED), el calendario económico y el juego de ' +
-  'pronósticos del grupo. Los datos pueden venir de la ' +
+  'pronósticos del grupo. Con publicar_resumen se guarda el resumen del día que ven todos en el panel. Los datos pueden venir de la ' +
   'caché del panel: al responder, di ' +
   'la hora de «actualizado» y avisa si «dato_guardado» es true. Para precios de símbolos fuera de la lista usa otra fuente (por ' +
   'ejemplo, el conector de Twelve Data).';
@@ -99,12 +100,14 @@ export function handleMcp(req: Request, c: McpContext): Promise<Response> {
 
 export function buildServer(c: McpContext): McpServer {
   const owner = c.role === 'owner';
-  const server = new McpServer({ name: 'rueda', version: '0.12.0' }, { instructions: owner ? INSTRUCTIONS : INSTRUCTIONS_FRIEND });
+  const server = new McpServer({ name: 'rueda', version: '0.13.0' }, { instructions: owner ? INSTRUCTIONS : INSTRUCTIONS_FRIEND });
   const when: When = (iso) => localTime(iso, c.timeZone);
 
   // Precios e historial (Twelve Data): solo para el dueño, por la licencia del plan gratis.
   if (owner) registerMarketTools(server, c, when);
   registerPublicTools(server, c, when);
+  // La única herramienta que escribe: el resumen del día que publica la tarea programada del dueño.
+  if (owner) registerSummaryTool(server, c);
   // Sin fechas cargadas, una herramienta de calendario vacía solo confundiría a Claude.
   if (EVENTS.length) registerCalendarTool(server, c);
   return server;
@@ -761,6 +764,67 @@ function registerPublicTools(server: McpServer, c: McpContext, when: When): void
       }),
   );
 
+}
+
+/** `publicar_resumen`: solo el dueño (su tarea programada de cada mañana). Lo publicado lo ven también los amigos. */
+function registerSummaryTool(server: McpServer, c: McpContext): void {
+  const { deps } = c;
+  const L = SUMMARY_LIMITS;
+  server.registerTool(
+    'publicar_resumen',
+    {
+      title: 'Publicar el resumen del día en Rueda',
+      description:
+        `Guarda el «Resumen del día» que se ve arriba en el panel Rueda, para el dueño y para sus amigos. Reemplaza el de ` +
+        `hoy si ya había (la fecha la pone Rueda: hoy, hora de Lima) y se guardan los últimos ${SUMMARY_DAYS} días. Reglas: ` +
+        '(1) usa solo información pública: los titulares generales de la herramienta noticias (sin símbolo), peru_bcrp, ' +
+        'eeuu_fred y calendario. Nunca uses precios, historial, comparar, cartera, lista_diaria ni empresa: sus licencias no ' +
+        'permiten mostrar esos datos a otras personas. (2) No inventes cifras: usa solo las que salen de esas herramientas o ' +
+        'de los titulares. (3) Texto plano en español, sin Markdown. (4) En fuentes van los enlaces de los titulares que ' +
+        'usaste, tal como los da noticias (o de una fuente oficial: BCRP, INEI, SMV, Fed, BLS, FRED o SEC); otros dominios ' +
+        'se rechazan.',
+      inputSchema: z.object({
+        titulo: z.string().max(L.title[1]).describe(`Titular del día, como el de un diario (${L.title[0]} a ${L.title[1]} caracteres).`),
+        texto: z
+          .string()
+          .max(L.text[1])
+          .describe(`Un párrafo de 3 a 6 frases con lo más importante de ayer y lo que viene hoy (${L.text[0]} a ${L.text[1]} caracteres).`),
+        puntos: z
+          .array(z.string().max(L.point[1]))
+          .max(L.points)
+          .default([])
+          .describe(`Opcional: hasta ${L.points} puntos cortos (por ejemplo Perú, EE. UU. y la agenda de hoy), sin viñetas.`),
+        fuentes: z
+          .array(z.object({ enlace: z.string().max(600).describe('Enlace del titular.'), titular: z.string().max(L.sourceTitle).optional().describe('Titular de la nota.') }))
+          .min(1)
+          .max(L.sources)
+          .describe(`De 1 a ${L.sources} fuentes: los titulares que usaste.`),
+      }),
+      annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false },
+    },
+    ({ titulo, texto, puntos, fuentes }) =>
+      run(async () => {
+        // Los titulares de la caché dan el título y el medio de cada enlace. Si no se pueden leer, se aceptan igual los
+        // enlaces de los medios y fuentes oficiales conocidos.
+        let news: NewsItem[] = [];
+        try {
+          news = (c.mock ? mockNews(deps.now) : await marketNews(deps)).data.items;
+        } catch (e) {
+          if (!(e instanceof ApiError)) throw e;
+        }
+        const draft = { title: titulo, text: texto, points: puntos, sources: fuentes.map((f) => ({ url: f.enlace, title: f.titular })) };
+        const s = buildSummary(draft, news, deps.now, c.timeZone);
+        const store = await publishSummary(deps.kv, s);
+        return {
+          publicado: true,
+          fecha: s.date,
+          titulo: s.title,
+          fuentes: s.sources.map((x) => ({ medio: x.source, titular: x.title })),
+          dias_guardados: store.items.length,
+          nota: 'Ya se ve arriba en el panel Rueda, también para los amigos.',
+        };
+      }),
+  );
 }
 
 function registerCalendarTool(server: McpServer, c: McpContext): void {

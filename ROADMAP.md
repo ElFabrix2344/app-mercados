@@ -292,6 +292,45 @@ Entre paréntesis, la opinión de Claude: **Sí**, Tal vez o No.
 
 **Para revisar:** la página de precios de Twelve Data describe el plan gratis como «Internal non-display usage» y pone «Internal display data access» recién en Grow. En cambio, sus términos permiten mostrar los datos a los «Authorized Users» (§2.2 b). Para un panel personal es zona gris: conviene preguntarles por correo.
 
+## 8g. Resumen del día — 27 de octubre
+
+El usuario lo pidió al ver el «Resumen del mercado» de Google Finance. Se eligió usar su plan Max de Claude con una **tarea programada en la nube**, que escribe el resumen cada mañana y lo publica con el conector. Se descartaron dos opciones:
+- **La API de Claude:** se cobra aparte, unos US$ 2 al mes con Opus 5.5.
+- **La IA gratis de Cloudflare:** gratis, pero con redacción menos pulida.
+
+Usar la cuenta de Max desde el Worker va contra los términos de Claude.
+
+- [x] Herramienta `publicar_resumen` en el conector (solo el dueño), `/api/resumen` (público) y la tarjeta «Resumen del día» arriba del panel. Muestra las cifras de Rueda, las fuentes, «Profundiza en Claude» y los días anteriores.
+- [ ] **Crear la tarea programada** en claude.ai:
+  - todos los días a las 7:00 de Lima (cron `0 12 * * *` en UTC);
+  - **solo con el conector de Rueda** (sin Calendar, Drive, TickTick ni los demás);
+  - probarla con «Run now».
+- [ ] Ver el primer resumen real a la mañana siguiente.
+
+Prompt de la tarea (si cambia aquí, hay que cambiarlo también en claude.ai):
+
+> Escribe el «Resumen del día» del panel Rueda y publícalo. Usa solo el conector de Rueda.
+>
+> 1. Lee los datos:
+>    - los titulares, con noticias (sin símbolo, cantidad 30);
+>    - los datos del día, con peru_bcrp y eeuu_fred;
+>    - la agenda, con calendario (dias 7).
+> 2. Escribe en español para un grupo de estudiantes de Lima que invierten desde el Perú en acciones y ETF de EE. UU.:
+>    - titulo: un titular como de diario, de hasta 120 caracteres;
+>    - texto: un párrafo de 3 a 6 frases con lo más importante de las últimas 24 horas (Perú, EE. UU. y el mundo) y lo que viene hoy según el calendario;
+>    - puntos: si ayudan, hasta 3 puntos cortos.
+>
+>    Si es fin de semana o feriado, resume lo que hubo y lo que viene en la semana.
+> 3. Reglas:
+>    - Usa solo lo que dicen esas herramientas.
+>    - No inventes cifras ni causas que no estén en los titulares o en los datos.
+>    - No uses precios, historial, comparar, cartera, lista_diaria ni empresa: el resumen lo ven otras personas.
+>    - Texto plano, sin Markdown.
+>    - Sin recomendaciones de compra o venta.
+> 4. Publica con publicar_resumen. En fuentes pon los enlaces de 3 a 6 titulares que usaste, tal como los dio noticias. Si publicar_resumen rechaza algo, corrígelo y vuelve a intentarlo.
+>
+> No hagas nada más.
+
 ## 9. Ideas para después
 
 Las funciones posibles, con quién las tiene y de dónde saldrían los datos, están en la sección 8f: alertas, gráfico del día, reportes oficiales, dividendos y precios para los amigos. Además:
