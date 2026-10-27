@@ -148,6 +148,7 @@ Hapi no tiene API pública ni exporta CSV: solo PDF (estado de cuenta mensual qu
 - [x] **Enlace «Ver en Hapi»** en la ficha y en «Resultados de empresas» (página pública; Hapi no tiene enlaces que abran la app).
 - [x] **Leer el estado de cuenta mensual (PDF)** en el navegador con pdf.js: periodo, valor total, posiciones y movimientos, con vista previa. Probado con el estado real de setiembre de 2026 del usuario (11 posiciones y 7 dividendos, cuadran con los totales).
 - [x] **Valor de la cuenta con los precios del último estado de cuenta** (26 oct), para los que no reciben precios en vivo: cada importación guarda los precios de cierre en la cuenta cifrada. Reimportar el mismo mes ya no repite los movimientos del saldo inicial.
+- [x] **iPad** (26 oct): un amigo no pudo importar su estado de cuenta en iPad. Causa más probable: pdf.js 6 pide Safari 18 y no trae el reemplazo de `Promise.withResolvers`; se volvió a pdf.js 4.10.38 (Safari 16.4+, mismo resultado con el estado real), con aviso claro para equipos más viejos y la indicación de guardar el PDF en Archivos en iPhone o iPad. Falta que el amigo lo confirme.
 - [ ] Ver en un estado real cómo vienen las compras, ventas y depósitos (setiembre solo traía dividendos) y ajustar el lector si hace falta.
 - [ ] Idea: reporte anual para la declaración de impuestos (ganancias realizadas y dividendos en soles, con el tipo de cambio de cada fecha). Solo cálculos: el tratamiento tributario lo decide un contador.
 

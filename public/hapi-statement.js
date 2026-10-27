@@ -404,12 +404,21 @@ export async function readPdfItems(data, pdfjs) {
   }
 }
 
-/** La copia de pdf.js que sirve la propia app (en una variable: vitest no debe intentar cargarla). */
+/**
+ * La copia de pdf.js que sirve la propia app (en una variable: vitest no debe intentar cargarla). Es la 4.10.38
+ * (legacy): funciona desde Safari 16.4 (iPadOS 16.4); las 5 y 6 piden Safari 18 y fallaban en iPads con iPadOS 17.
+ */
 const PDFJS = '/vendor/pdfjs/pdf.min.mjs';
 
 /** En el navegador: lee el archivo con pdf.js. */
 export async function readStatementFile(file) {
-  const pdfjs = await import(/* @vite-ignore */ PDFJS);
+  let pdfjs;
+  try {
+    pdfjs = await import(/* @vite-ignore */ PDFJS);
+  } catch {
+    // Un navegador demasiado viejo ni siquiera puede leer el código de pdf.js.
+    throw new Error('este navegador es demasiado antiguo para leer PDF. En iPhone o iPad hace falta iOS o iPadOS 16.4 o más nuevo; desde una computadora funciona.');
+  }
   pdfjs.GlobalWorkerOptions.workerSrc = '/vendor/pdfjs/pdf.worker.min.mjs';
   return parseStatement(await readPdfItems(new Uint8Array(await file.arrayBuffer()), pdfjs));
 }

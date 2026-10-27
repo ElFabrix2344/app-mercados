@@ -2980,6 +2980,9 @@
       changeHapi((core, a) => core.setSnapshot(a, null, today()));
     });
     $('hp-file').addEventListener('change', importHapiFile);
+    // En iPhone y iPad el selector de archivos solo ve la app Archivos: el PDF de Hapi tiene que estar guardado ahí.
+    const ios = /iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+    $('hp-ios-hint').hidden = !ios;
     $('hp-lock-btn').addEventListener('click', lockHapi);
     $('hp-pass-form').addEventListener('submit', changePassphrase);
     $('hp-snap-date').max = today();
