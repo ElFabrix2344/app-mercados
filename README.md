@@ -141,7 +141,7 @@ Vive en un **Worker aparte, `mercados-mcp`** (`src/mcp-worker.ts`, `wrangler.mcp
 | `pronosticos` | El juego de pronósticos del grupo: preguntas abiertas (con el pronóstico propio), cerradas, resueltas con puntos y ranking. Solo lectura |
 | `noticias` | Titulares generales por grupo y, para el dueño, los de un símbolo de la lista, con medio, hora, enlace y resumen corto |
 | `peru_bcrp` | Dólar interbancario, tasa de referencia, inflación de Lima y, en `mercados`, cobre, oro, reservas y BVL con sus variaciones y cierres mensuales (BCRP) |
-| `calendario` | Próximas decisiones de tasas (BCRP, Fed) y publicaciones de inflación (INEI, BLS). Para el dueño, también los resultados de su lista (Finnhub): fecha, momento, BPA e ingresos esperados y el último resultado del mes con la sorpresa. Aparece mientras haya fechas cargadas |
+| `calendario` | Próximas decisiones de tasas (BCRP, Fed) y publicaciones de inflación (INEI, BLS). Para el dueño, también los resultados de su lista (Finnhub): fecha, momento, BPA e ingresos esperados y el último resultado del mes con la sorpresa. Con `publico: true`, solo las fechas oficiales (lo usa la tarea del resumen del día, que ven los amigos). Aparece mientras haya fechas cargadas |
 | `eeuu_fred` | Bono del Tesoro a 10 años, tasa de la Fed e inflación (FRED) |
 | `resultados_anuales` | Ingresos, utilidad operativa, utilidad neta y margen neto por año fiscal de cualquier acción que reporte a la SEC (también para los amigos) |
 | `publicar_resumen` | Guarda el resumen del día que ven todos en el panel (solo el dueño; la usa su tarea programada de cada mañana). Reemplaza el de hoy y rechaza enlaces de dominios desconocidos |

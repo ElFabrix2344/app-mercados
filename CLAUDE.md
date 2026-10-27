@@ -29,7 +29,7 @@ App de mercados (Cloudflare Worker + panel web + conector MCP para Claude). El R
 - Tipografía: números, títulos y datos en IBM Plex Mono; frases, etiquetas y ayudas en IBM Plex Sans (`--f-sans`). Nada por debajo de 12 px. Las explicaciones de uso van en el «?» de cada sección, no como texto suelto.
 - El calendario económico (`lib/calendar.ts`) se carga a mano, como los feriados de la NYSE: cada fecha se verifica en su fuente oficial. Sin fechas, el panel oculta la sección y el conector no ofrece `calendario`.
 - **Resumen del día** (`services/summary.ts`): lo publica una tarea programada del dueño, en la nube de Anthropic y con su plan Max, por la herramienta `publicar_resumen` del conector. **El Worker no llama a ninguna IA ni guarda claves de Anthropic:** los términos de Claude no permiten usar la cuenta de Max desde un programa propio, y la API se cobra aparte.
-  - Lo ven los amigos, así que la tarea solo usa titulares y datos públicos, nunca precios de Twelve Data ni datos de Finnhub.
+  - Lo ven los amigos, así que la tarea solo usa titulares y datos públicos, nunca precios de Twelve Data ni datos de Finnhub. Por eso pide `calendario` con `publico: true`: sin ese parámetro el calendario del dueño trae los resultados de empresas de Finnhub, y en la primera prueba se coló uno.
   - `publicar_resumen` es la única herramienta que escribe: solo para el dueño, con largos acotados y enlaces solo de los medios de las noticias o de fuentes oficiales.
   - Las cifras de la tarjeta las pone el panel con sus datos (`publicFigures`, lo mismo que la cinta), no Claude.
   - Si cambias las reglas, actualiza la descripción de la herramienta y el prompt de la tarea (en ROADMAP.md, sección 8g).

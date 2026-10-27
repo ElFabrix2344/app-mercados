@@ -100,7 +100,7 @@ export function handleMcp(req: Request, c: McpContext): Promise<Response> {
 
 export function buildServer(c: McpContext): McpServer {
   const owner = c.role === 'owner';
-  const server = new McpServer({ name: 'rueda', version: '0.13.0' }, { instructions: owner ? INSTRUCTIONS : INSTRUCTIONS_FRIEND });
+  const server = new McpServer({ name: 'rueda', version: '0.13.1' }, { instructions: owner ? INSTRUCTIONS : INSTRUCTIONS_FRIEND });
   const when: When = (iso) => localTime(iso, c.timeZone);
 
   // Precios e historial (Twelve Data): solo para el dueño, por la licencia del plan gratis.
@@ -778,8 +778,9 @@ function registerSummaryTool(server: McpServer, c: McpContext): void {
         `Guarda el «Resumen del día» que se ve arriba en el panel Rueda, para el dueño y para sus amigos. Reemplaza el de ` +
         `hoy si ya había (la fecha la pone Rueda: hoy, hora de Lima) y se guardan los últimos ${SUMMARY_DAYS} días. Reglas: ` +
         '(1) usa solo información pública: los titulares generales de la herramienta noticias (sin símbolo), peru_bcrp, ' +
-        'eeuu_fred y calendario. Nunca uses precios, historial, comparar, cartera, lista_diaria ni empresa: sus licencias no ' +
-        'permiten mostrar esos datos a otras personas. (2) No inventes cifras: usa solo las que salen de esas herramientas o ' +
+        'eeuu_fred y calendario con publico: true. Nunca uses precios, historial, comparar, cartera, lista_diaria, empresa ' +
+        'ni los resultados de empresas del calendario (Finnhub): sus licencias no permiten mostrar esos datos a otras ' +
+        'personas. (2) No inventes cifras: usa solo las que salen de esas herramientas o ' +
         'de los titulares. (3) Texto plano en español, sin Markdown. (4) En fuentes van los enlaces de los titulares que ' +
         'usaste, tal como los da noticias (o de una fuente oficial: BCRP, INEI, SMV, Fed, BLS, FRED o SEC); otros dominios ' +
         'se rechazan.',
@@ -841,18 +842,24 @@ function registerCalendarTool(server: McpServer, c: McpContext): void {
           ? ' También trae las fechas de resultados trimestrales de las acciones de la lista (Finnhub, solo para el dueño), ' +
             'con el momento del día y el BPA e ingresos que esperan los analistas (ajustados, no GAAP, en la moneda en que ' +
             'reporta cada empresa; el trimestre es el fiscal). En «resultados_empresas.recientes» va el último resultado ' +
-            'del último mes de cada empresa, con lo esperado, lo real y la sorpresa del BPA.'
+            'del último mes de cada empresa, con lo esperado, lo real y la sorpresa del BPA. Con publico: true trae solo las ' +
+            'fechas oficiales, sin nada de Finnhub: úsalo para lo que verán otras personas, como el resumen del día.'
           : ''),
       inputSchema: z.object({
         dias: z.number().int().min(1).max(366).default(60).describe('Cuántos días hacia adelante (por defecto 60).'),
+        publico: z
+          .boolean()
+          .default(false)
+          .describe('true: solo las fechas oficiales (BCRP, Fed, INEI, BLS), sin los resultados de empresas de Finnhub, que no se pueden mostrar a otras personas.'),
       }),
       annotations: { readOnlyHint: true, openWorldHint: owner },
     },
-    ({ dias }) =>
+    ({ dias, publico }) =>
       run(async () => {
         const { deps } = c;
         let companies = null;
-        if (owner) {
+        // Los resultados de empresas son de Finnhub: solo para el dueño y nunca para algo que verán otros.
+        if (owner && !publico) {
           const list = await knownSymbols(deps.kv);
           const today = isoDate(deps.now, c.timeZone);
           companies = c.mock ? mockCompanyCalendar(list, deps.now, today) : await companyCalendar(deps, list, today);
@@ -869,7 +876,7 @@ function registerCalendarTool(server: McpServer, c: McpContext): void {
             ...(e.company ? releaseOut(e.company) : {}),
           })),
           cobertura: CALENDAR_UNTIL,
-          fuentes: Object.fromEntries(Object.entries(sourcesFor(owner)).map(([k, s]) => [k, s.url])),
+          fuentes: Object.fromEntries(Object.entries(sourcesFor(owner && !publico)).map(([k, s]) => [k, s.url])),
           ...(companies
             ? {
                 resultados_empresas: companies.enabled

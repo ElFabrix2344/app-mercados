@@ -332,6 +332,15 @@ describe('herramienta calendario', () => {
     expect(r.data.resultados_empresas).toMatchObject({ activo: false });
     expect(r.data.eventos.some((e: { simbolo?: string }) => e.simbolo)).toBe(false);
   });
+
+  it('con publico: true el dueño recibe solo las fechas oficiales, sin Finnhub (para el resumen del día)', async () => {
+    const { f, calls } = fakeFetch(() => ({ body: { earningsCalendar: [{ symbol: 'BAP', date: '2026-11-09', hour: 'amc', quarter: 3, year: 2026, epsEstimate: 5.1 }] } }));
+    const r = await callTool(ctx({}, f, { twelveKey: 'k', fredKey: 'f', finnhubKey: 'h' }).c, 'calendario', { dias: 30, publico: true });
+    expect(calls).toHaveLength(0);
+    expect(r.data.eventos.map((e: { fecha: string }) => e.fecha)).toEqual(['2026-10-28', '2026-11-01', '2026-11-10', '2026-11-12']);
+    expect(r.data.resultados_empresas).toBeUndefined();
+    expect(r.data.fuentes.empresa).toBeUndefined();
+  });
 });
 
 describe('herramienta empresa', () => {
