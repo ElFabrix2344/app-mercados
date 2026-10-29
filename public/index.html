@@ -58,404 +58,415 @@
 
   <div class="banner" id="banner" role="status" hidden></div>
 
-  <!-- Resumen del día: lo escribe Claude cada mañana (tarea programada del dueño) con titulares y datos públicos. Lo ven todos. -->
-  <section class="screen summary" id="summary" aria-labelledby="sum-h" hidden>
-    <div class="screen-head">
-      <h2 id="sum-h">Resumen del día</h2>
-      <span class="src" id="sum-date"></span>
-      <details class="help">
-        <summary aria-label="Cómo se hace el resumen">?</summary>
-        <div class="help-body">
-          <p>Lo escribe Claude cada mañana a las 7:00 (hora de Lima) con los titulares de «Noticias» y los datos públicos del BCRP y de FRED. No usa precios con licencia ni datos de nadie.</p>
-          <p>Es automático y puede equivocarse: revisa las fuentes.</p>
+  <!-- Columnas en computadora: tus listas | lo principal | lo de hoy. En tablet, dos; en el celular, una (styles.css). -->
+  <div class="cols">
+    <div class="col col-left" id="col-left">
+      <!-- Vista de amigos: la licencia gratis de Twelve Data no permite mostrar sus precios a otras personas. -->
+      <section class="screen friend-only" id="welcome" aria-labelledby="pub-h">
+        <div class="screen-head">
+          <h2 id="pub-h">Qué puedes hacer en Rueda</h2>
+          <button type="button" id="welcome-close">Entendido</button>
         </div>
-      </details>
-    </div>
-    <h3 class="sum-title" id="sum-title"></h3>
-    <p class="sum-text" id="sum-text"></p>
-    <!-- Una sola línea chica: fuentes, días anteriores y «Profundiza». Lo que se abre aparece debajo. -->
-    <div class="sum-foot">
-      <details class="sum-more">
-        <summary id="sum-sources-label">Fuentes</summary>
-        <ol class="news" id="sum-sources-list"></ol>
-      </details>
-      <details class="sum-more" id="sum-older" hidden>
-        <summary>Días anteriores</summary>
-        <div id="sum-older-list"></div>
-      </details>
-      <a class="sum-deeper" id="sum-deeper" href="https://claude.ai/new" target="_blank" rel="noopener noreferrer">Profundiza en Claude ↗</a>
-    </div>
-  </section>
+        <ul class="welcome">
+          <li><strong>Pronósticos del grupo:</strong> elige tu nombre y pronostica las tasas, la inflación y el dólar. Los puntos y el ranking salen solos cuando se publica cada dato.</li>
+          <li><strong>Mi cuenta Hapi:</strong> importa tu estado de cuenta en PDF o anota tus operaciones. Se cifra con tu frase: nadie más la puede ver, tampoco el dueño de la app.</li>
+          <li><strong>Resultados de empresas:</strong> ingresos y utilidades de los últimos años de cualquier acción que reporte a la SEC.</li>
+          <li><strong>Perú y EE. UU.:</strong> dólar, tasas, inflación, cobre, oro, BVL, bonos y la curva del Tesoro, con el calendario de anuncios y las noticias.</li>
+          <li id="welcome-install"><strong>Como app:</strong> con «Instalar app», arriba, Rueda queda en tu celular o computadora con su ícono y se abre a pantalla completa.</li>
+        </ul>
+        <p class="hint">Los precios de las acciones no se pueden compartir: la licencia gratis de su proveedor no lo permite. <a href="/terminos.html">Términos y privacidad</a>.</p>
+      </section>
 
-  <!-- Vista de amigos: la licencia gratis de Twelve Data no permite mostrar sus precios a otras personas. -->
-  <section class="screen friend-only" id="welcome" aria-labelledby="pub-h">
-    <div class="screen-head">
-      <h2 id="pub-h">Qué puedes hacer en Rueda</h2>
-      <button type="button" id="welcome-close">Entendido</button>
-    </div>
-    <ul class="welcome">
-      <li><strong>Pronósticos del grupo:</strong> elige tu nombre y pronostica las tasas, la inflación y el dólar. Los puntos y el ranking salen solos cuando se publica cada dato.</li>
-      <li><strong>Mi cuenta Hapi:</strong> importa tu estado de cuenta en PDF o anota tus operaciones. Se cifra con tu frase: nadie más la puede ver, tampoco el dueño de la app.</li>
-      <li><strong>Resultados de empresas:</strong> ingresos y utilidades de los últimos años de cualquier acción que reporte a la SEC.</li>
-      <li><strong>Perú y EE. UU.:</strong> dólar, tasas, inflación, cobre, oro, BVL, bonos y la curva del Tesoro, con el calendario de anuncios y las noticias.</li>
-      <li id="welcome-install"><strong>Como app:</strong> con «Instalar app», arriba, Rueda queda en tu celular o computadora con su ícono y se abre a pantalla completa.</li>
-    </ul>
-    <p class="hint">Los precios de las acciones no se pueden compartir: la licencia gratis de su proveedor no lo permite. <a href="/terminos.html">Términos y privacidad</a>.</p>
-  </section>
-
-  <section class="screen owner-only" aria-labelledby="wl-h">
-    <div class="screen-head">
-      <h2 id="wl-h">Lista de seguimiento</h2>
-      <button type="button" id="edit-btn">Editar</button>
-    </div>
-    <form id="wl-form" class="wl-form" hidden>
-      <label for="wl-input">Símbolos, separados por comas (máximo 8)</label>
-      <div class="wl-row">
-        <input id="wl-input" name="symbols" autocomplete="off" autocapitalize="characters" spellcheck="false">
-        <button type="submit">Guardar</button>
-        <button type="button" id="wl-cancel">Cancelar</button>
-      </div>
-      <p class="hint">Plan gratis: acciones y ETF de EE. UU. (BAP, SPY), divisas (USD/PEN) y cripto (BTC/USD).</p>
-      <p class="err" id="wl-err" hidden></p>
-    </form>
-    <div class="wl-cols" aria-hidden="true">
-      <span>Símbolo</span><span>Nombre</span><span>Último</span><span>Var. día</span><span>1 año</span><span>1A %</span><span>Hora</span>
-    </div>
-    <div class="rows" id="tiles"></div>
-    <p class="hint" id="hist-note" hidden></p>
-  </section>
-
-  <section class="screen owner-only" id="eod" aria-labelledby="eod-h">
-    <div class="screen-head">
-      <h2 id="eod-h">Lista diaria</h2>
-      <span class="src">Cierres · Twelve Data</span>
-      <details class="help">
-        <summary aria-label="Cómo funciona la lista diaria">?</summary>
-        <div class="help-body">
-          <p>Hasta 20 símbolos más, aparte de tu lista de seguimiento. No tienen precio en vivo: se actualizan una vez al día, después del cierre de Nueva York (cripto y divisas, con el cierre del día anterior). Cada símbolo gasta 1 crédito al día.</p>
-          <p>Al tocar uno se abre su ficha, con el historial, los indicadores y los datos de la empresa.</p>
+      <section class="screen owner-only" id="watchlist" aria-labelledby="wl-h">
+        <div class="screen-head">
+          <h2 id="wl-h">Lista de seguimiento</h2>
+          <button type="button" id="edit-btn">Editar</button>
         </div>
-      </details>
-      <button type="button" id="eod-edit">Editar</button>
-    </div>
-    <form id="eod-form" class="wl-form" hidden>
-      <label for="eod-input">Símbolos, separados por comas (máximo 20)</label>
-      <div class="wl-row">
-        <input id="eod-input" name="symbols" autocomplete="off" autocapitalize="characters" spellcheck="false">
-        <button type="submit">Guardar</button>
-        <button type="button" id="eod-cancel">Cancelar</button>
-      </div>
-      <p class="hint">Los nuevos se cargan al guardar (hasta 4 a la vez) y el resto en los minutos siguientes. Los que ya están en tu lista de seguimiento no van aquí.</p>
-      <p class="err" id="eod-err" hidden></p>
-    </form>
-    <div class="wl-cols" id="eod-cols" aria-hidden="true" hidden>
-      <span>Símbolo</span><span>Nombre</span><span>Cierre</span><span>Var. día</span><span>1 año</span><span>1A %</span><span>Fecha</span>
-    </div>
-    <div class="rows" id="eod-rows"><p class="muted">Cargando…</p></div>
-  </section>
-
-  <section class="screen detail owner-only" id="detail" aria-labelledby="d-title" hidden>
-    <div class="screen-head">
-      <div>
-        <span class="eyebrow" id="d-sub"></span>
-        <h2 id="d-title"></h2>
-      </div>
-      <details class="help">
-        <summary aria-label="Cómo se usa la ficha">?</summary>
-        <div class="help-body">
-          <p>Arrastra sobre el gráfico para ver la variación entre dos días. En el celular, con dos dedos; con el teclado, Mayús + flechas.</p>
-          <p>Las medias móviles, las bandas de Bollinger, el RSI y el MACD se calculan con 5 años de historia. Un RSI sobre 70 suele leerse como sobrecompra; bajo 30, como sobreventa. El MACD es la media exponencial de 12 días menos la de 26; cuando cruza su señal (la media de 9 días del MACD) suele leerse como cambio de impulso.</p>
-          <p>Velas: cada una muestra la apertura, el máximo, el mínimo y el cierre del día. Hueca si cerró más arriba de lo que abrió; rellena si cerró más abajo. Se ven hasta 1 año.</p>
-          <p>Los datos de la empresa vienen de Finnhub, solo los ves tú y se guardan 24 horas. El PER y el BPA son de los últimos 12 meses; los montos van en la moneda en que reporta la empresa.</p>
-          <p>Los resultados anuales vienen de los informes que la empresa presenta a la SEC (10-K o 20-F): son públicos y se guardan una semana.</p>
-        </div>
-      </details>
-      <button type="button" id="d-close">Cerrar</button>
-    </div>
-    <p class="d-earn" id="d-earn" hidden></p>
-    <div class="d-tools">
-      <div class="ranges" id="d-ranges" role="group" aria-label="Periodo del gráfico"></div>
-      <div class="legend" id="d-ind" role="group" aria-label="Indicadores técnicos"></div>
-      <button type="button" id="d-csv" class="csv-btn" title="Cierres, rendimientos diarios e indicadores del periodo, para Excel">⤓ CSV</button>
-      <a id="d-hapi" class="csv-btn hapi-btn" target="_blank" rel="noopener noreferrer" title="Página de esta acción en Hapi (no abre la app)" hidden>Ver en Hapi ↗</a>
-    </div>
-    <div class="chart" id="d-chart"></div>
-    <div id="d-vol-wrap" hidden>
-      <p class="hint" id="d-vol-hint">Volumen diario</p>
-      <div class="chart" id="d-vol"></div>
-    </div>
-    <div id="d-rsi-wrap" hidden>
-      <p class="hint">RSI de 14 días</p>
-      <div class="chart" id="d-rsi"></div>
-    </div>
-    <div id="d-macd-wrap" hidden>
-      <div class="panel-head">
-        <p class="hint">MACD (12, 26, 9)</p>
-        <span class="legend-item s3"><span class="key"></span>MACD</span>
-        <span class="legend-item s4"><span class="key"></span>Señal</span>
-        <span class="legend-item"><span class="key bars"></span>Histograma</span>
-      </div>
-      <div class="chart" id="d-macd"></div>
-    </div>
-    <dl class="stats" id="d-stats"></dl>
-    <details class="d-tool" id="d-season">
-      <summary>Estacionalidad: cómo le fue a cada mes (5 años)</summary>
-      <div id="d-season-body"></div>
-    </details>
-    <details class="d-tool" id="d-strat">
-      <summary>Probar una estrategia (5 años)</summary>
-      <div class="d-strat-pick">
-        <label for="d-strat-kind">Estrategia</label>
-        <select id="d-strat-kind">
-          <option value="ma50-200">Cruce de medias 50 / 200 días</option>
-          <option value="ma20-50">Cruce de medias 20 / 50 días</option>
-          <option value="rsi">RSI: compra bajo 30, vende sobre 70</option>
-        </select>
-      </div>
-      <div id="d-strat-body"></div>
-    </details>
-    <details class="d-tool" id="d-fin">
-      <summary>Resultados anuales (SEC)</summary>
-      <div id="d-fin-body"></div>
-    </details>
-    <div class="d-co" id="d-co" hidden>
-      <p class="hint">Datos de la empresa <span id="d-co-meta"></span></p>
-      <dl class="stats" id="d-co-stats"></dl>
-      <div id="d-co-grades"></div>
-      <div class="d-co-cols">
-        <div id="d-co-analysts"></div>
-        <div id="d-co-surprises"></div>
-      </div>
-      <p class="hint" id="d-co-note"></p>
-    </div>
-    <div class="d-news" id="d-news" hidden>
-      <p class="hint">Noticias de <span id="d-news-sym"></span> (Yahoo Finance y Google News)</p>
-      <ol class="news" id="d-news-list"></ol>
-    </div>
-    <details class="table-view">
-      <summary>Ver tabla (cierre de cada mes)</summary>
-      <table id="d-table"><thead><tr><th scope="col">Mes</th><th scope="col">Cierre</th><th scope="col">Variación</th></tr></thead><tbody></tbody></table>
-    </details>
-  </section>
-
-  <section class="screen" id="news" aria-labelledby="news-h">
-    <div class="screen-head">
-      <h2 id="news-h">Noticias</h2>
-      <div class="ranges" id="news-groups" role="group" aria-label="Qué noticias mostrar"></div>
-    </div>
-    <ol class="news" id="news-list"><li class="muted">Cargando…</li></ol>
-    <div class="news-foot">
-      <button type="button" id="news-more" class="csv-btn" hidden>Ver más</button>
-      <p class="hint" id="news-note"></p>
-    </div>
-  </section>
-
-  <section class="screen owner-only" id="compare" aria-labelledby="cmp-h">
-    <div class="screen-head">
-      <h2 id="cmp-h">Comparar</h2>
-      <span class="src">Base 100</span>
-      <details class="help">
-        <summary aria-label="Cómo se usa Comparar">?</summary>
-        <div class="help-body">
-          <p>Base 100: cuánto valdrían 100 invertidos el primer día en cada uno.</p>
-          <p>Solo cuentan los días en que todos cotizan (la cripto también cotiza los fines de semana).</p>
-          <p>Arrastra sobre el gráfico para ver cuánto varió cada uno entre dos días.</p>
-        </div>
-      </details>
-    </div>
-    <div class="d-tools">
-      <div class="ranges" id="cmp-ranges" role="group" aria-label="Periodo de la comparación"></div>
-      <div class="legend" id="cmp-chips" role="group" aria-label="Símbolos a comparar (de 2 a 4)"></div>
-      <button type="button" id="cmp-csv" class="csv-btn" title="Cierres alineados y base 100, para Excel" disabled>⤓ CSV</button>
-    </div>
-    <div class="chart" id="cmp-chart"></div>
-    <div class="cmp-grid" id="cmp-grid" hidden>
-      <div>
-        <p class="hint">Resumen del periodo</p>
-        <table class="cmp-stats" id="cmp-stats"><thead><tr><th scope="col">Símbolo</th><th scope="col">Rendimiento</th><th scope="col">Volatilidad</th><th scope="col">Mayor caída</th></tr></thead><tbody></tbody></table>
-      </div>
-      <div>
-        <p class="hint">Correlación de los rendimientos diarios</p>
-        <table class="corr" id="cmp-corr"></table>
-        <div class="corr-scale" aria-hidden="true"><span>−1</span><span class="bar"></span><span>+1</span><span>· cian: se mueven juntos · magenta: en contra</span></div>
-      </div>
-    </div>
-    <p class="hint" id="cmp-note"></p>
-  </section>
-
-  <section class="screen owner-only" id="portfolio" aria-labelledby="pf-h">
-    <div class="screen-head">
-      <h2 id="pf-h">Cartera simulada</h2>
-      <details class="help">
-        <summary aria-label="Cómo funciona la cartera simulada">?</summary>
-        <div class="help-body">
-          <p>En US$, a costo promedio, sin dividendos ni comisiones. Solo con los símbolos de tu lista que cotizan en dólares.</p>
-          <p>Si no pones precio, se usa el cierre de ese día. Se valoriza con los precios ya guardados: no gasta créditos.</p>
-          <p>La comparación hace las mismas compras y ventas en el S&amp;P 500 (SPY).</p>
-        </div>
-      </details>
-      <button type="button" id="pf-csv" class="csv-btn" title="Operaciones de la cartera, para Excel" disabled>⤓ CSV</button>
-    </div>
-    <form id="pf-form" class="pf-form">
-      <label>Fecha <input type="date" id="pf-date" required></label>
-      <label>Símbolo <select id="pf-symbol" required></select></label>
-      <label>Operación <select id="pf-side"><option value="buy">Compra</option><option value="sell">Venta</option></select></label>
-      <label>Cantidad <input type="number" id="pf-qty" min="0" step="any" inputmode="decimal" required></label>
-      <label>Precio en US$ <input type="number" id="pf-price" min="0" step="any" inputmode="decimal" placeholder="Cierre de ese día"></label>
-      <button type="submit">Agregar</button>
-    </form>
-    <p class="err" id="pf-err" hidden></p>
-    <div id="pf-body"><p class="muted">Cargando…</p></div>
-    <details class="d-tool" id="pf-xray">
-      <summary>Rayos X de la cartera: de qué está hecha y cuánto riesgo tiene</summary>
-      <div id="pf-xray-body"></div>
-    </details>
-  </section>
-
-  <section class="screen" id="hapi" aria-labelledby="hp-h">
-    <div class="screen-head">
-      <h2 id="hp-h">Mi cuenta Hapi</h2>
-      <span class="src">Cifrada · solo tú</span>
-      <details class="help">
-        <summary aria-label="Cómo funciona tu cuenta Hapi">?</summary>
-        <div class="help-body">
-          <p>Tu cuenta se cifra en tu navegador con una frase que solo sabes tú. Rueda guarda solo texto ilegible: nadie más del grupo puede verla, ni el dueño de la app. Si olvidas la frase, no hay forma de recuperarla.</p>
-          <p>Importa el estado de cuenta mensual de Hapi (PDF): se lee en tu navegador, no se sube, y de él solo quedan los movimientos, el valor total y los precios de cierre de tus posiciones, con los que se valoriza tu cuenta hasta que importes el siguiente. La primera vez, tu cuenta empieza con el saldo de ese mes.</p>
-          <p>También puedes anotar a mano compras, ventas, dividendos, depósitos y retiros. Si dejas el costo vacío, se calcula con las comisiones de Hapi de 2026: US$ 0,10 por orden de acciones enteras y US$ 0,15 por fracciones (US$ 0,05 con Prime); en las ventas, además, los cargos de la SEC y de FINRA. Depósito en soles: US$ 1,99; retiro en soles: US$ 4,99.</p>
-          <p>En los depósitos va lo que llegó a Hapi; en los retiros, lo que salió de Hapi. Si anotas también los soles, ves tu rendimiento en soles, con el dólar del BCRP de hoy. Dividendos: EE. UU. retiene el 30 % a quienes viven en el Perú.</p>
-          <p>El código que corre en tu navegador es público: al pie de la página está la versión exacta, con enlace a GitHub.</p>
-        </div>
-      </details>
-      <button type="button" id="hp-csv" class="csv-btn" title="Movimientos de tu cuenta Hapi, para Excel" disabled>⤓ CSV</button>
-    </div>
-    <div id="hp-lock"><p class="muted">Cargando…</p></div>
-    <div id="hp-open" hidden>
-      <div class="hp-tools">
-        <label class="csv-btn hp-file">⤒ Importar estado de cuenta (PDF)<input type="file" id="hp-file" accept="application/pdf,.pdf" hidden></label>
-        <button type="button" id="hp-lock-btn" class="pf-del" title="Cierra tu cuenta en este equipo y olvida la clave guardada">Bloquear</button>
-      </div>
-      <p class="hint" id="hp-ios-hint" hidden>En iPhone o iPad, guarda primero el PDF en la app Archivos: ábrelo, toca Compartir y elige «Guardar en Archivos». Después búscalo aquí con «Importar estado de cuenta».</p>
-      <div id="hp-import" class="hp-import" hidden></div>
-      <form id="hp-form" class="pf-form">
-        <label>Movimiento <select id="hp-kind"><option value="buy">Compra</option><option value="sell">Venta</option><option value="dividend">Dividendo</option><option value="deposit">Depósito</option><option value="withdrawal">Retiro</option></select></label>
-        <label>Fecha <input type="date" id="hp-date" required></label>
-        <label data-for="trade dividend">Símbolo <input id="hp-symbol" maxlength="12" autocomplete="off" autocapitalize="characters" spellcheck="false" placeholder="VOO"></label>
-        <label data-for="trade">Cantidad <input type="number" id="hp-qty" min="0" step="any" inputmode="decimal"></label>
-        <label data-for="trade">Precio en US$ <input type="number" id="hp-price" min="0" step="any" inputmode="decimal"></label>
-        <label data-for="dividend transfer"><span id="hp-amount-label">Monto en US$</span> <input type="number" id="hp-amount" min="0" step="any" inputmode="decimal"></label>
-        <label data-for="transfer"><span id="hp-pen-label">Soles</span> <input type="number" id="hp-pen" min="0" step="any" inputmode="decimal" placeholder="Opcional"></label>
-        <label data-for="dividend">Retención en US$ <input type="number" id="hp-tax" min="0" step="any" inputmode="decimal" placeholder="30 %"></label>
-        <label data-for="trade transfer">Costo en US$ <input type="number" id="hp-fee" min="0" step="any" inputmode="decimal" placeholder="Se calcula"></label>
-        <button type="submit">Anotar</button>
-      </form>
-      <p class="err" id="hp-err" hidden></p>
-      <div class="hp-settings">
-        <label>Plan <select id="hp-plan"><option value="standard">Standard</option><option value="prime">Prime</option></select></label>
-        <form id="hp-snap-form" class="hp-snap">
-          <label>Valor total según Hapi (US$) <input type="number" id="hp-snap-value" min="0" step="any" inputmode="decimal" required></label>
-          <label>Al <input type="date" id="hp-snap-date" required></label>
-          <button type="submit">Guardar</button>
-          <button type="button" id="hp-snap-clear" class="pf-del" hidden>Quitar</button>
+        <form id="wl-form" class="wl-form" hidden>
+          <label for="wl-input">Símbolos, separados por comas (máximo 8)</label>
+          <div class="wl-row">
+            <input id="wl-input" name="symbols" autocomplete="off" autocapitalize="characters" spellcheck="false">
+            <button type="submit">Guardar</button>
+            <button type="button" id="wl-cancel">Cancelar</button>
+          </div>
+          <p class="hint">Plan gratis: acciones y ETF de EE. UU. (BAP, SPY), divisas (USD/PEN) y cripto (BTC/USD).</p>
+          <p class="err" id="wl-err" hidden></p>
         </form>
-      </div>
-      <div id="hp-body"></div>
-      <details class="d-tool">
-        <summary>Cambiar la frase</summary>
-        <form id="hp-pass-form" class="hp-pass">
-          <label>Frase nueva <input type="password" id="hp-new1" minlength="10" required autocomplete="new-password"></label>
-          <label>Repítela <input type="password" id="hp-new2" minlength="10" required autocomplete="new-password"></label>
-          <button type="submit">Cambiar</button>
-        </form>
-        <p class="hint" id="hp-pass-status" role="status"></p>
-      </details>
-    </div>
-  </section>
+        <div class="wl-cols" aria-hidden="true">
+          <span>Símbolo</span><span>Nombre</span><span>Último</span><span>Var. día</span><span>1 año</span><span>1A %</span><span>Hora</span>
+        </div>
+        <div class="rows" id="tiles"></div>
+        <p class="hint" id="hist-note" hidden></p>
+      </section>
 
-  <div class="macro">
-    <section class="screen" aria-labelledby="pe-h">
-      <div class="screen-head"><h2 id="pe-h">Perú</h2><span class="src">BCRP</span></div>
-      <div id="peru" class="macro-body"><p class="muted">Cargando…</p></div>
-    </section>
-    <section class="screen" aria-labelledby="us-h">
-      <div class="screen-head"><h2 id="us-h">EE. UU.</h2><span class="src">FRED</span></div>
-      <div id="usa" class="macro-body"><p class="muted">Cargando…</p></div>
-      <div id="curve" class="macro-body"></div>
-    </section>
+      <section class="screen owner-only" id="eod" aria-labelledby="eod-h">
+        <div class="screen-head">
+          <h2 id="eod-h">Lista diaria</h2>
+          <span class="src">Cierres · Twelve Data</span>
+          <details class="help">
+            <summary aria-label="Cómo funciona la lista diaria">?</summary>
+            <div class="help-body">
+              <p>Hasta 20 símbolos más, aparte de tu lista de seguimiento. No tienen precio en vivo: se actualizan una vez al día, después del cierre de Nueva York (cripto y divisas, con el cierre del día anterior). Cada símbolo gasta 1 crédito al día.</p>
+              <p>Al tocar uno se abre su ficha, con el historial, los indicadores y los datos de la empresa.</p>
+            </div>
+          </details>
+          <button type="button" id="eod-edit">Editar</button>
+        </div>
+        <form id="eod-form" class="wl-form" hidden>
+          <label for="eod-input">Símbolos, separados por comas (máximo 20)</label>
+          <div class="wl-row">
+            <input id="eod-input" name="symbols" autocomplete="off" autocapitalize="characters" spellcheck="false">
+            <button type="submit">Guardar</button>
+            <button type="button" id="eod-cancel">Cancelar</button>
+          </div>
+          <p class="hint">Los nuevos se cargan al guardar (hasta 4 a la vez) y el resto en los minutos siguientes. Los que ya están en tu lista de seguimiento no van aquí.</p>
+          <p class="err" id="eod-err" hidden></p>
+        </form>
+        <div class="wl-cols" id="eod-cols" aria-hidden="true" hidden>
+          <span>Símbolo</span><span>Nombre</span><span>Cierre</span><span>Var. día</span><span>1 año</span><span>1A %</span><span>Fecha</span>
+        </div>
+        <div class="rows" id="eod-rows"><p class="muted">Cargando…</p></div>
+      </section>
+
+      <section class="screen" id="pm" aria-labelledby="pm-h">
+        <div class="screen-head">
+          <h2 id="pm-h">Mercados y tasas del Perú</h2>
+          <span class="src">BCRP · último año</span>
+          <details class="help">
+            <summary aria-label="Qué muestra esta sección">?</summary>
+            <div class="help-body">
+              <p>Las variaciones de los precios e índices van en %; las de las tasas, en puntos porcentuales (pp), y las del riesgo país, en puntos básicos (pb).</p>
+              <p>El riesgo país es aproximado: la diferencia entre el bono peruano en dólares a 10 años y el del Tesoro de EE. UU. a 10 años. Se mueve parecido al EMBIG, que el BCRP no actualiza desde el 3 de setiembre de 2026.</p>
+              <p>Los bonos peruanos llegan con un día de atraso y el del Tesoro, con unos tres.</p>
+            </div>
+          </details>
+        </div>
+        <div id="peru-markets" class="pm-grid"><p class="muted">Cargando…</p></div>
+      </section>
+    </div>
+
+    <main class="col col-center" id="col-center">
+      <!-- Resumen del día: lo escribe Claude cada mañana (tarea programada del dueño) con titulares y datos públicos. Lo ven todos. -->
+      <section class="screen summary" id="summary" aria-labelledby="sum-h" hidden>
+        <div class="screen-head">
+          <h2 id="sum-h">Resumen del día</h2>
+          <span class="src" id="sum-date"></span>
+          <details class="help">
+            <summary aria-label="Cómo se hace el resumen">?</summary>
+            <div class="help-body">
+              <p>Lo escribe Claude cada mañana a las 7:00 (hora de Lima) con los titulares de «Noticias» y los datos públicos del BCRP y de FRED. No usa precios con licencia ni datos de nadie.</p>
+              <p>Es automático y puede equivocarse: revisa las fuentes.</p>
+            </div>
+          </details>
+        </div>
+        <h3 class="sum-title" id="sum-title"></h3>
+        <p class="sum-text" id="sum-text"></p>
+        <!-- Una sola línea chica: fuentes, días anteriores y «Profundiza». Lo que se abre aparece debajo. -->
+        <div class="sum-foot">
+          <details class="sum-more">
+            <summary id="sum-sources-label">Fuentes</summary>
+            <ol class="news" id="sum-sources-list"></ol>
+          </details>
+          <details class="sum-more" id="sum-older" hidden>
+            <summary>Días anteriores</summary>
+            <div id="sum-older-list"></div>
+          </details>
+          <a class="sum-deeper" id="sum-deeper" href="https://claude.ai/new" target="_blank" rel="noopener noreferrer">Profundiza en Claude ↗</a>
+        </div>
+      </section>
+
+      <section class="screen detail owner-only" id="detail" aria-labelledby="d-title" hidden>
+        <div class="screen-head">
+          <div>
+            <span class="eyebrow" id="d-sub"></span>
+            <h2 id="d-title"></h2>
+          </div>
+          <details class="help">
+            <summary aria-label="Cómo se usa la ficha">?</summary>
+            <div class="help-body">
+              <p>Arrastra sobre el gráfico para ver la variación entre dos días. En el celular, con dos dedos; con el teclado, Mayús + flechas.</p>
+              <p>Las medias móviles, las bandas de Bollinger, el RSI y el MACD se calculan con 5 años de historia. Un RSI sobre 70 suele leerse como sobrecompra; bajo 30, como sobreventa. El MACD es la media exponencial de 12 días menos la de 26; cuando cruza su señal (la media de 9 días del MACD) suele leerse como cambio de impulso.</p>
+              <p>Velas: cada una muestra la apertura, el máximo, el mínimo y el cierre del día. Hueca si cerró más arriba de lo que abrió; rellena si cerró más abajo. Se ven hasta 1 año.</p>
+              <p>Los datos de la empresa vienen de Finnhub, solo los ves tú y se guardan 24 horas. El PER y el BPA son de los últimos 12 meses; los montos van en la moneda en que reporta la empresa.</p>
+              <p>Los resultados anuales vienen de los informes que la empresa presenta a la SEC (10-K o 20-F): son públicos y se guardan una semana.</p>
+            </div>
+          </details>
+          <button type="button" id="d-close">Cerrar</button>
+        </div>
+        <p class="d-earn" id="d-earn" hidden></p>
+        <div class="d-tools">
+          <div class="ranges" id="d-ranges" role="group" aria-label="Periodo del gráfico"></div>
+          <div class="legend" id="d-ind" role="group" aria-label="Indicadores técnicos"></div>
+          <button type="button" id="d-csv" class="csv-btn" title="Cierres, rendimientos diarios e indicadores del periodo, para Excel">⤓ CSV</button>
+          <a id="d-hapi" class="csv-btn hapi-btn" target="_blank" rel="noopener noreferrer" title="Página de esta acción en Hapi (no abre la app)" hidden>Ver en Hapi ↗</a>
+        </div>
+        <div class="chart" id="d-chart"></div>
+        <div id="d-vol-wrap" hidden>
+          <p class="hint" id="d-vol-hint">Volumen diario</p>
+          <div class="chart" id="d-vol"></div>
+        </div>
+        <div id="d-rsi-wrap" hidden>
+          <p class="hint">RSI de 14 días</p>
+          <div class="chart" id="d-rsi"></div>
+        </div>
+        <div id="d-macd-wrap" hidden>
+          <div class="panel-head">
+            <p class="hint">MACD (12, 26, 9)</p>
+            <span class="legend-item s3"><span class="key"></span>MACD</span>
+            <span class="legend-item s4"><span class="key"></span>Señal</span>
+            <span class="legend-item"><span class="key bars"></span>Histograma</span>
+          </div>
+          <div class="chart" id="d-macd"></div>
+        </div>
+        <dl class="stats" id="d-stats"></dl>
+        <details class="d-tool" id="d-season">
+          <summary>Estacionalidad: cómo le fue a cada mes (5 años)</summary>
+          <div id="d-season-body"></div>
+        </details>
+        <details class="d-tool" id="d-strat">
+          <summary>Probar una estrategia (5 años)</summary>
+          <div class="d-strat-pick">
+            <label for="d-strat-kind">Estrategia</label>
+            <select id="d-strat-kind">
+              <option value="ma50-200">Cruce de medias 50 / 200 días</option>
+              <option value="ma20-50">Cruce de medias 20 / 50 días</option>
+              <option value="rsi">RSI: compra bajo 30, vende sobre 70</option>
+            </select>
+          </div>
+          <div id="d-strat-body"></div>
+        </details>
+        <details class="d-tool" id="d-fin">
+          <summary>Resultados anuales (SEC)</summary>
+          <div id="d-fin-body"></div>
+        </details>
+        <div class="d-co" id="d-co" hidden>
+          <p class="hint">Datos de la empresa <span id="d-co-meta"></span></p>
+          <dl class="stats" id="d-co-stats"></dl>
+          <div id="d-co-grades"></div>
+          <div class="d-co-cols">
+            <div id="d-co-analysts"></div>
+            <div id="d-co-surprises"></div>
+          </div>
+          <p class="hint" id="d-co-note"></p>
+        </div>
+        <div class="d-news" id="d-news" hidden>
+          <p class="hint">Noticias de <span id="d-news-sym"></span> (Yahoo Finance y Google News)</p>
+          <ol class="news" id="d-news-list"></ol>
+        </div>
+        <details class="table-view">
+          <summary>Ver tabla (cierre de cada mes)</summary>
+          <table id="d-table"><thead><tr><th scope="col">Mes</th><th scope="col">Cierre</th><th scope="col">Variación</th></tr></thead><tbody></tbody></table>
+        </details>
+      </section>
+
+      <section class="screen owner-only" id="compare" aria-labelledby="cmp-h">
+        <div class="screen-head">
+          <h2 id="cmp-h">Comparar</h2>
+          <span class="src">Base 100</span>
+          <details class="help">
+            <summary aria-label="Cómo se usa Comparar">?</summary>
+            <div class="help-body">
+              <p>Base 100: cuánto valdrían 100 invertidos el primer día en cada uno.</p>
+              <p>Solo cuentan los días en que todos cotizan (la cripto también cotiza los fines de semana).</p>
+              <p>Arrastra sobre el gráfico para ver cuánto varió cada uno entre dos días.</p>
+            </div>
+          </details>
+        </div>
+        <div class="d-tools">
+          <div class="ranges" id="cmp-ranges" role="group" aria-label="Periodo de la comparación"></div>
+          <div class="legend" id="cmp-chips" role="group" aria-label="Símbolos a comparar (de 2 a 4)"></div>
+          <button type="button" id="cmp-csv" class="csv-btn" title="Cierres alineados y base 100, para Excel" disabled>⤓ CSV</button>
+        </div>
+        <div class="chart" id="cmp-chart"></div>
+        <div class="cmp-grid" id="cmp-grid" hidden>
+          <div>
+            <p class="hint">Resumen del periodo</p>
+            <table class="cmp-stats" id="cmp-stats"><thead><tr><th scope="col">Símbolo</th><th scope="col">Rendimiento</th><th scope="col">Volatilidad</th><th scope="col">Mayor caída</th></tr></thead><tbody></tbody></table>
+          </div>
+          <div>
+            <p class="hint">Correlación de los rendimientos diarios</p>
+            <table class="corr" id="cmp-corr"></table>
+            <div class="corr-scale" aria-hidden="true"><span>−1</span><span class="bar"></span><span>+1</span><span>· cian: se mueven juntos · magenta: en contra</span></div>
+          </div>
+        </div>
+        <p class="hint" id="cmp-note"></p>
+      </section>
+
+      <section class="screen owner-only" id="portfolio" aria-labelledby="pf-h">
+        <div class="screen-head">
+          <h2 id="pf-h">Cartera simulada</h2>
+          <details class="help">
+            <summary aria-label="Cómo funciona la cartera simulada">?</summary>
+            <div class="help-body">
+              <p>En US$, a costo promedio, sin dividendos ni comisiones. Solo con los símbolos de tu lista que cotizan en dólares.</p>
+              <p>Si no pones precio, se usa el cierre de ese día. Se valoriza con los precios ya guardados: no gasta créditos.</p>
+              <p>La comparación hace las mismas compras y ventas en el S&amp;P 500 (SPY).</p>
+            </div>
+          </details>
+          <button type="button" id="pf-csv" class="csv-btn" title="Operaciones de la cartera, para Excel" disabled>⤓ CSV</button>
+        </div>
+        <form id="pf-form" class="pf-form">
+          <label>Fecha <input type="date" id="pf-date" required></label>
+          <label>Símbolo <select id="pf-symbol" required></select></label>
+          <label>Operación <select id="pf-side"><option value="buy">Compra</option><option value="sell">Venta</option></select></label>
+          <label>Cantidad <input type="number" id="pf-qty" min="0" step="any" inputmode="decimal" required></label>
+          <label>Precio en US$ <input type="number" id="pf-price" min="0" step="any" inputmode="decimal" placeholder="Cierre de ese día"></label>
+          <button type="submit">Agregar</button>
+        </form>
+        <p class="err" id="pf-err" hidden></p>
+        <div id="pf-body"><p class="muted">Cargando…</p></div>
+        <details class="d-tool" id="pf-xray">
+          <summary>Rayos X de la cartera: de qué está hecha y cuánto riesgo tiene</summary>
+          <div id="pf-xray-body"></div>
+        </details>
+      </section>
+
+      <section class="screen" id="hapi" aria-labelledby="hp-h">
+        <div class="screen-head">
+          <h2 id="hp-h">Mi cuenta Hapi</h2>
+          <span class="src">Cifrada · solo tú</span>
+          <details class="help">
+            <summary aria-label="Cómo funciona tu cuenta Hapi">?</summary>
+            <div class="help-body">
+              <p>Tu cuenta se cifra en tu navegador con una frase que solo sabes tú. Rueda guarda solo texto ilegible: nadie más del grupo puede verla, ni el dueño de la app. Si olvidas la frase, no hay forma de recuperarla.</p>
+              <p>Importa el estado de cuenta mensual de Hapi (PDF): se lee en tu navegador, no se sube, y de él solo quedan los movimientos, el valor total y los precios de cierre de tus posiciones, con los que se valoriza tu cuenta hasta que importes el siguiente. La primera vez, tu cuenta empieza con el saldo de ese mes.</p>
+              <p>También puedes anotar a mano compras, ventas, dividendos, depósitos y retiros. Si dejas el costo vacío, se calcula con las comisiones de Hapi de 2026: US$ 0,10 por orden de acciones enteras y US$ 0,15 por fracciones (US$ 0,05 con Prime); en las ventas, además, los cargos de la SEC y de FINRA. Depósito en soles: US$ 1,99; retiro en soles: US$ 4,99.</p>
+              <p>En los depósitos va lo que llegó a Hapi; en los retiros, lo que salió de Hapi. Si anotas también los soles, ves tu rendimiento en soles, con el dólar del BCRP de hoy. Dividendos: EE. UU. retiene el 30 % a quienes viven en el Perú.</p>
+              <p>El código que corre en tu navegador es público: al pie de la página está la versión exacta, con enlace a GitHub.</p>
+            </div>
+          </details>
+          <button type="button" id="hp-csv" class="csv-btn" title="Movimientos de tu cuenta Hapi, para Excel" disabled>⤓ CSV</button>
+        </div>
+        <div id="hp-lock"><p class="muted">Cargando…</p></div>
+        <div id="hp-open" hidden>
+          <div class="hp-tools">
+            <label class="csv-btn hp-file">⤒ Importar estado de cuenta (PDF)<input type="file" id="hp-file" accept="application/pdf,.pdf" hidden></label>
+            <button type="button" id="hp-lock-btn" class="pf-del" title="Cierra tu cuenta en este equipo y olvida la clave guardada">Bloquear</button>
+          </div>
+          <p class="hint" id="hp-ios-hint" hidden>En iPhone o iPad, guarda primero el PDF en la app Archivos: ábrelo, toca Compartir y elige «Guardar en Archivos». Después búscalo aquí con «Importar estado de cuenta».</p>
+          <div id="hp-import" class="hp-import" hidden></div>
+          <form id="hp-form" class="pf-form">
+            <label>Movimiento <select id="hp-kind"><option value="buy">Compra</option><option value="sell">Venta</option><option value="dividend">Dividendo</option><option value="deposit">Depósito</option><option value="withdrawal">Retiro</option></select></label>
+            <label>Fecha <input type="date" id="hp-date" required></label>
+            <label data-for="trade dividend">Símbolo <input id="hp-symbol" maxlength="12" autocomplete="off" autocapitalize="characters" spellcheck="false" placeholder="VOO"></label>
+            <label data-for="trade">Cantidad <input type="number" id="hp-qty" min="0" step="any" inputmode="decimal"></label>
+            <label data-for="trade">Precio en US$ <input type="number" id="hp-price" min="0" step="any" inputmode="decimal"></label>
+            <label data-for="dividend transfer"><span id="hp-amount-label">Monto en US$</span> <input type="number" id="hp-amount" min="0" step="any" inputmode="decimal"></label>
+            <label data-for="transfer"><span id="hp-pen-label">Soles</span> <input type="number" id="hp-pen" min="0" step="any" inputmode="decimal" placeholder="Opcional"></label>
+            <label data-for="dividend">Retención en US$ <input type="number" id="hp-tax" min="0" step="any" inputmode="decimal" placeholder="30 %"></label>
+            <label data-for="trade transfer">Costo en US$ <input type="number" id="hp-fee" min="0" step="any" inputmode="decimal" placeholder="Se calcula"></label>
+            <button type="submit">Anotar</button>
+          </form>
+          <p class="err" id="hp-err" hidden></p>
+          <div class="hp-settings">
+            <label>Plan <select id="hp-plan"><option value="standard">Standard</option><option value="prime">Prime</option></select></label>
+            <form id="hp-snap-form" class="hp-snap">
+              <label>Valor total según Hapi (US$) <input type="number" id="hp-snap-value" min="0" step="any" inputmode="decimal" required></label>
+              <label>Al <input type="date" id="hp-snap-date" required></label>
+              <button type="submit">Guardar</button>
+              <button type="button" id="hp-snap-clear" class="pf-del" hidden>Quitar</button>
+            </form>
+          </div>
+          <div id="hp-body"></div>
+          <details class="d-tool">
+            <summary>Cambiar la frase</summary>
+            <form id="hp-pass-form" class="hp-pass">
+              <label>Frase nueva <input type="password" id="hp-new1" minlength="10" required autocomplete="new-password"></label>
+              <label>Repítela <input type="password" id="hp-new2" minlength="10" required autocomplete="new-password"></label>
+              <button type="submit">Cambiar</button>
+            </form>
+            <p class="hint" id="hp-pass-status" role="status"></p>
+          </details>
+        </div>
+      </section>
+
+      <div class="macro" id="macro">
+        <section class="screen" aria-labelledby="pe-h">
+          <div class="screen-head"><h2 id="pe-h">Perú</h2><span class="src">BCRP</span></div>
+          <div id="peru" class="macro-body"><p class="muted">Cargando…</p></div>
+        </section>
+        <section class="screen" aria-labelledby="us-h">
+          <div class="screen-head"><h2 id="us-h">EE. UU.</h2><span class="src">FRED</span></div>
+          <div id="usa" class="macro-body"><p class="muted">Cargando…</p></div>
+          <div id="curve" class="macro-body"></div>
+        </section>
+      </div>
+
+      <section class="screen" id="fin" aria-labelledby="fin-h">
+        <div class="screen-head">
+          <h2 id="fin-h">Resultados de empresas</h2>
+          <span class="src">SEC EDGAR</span>
+          <details class="help">
+            <summary aria-label="De dónde salen los resultados">?</summary>
+            <div class="help-body">
+              <p>Ingresos, utilidad operativa y utilidad neta de cada año fiscal, de los informes anuales que las empresas presentan a la SEC, el regulador de valores de EE. UU.: el 10-K de las empresas de EE. UU. y el 20-F o 40-F de las extranjeras que cotizan allá, como Southern Copper, Buenaventura o Credicorp.</p>
+              <p>Los montos van en la moneda en que reporta cada empresa, tal como figuran en sus informes. Los bancos no reportan «ingresos» como las demás empresas: de ellos se ve la utilidad. Los ETF y los fondos no tienen estos informes.</p>
+              <p>Son datos públicos y se guardan una semana.</p>
+            </div>
+          </details>
+        </div>
+        <form class="fin-form" id="fin-form" autocomplete="off">
+          <label for="fin-sym">Símbolo</label>
+          <input id="fin-sym" name="symbol" maxlength="12" spellcheck="false" autocapitalize="characters" placeholder="SCCO" required>
+          <button type="submit">Ver</button>
+        </form>
+        <div class="ranges fin-chips" id="fin-chips" role="group" aria-label="Empresas sugeridas"></div>
+        <div id="fin-body"></div>
+      </section>
+    </main>
+
+    <aside class="col col-right" id="col-right" aria-label="Agenda, pronósticos y noticias">
+      <section class="screen" id="cal" aria-labelledby="cal-h" hidden>
+        <div class="screen-head">
+          <h2 id="cal-h">Calendario</h2>
+          <span class="src">BCRP · Fed · INEI · BLS<span id="cal-src-co" hidden> · Finnhub</span></span>
+          <details class="help">
+            <summary aria-label="De dónde salen las fechas">?</summary>
+            <div class="help-body">
+              <p>Fechas oficiales de cada fuente: decisiones de tasas del BCRP y de la Fed, e inflación del INEI (Lima) y del BLS (EE. UU.).</p>
+              <p>Las que la fuente todavía no confirma aparecen como tentativas. Las horas están en hora de Lima.</p>
+              <p class="owner-only">Los resultados de las acciones de tu lista vienen de Finnhub y solo los ves tú. El trimestre es el fiscal de cada empresa; el BPA (beneficio por acción) estimado es el consenso de analistas, ajustado y en la moneda en que reporta la empresa.</p>
+            </div>
+          </details>
+        </div>
+        <ol class="cal" id="calendar"><li class="muted">Cargando…</li></ol>
+        <button type="button" id="cal-more" class="csv-btn more-btn" hidden>Ver más</button>
+        <p class="hint" id="cal-note"></p>
+      </section>
+
+      <section class="screen" id="forecasts" aria-labelledby="fc-h">
+        <div class="screen-head">
+          <h2 id="fc-h">Pronósticos del grupo</h2>
+          <span class="src">Sin plata · datos públicos</span>
+          <details class="help">
+            <summary aria-label="Cómo se juega">?</summary>
+            <div class="help-body">
+              <p>Cada decisión de tasas del BCRP y de la Fed, cada dato de inflación (Lima y EE. UU.) y el dólar de fin de mes son una pregunta. Se puede pronosticar, y cambiar el pronóstico, hasta la medianoche antes del anuncio; el dólar, hasta una semana antes de fin de mes.</p>
+              <p>Puntos: 10 por acertar la decisión. En los números, 10 menos 1 por cada 0,05 puntos porcentuales de error en la inflación, o por cada medio céntimo en el dólar.</p>
+              <p>Lo que puso cada uno se ve recién al cierre. Los resultados salen solos cuando el BCRP, el INEI, la Fed o el BLS publican el dato.</p>
+            </div>
+          </details>
+        </div>
+        <div id="fc-me"></div>
+        <div class="fc-grid" id="fc-open"><p class="muted">Cargando…</p></div>
+        <button type="button" id="fc-more" class="csv-btn more-btn" hidden>Ver todas</button>
+        <div id="fc-past"></div>
+        <div id="fc-rank"></div>
+      </section>
+
+      <section class="screen" id="news" aria-labelledby="news-h">
+        <div class="screen-head">
+          <h2 id="news-h">Noticias</h2>
+          <div class="ranges" id="news-groups" role="group" aria-label="Qué noticias mostrar"></div>
+        </div>
+        <ol class="news" id="news-list"><li class="muted">Cargando…</li></ol>
+        <div class="news-foot">
+          <button type="button" id="news-more" class="csv-btn" hidden>Ver más</button>
+          <p class="hint" id="news-note"></p>
+        </div>
+      </section>
+    </aside>
   </div>
-
-  <section class="screen" aria-labelledby="pm-h">
-    <div class="screen-head">
-      <h2 id="pm-h">Mercados y tasas del Perú</h2>
-      <span class="src">BCRP · último año</span>
-      <details class="help">
-        <summary aria-label="Qué muestra esta sección">?</summary>
-        <div class="help-body">
-          <p>Las variaciones de los precios e índices van en %; las de las tasas, en puntos porcentuales (pp), y las del riesgo país, en puntos básicos (pb).</p>
-          <p>El riesgo país es aproximado: la diferencia entre el bono peruano en dólares a 10 años y el del Tesoro de EE. UU. a 10 años. Se mueve parecido al EMBIG, que el BCRP no actualiza desde el 3 de setiembre de 2026.</p>
-          <p>Los bonos peruanos llegan con un día de atraso y el del Tesoro, con unos tres.</p>
-        </div>
-      </details>
-    </div>
-    <div id="peru-markets" class="pm-grid"><p class="muted">Cargando…</p></div>
-  </section>
-
-  <section class="screen" id="fin" aria-labelledby="fin-h">
-    <div class="screen-head">
-      <h2 id="fin-h">Resultados de empresas</h2>
-      <span class="src">SEC EDGAR</span>
-      <details class="help">
-        <summary aria-label="De dónde salen los resultados">?</summary>
-        <div class="help-body">
-          <p>Ingresos, utilidad operativa y utilidad neta de cada año fiscal, de los informes anuales que las empresas presentan a la SEC, el regulador de valores de EE. UU.: el 10-K de las empresas de EE. UU. y el 20-F o 40-F de las extranjeras que cotizan allá, como Southern Copper, Buenaventura o Credicorp.</p>
-          <p>Los montos van en la moneda en que reporta cada empresa, tal como figuran en sus informes. Los bancos no reportan «ingresos» como las demás empresas: de ellos se ve la utilidad. Los ETF y los fondos no tienen estos informes.</p>
-          <p>Son datos públicos y se guardan una semana.</p>
-        </div>
-      </details>
-    </div>
-    <form class="fin-form" id="fin-form" autocomplete="off">
-      <label for="fin-sym">Símbolo</label>
-      <input id="fin-sym" name="symbol" maxlength="12" spellcheck="false" autocapitalize="characters" placeholder="SCCO" required>
-      <button type="submit">Ver</button>
-    </form>
-    <div class="ranges fin-chips" id="fin-chips" role="group" aria-label="Empresas sugeridas"></div>
-    <div id="fin-body"></div>
-  </section>
-
-  <section class="screen" aria-labelledby="cal-h" hidden>
-    <div class="screen-head">
-      <h2 id="cal-h">Calendario</h2>
-      <span class="src">BCRP · Fed · INEI · BLS<span id="cal-src-co" hidden> · Finnhub</span></span>
-      <details class="help">
-        <summary aria-label="De dónde salen las fechas">?</summary>
-        <div class="help-body">
-          <p>Fechas oficiales de cada fuente: decisiones de tasas del BCRP y de la Fed, e inflación del INEI (Lima) y del BLS (EE. UU.).</p>
-          <p>Las que la fuente todavía no confirma aparecen como tentativas. Las horas están en hora de Lima.</p>
-          <p class="owner-only">Los resultados de las acciones de tu lista vienen de Finnhub y solo los ves tú. El trimestre es el fiscal de cada empresa; el BPA (beneficio por acción) estimado es el consenso de analistas, ajustado y en la moneda en que reporta la empresa.</p>
-        </div>
-      </details>
-    </div>
-    <ol class="cal" id="calendar"><li class="muted">Cargando…</li></ol>
-    <p class="hint" id="cal-note"></p>
-  </section>
-
-  <section class="screen" id="forecasts" aria-labelledby="fc-h">
-    <div class="screen-head">
-      <h2 id="fc-h">Pronósticos del grupo</h2>
-      <span class="src">Sin plata · datos públicos</span>
-      <details class="help">
-        <summary aria-label="Cómo se juega">?</summary>
-        <div class="help-body">
-          <p>Cada decisión de tasas del BCRP y de la Fed, cada dato de inflación (Lima y EE. UU.) y el dólar de fin de mes son una pregunta. Se puede pronosticar, y cambiar el pronóstico, hasta la medianoche antes del anuncio; el dólar, hasta una semana antes de fin de mes.</p>
-          <p>Puntos: 10 por acertar la decisión. En los números, 10 menos 1 por cada 0,05 puntos porcentuales de error en la inflación, o por cada medio céntimo en el dólar.</p>
-          <p>Lo que puso cada uno se ve recién al cierre. Los resultados salen solos cuando el BCRP, el INEI, la Fed o el BLS publican el dato.</p>
-        </div>
-      </details>
-    </div>
-    <div id="fc-me"></div>
-    <div class="fc-grid" id="fc-open"><p class="muted">Cargando…</p></div>
-    <div id="fc-past"></div>
-    <div id="fc-rank"></div>
-  </section>
 
   <footer class="foot">
     <p>Datos informativos; no es asesoría de inversión. Fuentes: BCRP, FRED® (Junta de la Reserva Federal y BLS), SEC EDGAR<span class="owner-only"> y Twelve Data</span>. <a href="/terminos.html">Términos y privacidad</a>.</p>

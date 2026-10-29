@@ -39,6 +39,8 @@
     role: null, // 'owner' o 'friend' (de /api/status)
     eod: null, // respuesta de /api/eod (lista diaria: cierres, no precios en vivo)
     forecasts: null, // respuesta de /api/forecasts (pronósticos del grupo)
+    fcAll: false, // se ven todas las preguntas abiertas (si no, las que cierran primero)
+    calAll: false, // el calendario muestra todo lo cargado (si no, lo más cercano)
     fcEditName: false, // cambiando el nombre del ranking
     marketOpen: null, // ¿la bolsa de Nueva York está en sesión? (de /api/status y de cada pedido de precios)
     calendar: null, // respuesta de /api/calendar
@@ -3306,6 +3308,7 @@
 
   // ---------- calendario ----------
   const KIND_LABEL = { bcrp: 'BCRP', fed: 'Fed', inei: 'INEI', bls: 'BLS', empresa: 'Empresa' };
+  const CAL_FIRST = 6; // eventos a la vista antes de «Ver más»
   const fCalDay = fmt({ weekday: 'short', day: 'numeric', month: 'short', timeZone: 'UTC' });
   const calDay = (date) => fCalDay.format(day(date)).replace(/[.,]/g, '');
 
@@ -3377,7 +3380,9 @@
     const r = state.calendar;
     if (!r) return;
     const list = $('calendar');
-    const events = r.events.slice(0, 12);
+    // Va en una columna angosta: primero lo más cercano y el resto con «Ver más».
+    const events = r.events.slice(0, state.calAll ? 12 : CAL_FIRST);
+    $('cal-more').hidden = state.calAll || r.events.length <= CAL_FIRST;
     if (!events.length) {
       list.replaceChildren(h('li', { class: 'muted' }, 'No hay eventos cargados para los próximos meses.'));
     } else {
@@ -3444,6 +3449,7 @@
 
   // ---------- pronósticos del grupo ----------
   const FC_KIND = { bcrp: 'BCRP', fed: 'Fed', inei: 'INEI', bls: 'BLS', dolar: 'Dólar' };
+  const FC_FIRST = 3; // preguntas abiertas a la vista antes de «Ver todas»
   const FC_CHOICES = ['sube', 'mantiene', 'baja'];
   const CHOICE_LABEL = { sube: '▲ Sube', mantiene: '■ Mantiene', baja: '▼ Baja' };
   const fcClose = fmt({ weekday: 'short', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit', hourCycle: 'h23', timeZone: TZ });
@@ -3518,9 +3524,13 @@
     if (!v) return;
     renderFcName(v);
     const open = v.questions.filter((q) => q.status === 'open');
+    // Las que cierran primero; el resto con «Ver todas», para que la columna no sea interminable.
+    const shown = state.fcAll ? open : open.slice(0, FC_FIRST);
     $('fc-open').replaceChildren(
-      ...(open.length ? open.map((q) => fcCard(q, v)) : [h('p', { class: 'muted' }, 'No hay preguntas abiertas: cada una se abre 45 días antes de su anuncio.')]),
+      ...(open.length ? shown.map((q) => fcCard(q, v)) : [h('p', { class: 'muted' }, 'No hay preguntas abiertas: cada una se abre 45 días antes de su anuncio.')]),
     );
+    $('fc-more').hidden = shown.length === open.length;
+    $('fc-more').textContent = `Ver todas (${open.length})`;
     const past = v.questions.filter((q) => q.status !== 'open').reverse();
     $('fc-past').replaceChildren(...(past.length ? [h('p', { class: 'co-h' }, 'Cerradas y resueltas'), ...past.map(fcPast)] : []));
     renderFcRanking(v);
@@ -3904,6 +3914,14 @@
     $('news-more').addEventListener('click', () => {
       state.newsShown += 10;
       renderNews();
+    });
+    $('cal-more').addEventListener('click', () => {
+      state.calAll = true;
+      renderCalendar();
+    });
+    $('fc-more').addEventListener('click', () => {
+      state.fcAll = true;
+      renderForecasts();
     });
     const savedGroup = prefs.get('mercados.noticias', 'todas');
     if (NEWS_GROUPS.some(([id]) => id === savedGroup)) state.newsGroup = savedGroup;

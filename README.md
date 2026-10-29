@@ -73,6 +73,12 @@ Claude ─► Worker «mercados-mcp» (OAuth propio) ─────────
   - **Qué valida el servidor:** largos (título de 10 a 100 caracteres, texto de 60 a 450), sin Markdown ni caracteres de control, y enlaces solo de los medios de las noticias o de fuentes oficiales (BCRP, INEI, SMV, Fed, BLS, FRED, SEC). Si el enlace está en la caché de noticias, el titular y el medio salen de ahí. La fecha la pone el servidor (hoy en Lima).
   - **KV:** los últimos 7 días en un solo registro (`resumen`): una escritura por resumen.
   - **Panel:** el titular y el texto; debajo, en una sola línea, las fuentes, los días anteriores y «Profundiza en Claude» (abre claude.ai con la pregunta escrita, con la cuenta de quien lo usa). Sin resumen guardado, la sección no aparece.
+- **Columnas (29 oct), como Google Finance, para bajar menos:** las secciones están repartidas en tres columnas en `index.html` (`.cols`).
+  - **Computadora (desde 1280 px):** izquierda, tus listas y Mercados del Perú; centro, resumen, ficha, Comparar, cartera, Mi cuenta Hapi, Perú y EE. UU. y resultados de empresas; derecha, calendario, pronósticos y noticias.
+  - **Tablet (900–1279 px):** lo principal y una columna al costado.
+  - **Celular:** una sola columna, con el orden de siempre (`order` en `styles.css`).
+  - **Cada sección mide su propio ancho** (container queries): en una columna angosta, la lista y el calendario se ven como en el celular.
+  - **Calendario y pronósticos** muestran primero lo más cercano (6 eventos, 3 preguntas) y el resto con «Ver más».
 - **Tipografía (legibilidad, 22 oct):** números, títulos y datos en IBM Plex Mono; frases, etiquetas y ayudas en IBM Plex Sans. Base de 15 px y nada por debajo de 12 px. Las explicaciones de uso van en un «?» por sección (`<details class="help">`) en vez de quedar siempre a la vista.
 - **Cartera en los gráficos y señales:** la ficha marca tus compras (▲) y ventas (▼) de la cartera simulada a su precio, y el tooltip las detalla. En la lista, junto al nombre, se ve si el último cierre está sobre o bajo su media de 200 días y, solo en zona extrema (70 o más, 30 o menos), el RSI. Sale del `latest` que `/api/history` devuelve siempre.
 - **Medir entre dos días:** en cualquier gráfico interactivo, arrastrar con el mouse (en el celular, dos dedos; con el teclado, Mayús + flechas) muestra las fechas, la duración y la variación entre ambos días: en % y en precio en la ficha, por símbolo en Comparar y en puntos porcentuales en las tasas. Queda fija hasta un clic fuera o Esc.
