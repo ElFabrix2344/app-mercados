@@ -10,12 +10,10 @@ export const SUMMARY_KEY = 'resumen';
 /** Días que se guardan: el panel muestra el último y los anteriores plegados. */
 export const SUMMARY_DAYS = 7;
 
-/** Largo permitido de cada parte, en caracteres (mínimo y máximo). */
+/** Largo permitido de cada parte, en caracteres (mínimo y máximo): corto a propósito, que se lea de un vistazo. */
 export const SUMMARY_LIMITS = {
-  title: [10, 120],
-  text: [80, 1200],
-  point: [10, 220],
-  points: 4,
+  title: [10, 100],
+  text: [60, 450],
   sources: 8,
   sourceTitle: 200,
 } as const;
@@ -32,7 +30,6 @@ export interface DailySummary {
   date: string;
   title: string;
   text: string;
-  points: string[];
   sources: SummarySource[];
   publishedAt: string;
 }
@@ -46,7 +43,6 @@ export interface SummaryStore {
 export interface SummaryDraft {
   title: string;
   text: string;
-  points?: string[];
   sources: { url: string; title?: string }[];
 }
 
@@ -117,10 +113,6 @@ function sourceOf(raw: { url: string; title?: string }, news: NewsItem[]): Summa
 export function buildSummary(draft: SummaryDraft, news: NewsItem[], now: Date, timeZone: string): DailySummary {
   const title = checkLength('El título', cleanLine(draft.title), SUMMARY_LIMITS.title);
   const text = checkLength('El texto', cleanLine(draft.text), SUMMARY_LIMITS.text);
-  const rawPoints = draft.points ?? [];
-  if (rawPoints.length > SUMMARY_LIMITS.points) throw new ApiError('bad_request', 400, `Como mucho ${SUMMARY_LIMITS.points} puntos.`);
-  // Los puntos llegan a veces con su viñeta («- », «• »): la pone el panel.
-  const points = rawPoints.map((p, i) => checkLength(`El punto ${i + 1}`, cleanLine(p).replace(/^[-•*·]\s*/, ''), SUMMARY_LIMITS.point));
   if (!draft.sources.length) throw new ApiError('bad_request', 400, 'Falta al menos una fuente: los enlaces de los titulares que usaste.');
   if (draft.sources.length > SUMMARY_LIMITS.sources) throw new ApiError('bad_request', 400, `Como mucho ${SUMMARY_LIMITS.sources} fuentes.`);
   const sources: SummarySource[] = [];
@@ -128,7 +120,7 @@ export function buildSummary(draft: SummaryDraft, news: NewsItem[], now: Date, t
     const src = sourceOf(s, news);
     if (!sources.some((x) => x.url === src.url)) sources.push(src);
   }
-  return { date: isoDate(now, timeZone), title, text, points, sources, publishedAt: now.toISOString() };
+  return { date: isoDate(now, timeZone), title, text, sources, publishedAt: now.toISOString() };
 }
 
 export async function readSummaries(kv: KVNamespace): Promise<SummaryStore> {

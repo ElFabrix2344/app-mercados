@@ -771,23 +771,6 @@
   /** Variación del último dato contra el anterior de una serie [fecha, valor][]. */
   const lastChange = (pts) => (pts?.length >= 2 ? pts.at(-1)[1] / pts.at(-2)[1] - 1 : null);
 
-  /** Datos públicos del BCRP y de FRED: van en la cinta y en el resumen del día, también para los amigos. */
-  function publicFigures() {
-    const items = [];
-    const fx = state.peruData?.fx;
-    if (fx?.length) items.push({ sym: 'Dólar BCRP', value: nf(4).format(fx.at(-1).sell), ch: fx.length > 1 ? fx.at(-1).sell / fx.at(-2).sell - 1 : null, date: fx.at(-1).date });
-    const pm = state.peruMarkets;
-    for (const [key, label] of [['copper', 'Cobre'], ['gold', 'Oro'], ['bvl', 'BVL']]) {
-      const pts = pm?.[key]?.points;
-      if (pts?.length) items.push({ sym: label, value: nf(2).format(pts.at(-1)[1]), ch: lastChange(pts), date: pts.at(-1)[0] });
-    }
-    const pe10 = pm?.bond10pen?.points;
-    if (pe10?.length) items.push({ sym: 'Bono Perú 10A', value: rate(pe10.at(-1)[1]), pp: pe10.length > 1 ? pe10.at(-1)[1] - pe10.at(-2)[1] : null, date: pe10.at(-1)[0] });
-    const t10 = state.usaData?.treasury10y;
-    if (t10?.length) items.push({ sym: 'Bono EE. UU. 10A', value: rate(t10.at(-1).value), pp: t10.length > 1 ? t10.at(-1).value - t10.at(-2).value : null, date: t10.at(-1).date });
-    return items;
-  }
-
   /**
    * Lo que pasa por la cinta: la lista del dueño (precios ya guardados, sin gastar créditos) y, para todos,
    * los datos públicos del BCRP y de FRED. Los amigos no tienen lista: la licencia de Twelve Data no lo permite.
@@ -798,14 +781,18 @@
       const q = quoteFor(sym);
       if (q?.price != null) items.push({ sym, value: fmtPrice(q.price), ch: q.changePct != null ? q.changePct / 100 : null });
     }
-    return [...items, ...publicFigures()];
-  }
-
-  /** Variación de un dato de la cinta o del resumen: en %, o en puntos porcentuales si es una tasa. */
-  function figureChange(it) {
-    const d = it.pp ?? it.ch;
-    if (d == null) return null;
-    return it.pp != null ? `${arrowOf(d)} ${sign(d)}${nf(2).format(Math.abs(d))} pp` : `${arrowOf(d)} ${pctFrac(d, 2)}`;
+    const fx = state.peruData?.fx;
+    if (fx?.length) items.push({ sym: 'Dólar BCRP', value: nf(4).format(fx.at(-1).sell), ch: fx.length > 1 ? fx.at(-1).sell / fx.at(-2).sell - 1 : null });
+    const pm = state.peruMarkets;
+    for (const [key, label] of [['copper', 'Cobre'], ['gold', 'Oro'], ['bvl', 'BVL']]) {
+      const pts = pm?.[key]?.points;
+      if (pts?.length) items.push({ sym: label, value: nf(2).format(pts.at(-1)[1]), ch: lastChange(pts) });
+    }
+    const pe10 = pm?.bond10pen?.points;
+    if (pe10?.length) items.push({ sym: 'Bono Perú 10A', value: rate(pe10.at(-1)[1]), pp: pe10.length > 1 ? pe10.at(-1)[1] - pe10.at(-2)[1] : null });
+    const t10 = state.usaData?.treasury10y;
+    if (t10?.length) items.push({ sym: 'Bono EE. UU. 10A', value: rate(t10.at(-1).value), pp: t10.length > 1 ? t10.at(-1).value - t10.at(-2).value : null });
+    return items;
   }
 
   /** ¿La cinta se mueve? Lo que elegiste en este navegador o, si no, lo que pide el sistema («menos movimiento» = quieta). */
@@ -825,8 +812,6 @@
   }
 
   function renderTape() {
-    // Las cifras del resumen del día salen de los mismos datos: llegan cuando llegan los de la cinta.
-    renderSummaryFigures();
     const items = tapeItems();
     $('tape').hidden = !items.length;
     if (!items.length) return;
@@ -835,8 +820,9 @@
         'span',
         { class: 'tape-half' },
         ...items.map((it) => {
-          const text = figureChange(it);
-          return h('span', { class: 'tape-item' }, h('span', { class: 'tape-sym' }, it.sym), it.value, text ? h('span', { class: trend(it.pp ?? it.ch) }, text) : null);
+          const d = it.pp ?? it.ch;
+          const text = d == null ? null : it.pp != null ? `${arrowOf(d)} ${sign(d)}${nf(2).format(Math.abs(d))} pp` : `${arrowOf(d)} ${pctFrac(d, 2)}`;
+          return h('span', { class: 'tape-item' }, h('span', { class: 'tape-sym' }, it.sym), it.value, text ? h('span', { class: trend(d) }, text) : null);
         }),
       );
     const track = $('tape-track');
@@ -1826,7 +1812,6 @@
       { class: 'sum-old' },
       h('h4', {}, h('span', { class: 'sum-old-date' }, fDay.format(day(s.date))), s.title),
       h('p', { class: 'sum-text' }, s.text),
-      s.points?.length ? h('ul', { class: 'sum-points' }, ...s.points.map((p) => h('li', {}, p))) : null,
       s.sources?.length ? h('p', { class: 'hint' }, 'Fuentes: ', ...sourceLinks(s.sources)) : null,
     );
   }
@@ -1841,34 +1826,11 @@
     $('sum-date').textContent = when;
     $('sum-title').textContent = s.title;
     $('sum-text').textContent = s.text;
-    const pts = $('sum-points');
-    pts.hidden = !s.points?.length;
-    pts.replaceChildren(...(s.points ?? []).map((p) => h('li', {}, p)));
     $('sum-sources-label').textContent = `Fuentes (${s.sources.length})`;
     $('sum-sources-list').replaceChildren(...s.sources.map((x) => newsItem({ title: x.title, url: x.url, source: x.source, publishedAt: null })));
     $('sum-deeper').href = claudeLink(s);
     $('sum-older').hidden = !older.length;
     $('sum-older-list').replaceChildren(...older.map(olderSummary));
-    renderSummaryFigures();
-  }
-
-  /** Las cifras de la tarjeta no las escribe Claude: son los datos públicos de Rueda (los mismos de la cinta). */
-  function renderSummaryFigures() {
-    const ul = $('sum-figs');
-    const items = state.summary?.items?.length ? publicFigures() : [];
-    ul.hidden = !items.length;
-    ul.replaceChildren(
-      ...items.map((it) => {
-        const text = figureChange(it);
-        return h(
-          'li',
-          { title: it.date ? `Último dato: ${fDayYear.format(day(it.date))}` : null },
-          h('span', { class: 'sum-fig-sym' }, it.sym),
-          ` ${it.value}`,
-          text ? h('span', { class: trend(it.pp ?? it.ch) }, ` ${text}`) : null,
-        );
-      }),
-    );
   }
 
   /** Titulares de una acción: se piden una vez por sesión, al abrir su ficha. */
@@ -3088,12 +3050,16 @@
     return h('div', { class: 'metric' }, h('span', { class: 'label' }, label), h('span', { class: 'value' }, value), sub ? h('span', { class: 'sub' }, sub) : null);
   }
 
-  /** Gráfico pequeño con su título y, si se da `csv`, un botón para descargar sus datos. */
+  /**
+   * Gráfico pequeño con su título (sin título si la sección ya dice el periodo) y, si se da `csv`, un botón para
+   * descargar sus datos: solo la flecha, porque hay muchos; qué baja lo dice al pasar el mouse y al lector de pantalla.
+   */
   function chartBlock(title, pts, opts, csv) {
     const host = h('div', { class: 'chart' });
-    const head = h('div', { class: 'chart-head' }, h('p', { class: 'hint' }, title));
+    const head = h('div', { class: 'chart-head' }, title ? h('p', { class: 'hint' }, title) : null);
     if (csv) {
-      const b = h('button', { type: 'button', class: 'csv-btn', title: `Descargar ${csv.filename}` }, '⤓ CSV');
+      const label = `Descargar ${title ? title.toLowerCase() : opts.aria ?? 'los datos'} en CSV (Excel)`;
+      const b = h('button', { type: 'button', class: 'csv-btn', title: label, 'aria-label': label }, '⤓');
       b.addEventListener('click', () => downloadCsv(csv.filename, csv.header, csv.rows));
       head.append(b);
     }
@@ -3310,8 +3276,9 @@
         if (!last) return h('div', { class: 'pm-card' }, metric(m.label, '—', 'Sin datos del BCRP'));
         const fmt = (v) => nf(m.dec).format(v);
         const pbRow = (sr, v0, v1) => ({ value: `${arrowOf(v1 - v0)} ${sign(v1 - v0)}${nf(0).format(Math.abs(v1 - v0))} pb`, label: `${fmt(v0)} → ${fmt(v1)}` });
+        // Sin título: «último año» lo dice una sola vez el encabezado de la sección.
         const block = chartBlock(
-          'Último año',
+          null,
           s.points.map(([date, v]) => ({ date, v })),
           {
             fmt,
@@ -3509,12 +3476,15 @@
     return `Hoy: S/ ${nf(3).format(fx.sell)}${exp?.fx != null ? ` · analistas: S/ ${nf(3).format(exp.fx)} en 12 meses` : ''}`;
   }
 
-  /** «cierra en 3 días (mié 11 nov 23:59)»: se muestra un minuto antes de la medianoche del cierre. */
+  /**
+   * «cierra en 3 días» y, aparte (para mostrarlo al pasar el mouse), la hora exacta: «mié 11 nov 23:59», un minuto
+   * antes de la medianoche del cierre.
+   */
   function fcCloses(iso) {
     const ms = Date.parse(iso) - Date.now();
     const days = Math.floor(ms / 86_400_000);
     const left = ms < 3_600_000 ? 'en menos de 1 h' : days < 1 ? `en ${Math.floor(ms / 3_600_000)} h` : days === 1 ? 'mañana' : `en ${days} días`;
-    return `cierra ${left} (${fcClose.format(new Date(Date.parse(iso) - 60_000)).replace(/[.,]/g, '')})`;
+    return { text: `cierra ${left}`, exact: fcClose.format(new Date(Date.parse(iso) - 60_000)).replace(/[.,]/g, '') };
   }
 
   async function loadForecasts() {
@@ -3613,7 +3583,9 @@
       });
     }
     const ctx = fcContext(q);
-    const who = q.count ? `${q.count} del grupo ya ${q.count === 1 ? 'pronosticó' : 'pronosticaron'}` : 'Nadie pronosticó todavía';
+    // Tu pronóstico ya se ve en el control (el botón marcado o el número escrito): aquí solo cuántos y cuándo cierra.
+    const who = q.count ? `${q.count} ${q.count === 1 ? 'pronosticó' : 'pronosticaron'}` : 'Nadie pronosticó aún';
+    const closes = fcCloses(q.closesAt);
     return h(
       'article',
       { class: 'fc-card' },
@@ -3622,7 +3594,7 @@
       ctx ? h('p', { class: 'hint' }, ctx) : null,
       control,
       err,
-      h('p', { class: 'hint' }, [q.mine != null ? `Tu pronóstico: ${fcValue(q, q.mine)}` : null, who, fcCloses(q.closesAt)].filter(Boolean).join(' · ')),
+      h('p', { class: 'hint', title: `Cierra el ${closes.exact}` }, `${who} · ${closes.text}`),
     );
   }
 
@@ -3965,6 +3937,12 @@
     setupHapi();
     if (role !== 'owner') {
       document.body.classList.add('rol-amigo');
+      // La bienvenida se cierra con «Entendido» y, ya leída, no vuelve a ocupar la parte de arriba.
+      $('welcome').hidden = prefs.get('mercados.bienvenida', null) === 'vista';
+      $('welcome-close').addEventListener('click', () => {
+        prefs.set('mercados.bienvenida', 'vista');
+        $('welcome').hidden = true;
+      });
       $('fresh').textContent = 'Datos públicos';
       loadPeru();
       loadUsa();

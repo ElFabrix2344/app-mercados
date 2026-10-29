@@ -781,7 +781,8 @@ function registerSummaryTool(server: McpServer, c: McpContext): void {
         'eeuu_fred y calendario con publico: true. Nunca uses precios, historial, comparar, cartera, lista_diaria, empresa ' +
         'ni los resultados de empresas del calendario (Finnhub): sus licencias no permiten mostrar esos datos a otras ' +
         'personas. (2) No inventes cifras: usa solo las que salen de esas herramientas o ' +
-        'de los titulares. (3) Texto plano en español, sin Markdown. (4) En fuentes van los enlaces de los titulares que ' +
+        'de los titulares, y no repitas las que el panel ya muestra en su cinta (dólar, cobre, oro, BVL y bonos a 10 años). ' +
+        '(3) Corto y en texto plano, sin Markdown. (4) En fuentes van los enlaces de los titulares que ' +
         'usaste, tal como los da noticias (o de una fuente oficial: BCRP, INEI, SMV, Fed, BLS, FRED o SEC); otros dominios ' +
         'se rechazan.',
       inputSchema: z.object({
@@ -789,12 +790,7 @@ function registerSummaryTool(server: McpServer, c: McpContext): void {
         texto: z
           .string()
           .max(L.text[1])
-          .describe(`Un párrafo de 3 a 6 frases con lo más importante de ayer y lo que viene hoy (${L.text[0]} a ${L.text[1]} caracteres).`),
-        puntos: z
-          .array(z.string().max(L.point[1]))
-          .max(L.points)
-          .default([])
-          .describe(`Opcional: hasta ${L.points} puntos cortos (por ejemplo Perú, EE. UU. y la agenda de hoy), sin viñetas.`),
+          .describe(`2 o 3 frases: qué pasó y por qué, y lo más importante de hoy (${L.text[0]} a ${L.text[1]} caracteres).`),
         fuentes: z
           .array(z.object({ enlace: z.string().max(600).describe('Enlace del titular.'), titular: z.string().max(L.sourceTitle).optional().describe('Titular de la nota.') }))
           .min(1)
@@ -803,7 +799,7 @@ function registerSummaryTool(server: McpServer, c: McpContext): void {
       }),
       annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false },
     },
-    ({ titulo, texto, puntos, fuentes }) =>
+    ({ titulo, texto, fuentes }) =>
       run(async () => {
         // Los titulares de la caché dan el título y el medio de cada enlace. Si no se pueden leer, se aceptan igual los
         // enlaces de los medios y fuentes oficiales conocidos.
@@ -813,7 +809,7 @@ function registerSummaryTool(server: McpServer, c: McpContext): void {
         } catch (e) {
           if (!(e instanceof ApiError)) throw e;
         }
-        const draft = { title: titulo, text: texto, points: puntos, sources: fuentes.map((f) => ({ url: f.enlace, title: f.titular })) };
+        const draft = { title: titulo, text: texto, sources: fuentes.map((f) => ({ url: f.enlace, title: f.titular })) };
         const s = buildSummary(draft, news, deps.now, c.timeZone);
         const store = await publishSummary(deps.kv, s);
         return {

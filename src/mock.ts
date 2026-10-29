@@ -199,22 +199,18 @@ export function mockSummary(now: Date): SummaryStore {
     items: [
       {
         date: today,
-        title: 'Ejemplo: el cobre sube por la demanda china y el dólar cierra estable en Lima',
+        title: 'Ejemplo: el cobre sube por la demanda china y Wall Street espera a la Fed',
         text:
-          'Este es un resumen de prueba para ver cómo se ve la tarjeta. El cobre subió en Londres tras datos de la industria ' +
-          'china, mientras que en Lima el dólar interbancario terminó casi sin cambios. En Wall Street los índices cerraron mixtos ' +
-          'a la espera de la decisión de la Reserva Federal. Hoy el mercado mira los resultados trimestrales de las mineras.',
-        points: ['Perú: el dólar se mantuvo cerca de S/ 3,45 y la BVL subió levemente.', 'EE. UU.: la Fed anuncia su decisión de tasas el miércoles.'],
-        sources: [src(0), src(1), src(2), src(3)],
+          'Resumen de prueba para ver la tarjeta. El cobre subió tras datos de la industria china y en Wall Street los índices ' +
+          'cerraron mixtos. Hoy a la 1:00 p. m. la Fed anuncia su decisión de tasas.',
+        sources: [src(0), src(1), src(2)],
         publishedAt: new Date(`${today}T12:03:00Z`).toISOString(),
       },
       {
         date: addDays(today, -1),
         title: 'Ejemplo: Wall Street cierra en alza y el oro retrocede',
         text:
-          'Resumen de prueba del día anterior. Los índices de Nueva York cerraron con ganancias, el oro bajó por la toma de ' +
-          'ganancias y en Lima la sesión fue tranquila, sin anuncios de las empresas más grandes.',
-        points: [],
+          'Resumen de prueba del día anterior. Los índices de Nueva York cerraron con ganancias y en Lima la sesión fue tranquila.',
         sources: [src(4), src(5)],
         publishedAt: new Date(`${addDays(today, -1)}T12:02:00Z`).toISOString(),
       },

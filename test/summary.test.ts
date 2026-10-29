@@ -19,7 +19,6 @@ const TEXT = 'El cobre subió en Londres por la demanda china y en Lima el dóla
 const draft = (over: Partial<Parameters<typeof buildSummary>[0]> = {}) => ({
   title: 'El cobre sube y el dólar cierra estable',
   text: TEXT,
-  points: [],
   sources: [{ url: news[0]!.url }],
   ...over,
 });
@@ -39,10 +38,10 @@ describe('buildSummary', () => {
     expect(buildSummary(draft(), news, new Date('2026-10-28T04:00:00Z'), TZ).date).toBe('2026-10-27');
   });
 
-  it('limpia Markdown, espacios y viñetas', () => {
-    const s = buildSummary(draft({ title: '  **El cobre**   sube\ny el dólar   ', points: ['- Perú: la BVL sube levemente.', '• EE. UU.: la Fed decide el miércoles.'] }), news, NOW, TZ);
+  it('limpia Markdown y espacios', () => {
+    const s = buildSummary(draft({ title: '  **El cobre**   sube\ny el dólar   ', text: `__${TEXT}__\n` }), news, NOW, TZ);
     expect(s.title).toBe('El cobre sube y el dólar');
-    expect(s.points).toEqual(['Perú: la BVL sube levemente.', 'EE. UU.: la Fed decide el miércoles.']);
+    expect(s.text).toBe(TEXT);
   });
 
   it('acepta enlaces de medios conocidos y fuentes oficiales aunque no estén en la caché, y quita repetidos', () => {
@@ -63,17 +62,17 @@ describe('buildSummary', () => {
     expect(() => buildSummary(draft({ sources: [{ url: 'javascript:alert(1)' }] }), news, NOW, TZ)).toThrow(/https/);
   });
 
-  it('exige largos razonables y al menos una fuente', () => {
-    expect(() => buildSummary(draft({ title: 'Corto' }), news, NOW, TZ)).toThrow(/El título debe tener entre 10 y 120/);
+  it('exige un resumen corto y al menos una fuente', () => {
+    expect(() => buildSummary(draft({ title: 'Corto' }), news, NOW, TZ)).toThrow(/El título debe tener entre 10 y 100/);
+    expect(() => buildSummary(draft({ title: 'a'.repeat(101) }), news, NOW, TZ)).toThrow(/El título/);
     expect(() => buildSummary(draft({ text: 'Muy corto.' }), news, NOW, TZ)).toThrow(/El texto/);
-    expect(() => buildSummary(draft({ text: 'a'.repeat(1201) }), news, NOW, TZ)).toThrow(/El texto/);
-    expect(() => buildSummary(draft({ points: ['uno', 'dos', 'tres', 'cuatro', 'cinco'].map((p) => `Punto número ${p}.`) }), news, NOW, TZ)).toThrow(/4 puntos/);
+    expect(() => buildSummary(draft({ text: 'a'.repeat(451) }), news, NOW, TZ)).toThrow(/entre 60 y 450/);
     expect(() => buildSummary(draft({ sources: [] }), news, NOW, TZ)).toThrow(/al menos una fuente/);
   });
 });
 
 describe('publishSummary', () => {
-  const entry = (date: string, title = `Resumen del ${date} con su titular`): DailySummary => ({ date, title, text: TEXT, points: [], sources: [], publishedAt: `${date}T12:00:00.000Z` });
+  const entry = (date: string, title = `Resumen del ${date} con su titular`): DailySummary => ({ date, title, text: TEXT, sources: [], publishedAt: `${date}T12:00:00.000Z` });
 
   it('reemplaza el del mismo día, ordena del más nuevo al más viejo y guarda en una sola escritura', async () => {
     const mem = memoryKV({ [SUMMARY_KEY]: { items: [entry('2026-10-26'), entry('2026-10-27', 'El primero de hoy, que se reemplaza')] } });

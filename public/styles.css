@@ -26,7 +26,7 @@ body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--f-mono);fo
 .friend-only{display:none}
 .rol-amigo .owner-only{display:none!important}
 .rol-amigo .friend-only{display:block}
-.wrap{max-width:1180px;margin:0 auto;padding:16px 16px 40px;display:flex;flex-direction:column;gap:16px}
+.wrap{max-width:1180px;margin:0 auto;padding:16px 16px 40px;display:flex;flex-direction:column;gap:24px}
 .wrap.simple{max-width:40rem;padding-top:3rem}
 .wrap.simple h1{color:var(--accent);text-transform:uppercase;letter-spacing:.08em;font-size:1.1rem}
 /* Términos y privacidad: texto corrido en Plex Sans. */
@@ -87,6 +87,16 @@ button[disabled]{opacity:.6;cursor:default}
 #refresh-btn .ico{display:inline-block}
 #refresh-btn[disabled] .ico{animation:spin 1s linear infinite}
 @keyframes spin{to{transform:rotate(360deg)}}
+/* En el celular la barra ocupa menos: sin el contador de créditos y con «Actualizar» solo como ↻. */
+@media (max-width:720px){
+  .bar{gap:6px 12px;padding-bottom:10px}
+  .brand{gap:2px 12px}
+  .clock,.brand .mkt{font-size:.8rem}
+  #credits{display:none}
+  #refresh-btn .btn-text{display:none}
+  .hactions{gap:8px;width:100%}
+  .hactions .status{margin-right:auto}
+}
 
 /* ---------- cinta de precios ---------- */
 .tape{display:flex;align-items:stretch;border:1px solid var(--line);border-radius:var(--r);background:var(--panel);font-size:.85rem;margin-top:-6px}
@@ -109,7 +119,7 @@ button[disabled]{opacity:.6;cursor:default}
 .banner.crit{border:1px solid var(--down);color:var(--down);background:var(--down-soft)}
 
 /* ---------- pantallas ---------- */
-.screen{background:var(--panel);border:1px solid var(--line);border-radius:var(--r);padding:12px 14px}
+.screen{background:var(--panel);border:1px solid var(--line);border-radius:var(--r);padding:14px 16px}
 .screen-head{position:relative;display:flex;flex-wrap:wrap;align-items:center;gap:4px 12px;margin-bottom:10px;min-width:0}
 .screen-head h2{color:var(--accent);text-transform:uppercase;letter-spacing:.08em;font-size:.9rem;white-space:nowrap}
 .screen-head > :last-child{margin-left:auto}
@@ -175,6 +185,7 @@ button[disabled]{opacity:.6;cursor:default}
 .ranges button[aria-pressed="true"]{border-color:var(--accent);color:var(--accent)}
 .chart-head{display:flex;align-items:baseline;justify-content:space-between;gap:8px}
 .chart-head .hint{margin:0}
+.chart-head .csv-btn{margin-left:auto}
 
 /* Leyendas y selectores con clave de color: una línea corta del color de la serie; el texto nunca va de color. */
 .s1{--c:var(--s1)} .s2{--c:var(--s2)} .s3{--c:var(--s3)} .s4{--c:var(--s4)}
@@ -317,19 +328,16 @@ a.news-title:hover{color:var(--accent);text-decoration:underline}
 .news-foot .hint{margin:0}
 
 /* ---------- resumen del día ---------- */
-/* El titular va en Plex Mono (es un título); el párrafo y los puntos, en Plex Sans, como las demás frases. */
+/* El titular va en Plex Mono (es un título); el párrafo, en Plex Sans, como las demás frases. */
 .sum-title{margin:0 0 6px;font-size:1.05rem;line-height:1.4;color:var(--ink)}
-.sum-text{margin:0;font-family:var(--f-sans);line-height:1.6;color:var(--ink)}
-.sum-points{margin:8px 0 0;padding-left:1.2rem;display:flex;flex-direction:column;gap:4px;font-family:var(--f-sans);line-height:1.5}
-.sum-figs{list-style:none;margin:10px 0 0;padding:8px 0 0;border-top:1px solid var(--hair);display:flex;flex-wrap:wrap;gap:4px 16px;font-size:.85rem}
-.sum-fig-sym{color:var(--muted);text-transform:uppercase;letter-spacing:.04em}
-.sum-foot{display:flex;flex-wrap:wrap;align-items:baseline;justify-content:space-between;gap:8px 16px;margin-top:10px}
-.sum-sources > summary,.sum-older > summary{cursor:pointer;font-family:var(--f-sans);font-size:.85rem;color:var(--muted)}
-.sum-sources > summary:hover,.sum-older > summary:hover{color:var(--accent)}
-.sum-sources[open]{flex-basis:100%}
-.sum-sources .news{margin-top:6px}
-.sum-deeper{font-family:var(--f-sans);font-size:.85rem}
-.sum-older{margin-top:10px;border-top:1px solid var(--hair);padding-top:8px}
+.sum-text{margin:0;font-family:var(--f-sans);line-height:1.6;color:var(--ink);max-width:72ch}
+/* Fuentes, días anteriores y «Profundiza» en una línea chica; lo que se abre ocupa el ancho completo debajo. */
+.sum-foot{display:flex;flex-wrap:wrap;align-items:baseline;gap:6px 18px;margin-top:10px}
+.sum-more > summary{cursor:pointer;font-family:var(--f-sans);font-size:.85rem;color:var(--muted)}
+.sum-more > summary:hover{color:var(--accent)}
+.sum-more[open]{flex-basis:100%}
+.sum-more .news{margin-top:6px}
+.sum-deeper{font-family:var(--f-sans);font-size:.85rem;margin-left:auto}
 .sum-old{margin-top:12px}
 .sum-old h4{margin:0 0 4px;font-size:.92rem;font-weight:500;line-height:1.4}
 .sum-old-date{color:var(--muted);margin-right:8px}

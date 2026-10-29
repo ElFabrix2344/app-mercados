@@ -305,7 +305,15 @@ Usar la cuenta de Max desde el Worker va contra los términos de Claude.
   - todos los días a las 7:00 de Lima (cron `0 12 * * *` en UTC), con Sonnet 5.5;
   - **solo con el conector de Rueda** (sin Calendar, Drive, TickTick ni los demás).
 - [x] **Probada el 27 oct.** Publicó un buen resumen en unos 20 segundos, pero mencionó resultados de BVN que salían del calendario (Finnhub, solo para el dueño). Desde entonces la tarea pide `calendario` con `publico: true`, que deja afuera todo lo de Finnhub.
-- [ ] Ver el primer resumen automático a la mañana siguiente, a las 7:00.
+- [x] **Primer resumen automático:** salió el 28 oct a las 7:25 (la tarea en la nube arranca con unos minutos de margen).
+- [x] **28 oct — más corto.** Al usuario el panel le parecía «demasiado junto», con demasiado texto. Se hicieron estos cambios:
+  - **Resumen:** 2 o 3 frases (máximo 450 caracteres), sin puntos y sin la fila de cifras, que repetía la cinta.
+  - **Encabezado en el celular:** más compacto.
+  - **Textos repetidos:** fuera «Último año» de cada gráfico de Mercados del Perú; la descarga de cada gráfico queda solo como «⤓»; en Pronósticos, una línea por pregunta.
+  - **Bienvenida de los amigos:** se cierra con «Entendido».
+  - **Pie de página:** más corto.
+  - **Espacio:** más aire entre secciones.
+- Si sigue sintiéndose amontonado: dividir el panel en pestañas (Hoy · Mercados · Mi plata · Juego).
 
 Prompt de la tarea (si cambia aquí, hay que cambiarlo también en claude.ai):
 
@@ -316,14 +324,14 @@ Prompt de la tarea (si cambia aquí, hay que cambiarlo también en claude.ai):
 >    - los datos del día, con peru_bcrp y eeuu_fred;
 >    - la agenda, con calendario (dias 7, publico true).
 > 2. Escribe en español para un grupo de estudiantes de Lima que invierten desde el Perú en acciones y ETF de EE. UU.:
->    - titulo: un titular como de diario, de hasta 120 caracteres;
->    - texto: un párrafo de 3 a 6 frases con lo más importante de las últimas 24 horas (Perú, EE. UU. y el mundo) y lo que viene hoy según el calendario;
->    - puntos: si ayudan, hasta 3 puntos cortos.
+>    - titulo: un titular como de diario, de hasta 100 caracteres;
+>    - texto: 2 o 3 frases, de hasta 450 caracteres: lo más importante de las últimas 24 horas y lo que viene hoy según el calendario.
 >
->    Si es fin de semana o feriado, resume lo que hubo y lo que viene en la semana.
+>    Corto a propósito, que se lea de un vistazo. Si es fin de semana o feriado, resume lo que hubo y lo que viene en la semana.
 > 3. Reglas:
 >    - Usa solo lo que dicen esas herramientas.
 >    - No inventes cifras ni causas que no estén en los titulares o en los datos.
+>    - No repitas las cifras que el panel ya muestra en su cinta (dólar, cobre, oro, BVL y bonos a 10 años): cuenta qué pasó y por qué.
 >    - No uses precios, historial, comparar, cartera, lista_diaria ni empresa: el resumen lo ven otras personas.
 >    - No menciones resultados de empresas que no estén en los titulares.
 >    - Texto plano, sin Markdown.

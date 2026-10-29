@@ -34,7 +34,7 @@
     <div class="hactions">
       <span class="status" id="fresh" aria-live="polite">Cargando…</span>
       <span class="pill owner-only" id="credits" title="Créditos de Twelve Data que usó la app hoy (freno: 600 de 800)">— / 600 créditos</span>
-      <button type="button" id="refresh-btn" class="owner-only"><span class="ico" aria-hidden="true">↻</span> Actualizar</button>
+      <button type="button" id="refresh-btn" class="owner-only" aria-label="Actualizar precios"><span class="ico" aria-hidden="true">↻</span><span class="btn-text"> Actualizar</span></button>
       <button type="button" id="install-btn" aria-controls="install-panel" aria-expanded="false" hidden><span class="ico" aria-hidden="true">↓</span> Instalar app</button>
     </div>
   </header>
@@ -67,30 +67,32 @@
         <summary aria-label="Cómo se hace el resumen">?</summary>
         <div class="help-body">
           <p>Lo escribe Claude cada mañana a las 7:00 (hora de Lima) con los titulares de «Noticias» y los datos públicos del BCRP y de FRED. No usa precios con licencia ni datos de nadie.</p>
-          <p>Es automático y puede equivocarse: revisa las fuentes. Las cifras de abajo no las escribe Claude: salen de los datos de Rueda.</p>
+          <p>Es automático y puede equivocarse: revisa las fuentes.</p>
         </div>
       </details>
     </div>
     <h3 class="sum-title" id="sum-title"></h3>
     <p class="sum-text" id="sum-text"></p>
-    <ul class="sum-points" id="sum-points" hidden></ul>
-    <ul class="sum-figs" id="sum-figs" aria-label="Cifras de Rueda" hidden></ul>
+    <!-- Una sola línea chica: fuentes, días anteriores y «Profundiza». Lo que se abre aparece debajo. -->
     <div class="sum-foot">
-      <details class="sum-sources">
+      <details class="sum-more">
         <summary id="sum-sources-label">Fuentes</summary>
         <ol class="news" id="sum-sources-list"></ol>
       </details>
+      <details class="sum-more" id="sum-older" hidden>
+        <summary>Días anteriores</summary>
+        <div id="sum-older-list"></div>
+      </details>
       <a class="sum-deeper" id="sum-deeper" href="https://claude.ai/new" target="_blank" rel="noopener noreferrer">Profundiza en Claude ↗</a>
     </div>
-    <details class="sum-older" id="sum-older" hidden>
-      <summary>Días anteriores</summary>
-      <div id="sum-older-list"></div>
-    </details>
   </section>
 
   <!-- Vista de amigos: la licencia gratis de Twelve Data no permite mostrar sus precios a otras personas. -->
-  <section class="screen friend-only" aria-labelledby="pub-h">
-    <div class="screen-head"><h2 id="pub-h">Qué puedes hacer en Rueda</h2></div>
+  <section class="screen friend-only" id="welcome" aria-labelledby="pub-h">
+    <div class="screen-head">
+      <h2 id="pub-h">Qué puedes hacer en Rueda</h2>
+      <button type="button" id="welcome-close">Entendido</button>
+    </div>
     <ul class="welcome">
       <li><strong>Pronósticos del grupo:</strong> elige tu nombre y pronostica las tasas, la inflación y el dólar. Los puntos y el ranking salen solos cuando se publica cada dato.</li>
       <li><strong>Mi cuenta Hapi:</strong> importa tu estado de cuenta en PDF o anota tus operaciones. Se cifra con tu frase: nadie más la puede ver, tampoco el dueño de la app.</li>
@@ -384,7 +386,7 @@
   <section class="screen" aria-labelledby="pm-h">
     <div class="screen-head">
       <h2 id="pm-h">Mercados y tasas del Perú</h2>
-      <span class="src">BCRP</span>
+      <span class="src">BCRP · último año</span>
       <details class="help">
         <summary aria-label="Qué muestra esta sección">?</summary>
         <div class="help-body">
@@ -456,9 +458,9 @@
   </section>
 
   <footer class="foot">
-    <p><span class="owner-only">Precios: Twelve Data. </span>Perú: Banco Central de Reserva del Perú (BCRPData). EE. UU.: FRED®, Federal Reserve Bank of St. Louis, con datos de la Junta de la Reserva Federal y del BLS. Resultados de empresas: SEC EDGAR. Datos informativos; no es asesoría de inversión.</p>
-    <p>Este producto usa la API de FRED® pero no está respaldado ni certificado por el Federal Reserve Bank of St. Louis. <span lang="en">(This product uses the FRED® API but is not endorsed or certified by the Federal Reserve Bank of St. Louis.)</span></p>
-    <p>Al usar Rueda aceptas los <a href="https://fred.stlouisfed.org/docs/api/terms_of_use.html" target="_blank" rel="noopener noreferrer">Términos de uso de la API de FRED®</a>. <a href="/terminos.html">Términos y privacidad de Rueda</a>.</p>
+    <p>Datos informativos; no es asesoría de inversión. Fuentes: BCRP, FRED® (Junta de la Reserva Federal y BLS), SEC EDGAR<span class="owner-only"> y Twelve Data</span>. <a href="/terminos.html">Términos y privacidad</a>.</p>
+    <!-- Aviso exacto que piden los términos de la API de FRED, con el enlace a esos términos. -->
+    <p><span lang="en">This product uses the FRED® API but is not endorsed or certified by the Federal Reserve Bank of St. Louis.</span> Al usar Rueda aceptas los <a href="https://fred.stlouisfed.org/docs/api/terms_of_use.html" target="_blank" rel="noopener noreferrer">términos de uso de la API de FRED®</a>.</p>
     <p id="version"></p>
   </footer>
 </div>

@@ -106,7 +106,7 @@ describe('herramienta publicar_resumen', () => {
     expect(r.isError).toBe(false);
     expect(r.data).toMatchObject({ publicado: true, fecha: '2026-10-15', fuentes: [{ medio: 'Gestión', titular: 'El cobre sube por la demanda china' }], dias_guardados: 1 });
     const saved = JSON.parse(mem.store.get('resumen')!);
-    expect(saved.items[0]).toMatchObject({ date: '2026-10-15', title: args.titulo, points: [] });
+    expect(saved.items[0]).toMatchObject({ date: '2026-10-15', title: args.titulo, text: args.texto });
   });
 
   it('rechaza enlaces de dominios desconocidos con un mensaje que Claude puede corregir', async () => {
