@@ -12,7 +12,7 @@ Claude ─► Worker «mercados-mcp» (OAuth propio) ─────────
 
 ## Cómo funciona
 
-- **Worker en TypeScript** que sirve el frontend estático (JS sin framework, en `public/`) y una API pequeña. Valida el JWT de Access en cada petición; si falta configuración no sirve nada (falla cerrado), también si `ALLOWED_EMAILS` está vacío.
+- **Worker en TypeScript** que sirve el frontend estático (JS sin framework, en `public/`) y una API pequeña. Valida el JWT de Access en cada petición y que el correo sea del dueño o esté en «Personas»; si falta configuración no sirve nada (falla cerrado), también si no hay `OWNER_EMAILS`.
 - **Fuentes**
   - Twelve Data: `/quote` y `/time_series` (1 crédito por símbolo; plan gratis: 800/día y 8/min).
   - BCRP (BCRPData, sin clave): `PD04637PD`/`PD04638PD` (dólar interbancario compra/venta), `PD12301MD` (tasa de referencia), `PN01273PM` (inflación de Lima a 12 meses), `PD04701XD` (cobre en Londres, en centavos de US$ por libra; se muestra en US$), `PD04704XD` (oro en Londres, US$ por onza troy), `PD04650MD` (reservas internacionales netas, millones de US$), `PD38026MD` (índice general de la BVL), `PD31893DD` y `PD31894DD` (bono del gobierno peruano a 10 años en soles y en dólares) y `PD04719XD` (Tesoro de EE. UU. a 10 años). La API devuelve las series ordenadas por código, no en el orden pedido: `getBcrp` las reacomoda.
@@ -94,11 +94,16 @@ Claude ─► Worker «mercados-mcp» (OAuth propio) ─────────
 | Rol | Quién | Qué ve |
 |---|---|---|
 | Dueño | Los correos de `OWNER_EMAILS` | Todo: precios, historial, comparación, cartera simulada y lista (Twelve Data), resultados y datos de empresas (Finnhub), resultados anuales (SEC), Perú y EE. UU., y su cuenta de Hapi a precios de mercado |
-| Amigo | El resto de `ALLOWED_EMAILS` (y de la política de Access) | Solo datos públicos: Perú (BCRP) y EE. UU. (FRED), resultados anuales de empresas (SEC), noticias generales, el resumen del día, calendario, y juegan a los pronósticos del grupo. Además, su propia cuenta de Hapi (sin precios de mercado) |
+| Amigo | Los correos de «Personas» (la lista que maneja el dueño en el panel) | Solo datos públicos: Perú (BCRP) y EE. UU. (FRED), resultados anuales de empresas (SEC), noticias generales, el resumen del día, calendario, y juegan a los pronósticos del grupo. Además, su propia cuenta de Hapi (sin precios de mercado) |
 
 La licencia gratis de Twelve Data no permite mostrar sus datos a otras personas ni compartir la clave (§2.2 y §2.3 de sus [términos](https://twelvedata.com/terms)). Por eso el servidor responde **403** a los amigos en `/api/quotes`, `/api/history`, `/api/compare`, `/api/portfolio`, `/api/news/symbol`, `/api/company`, `/api/eod` y `/api/watchlist`, y el conector solo les ofrece las herramientas de datos públicos (`peru_bcrp`, `eeuu_fred`, `resultados_anuales`, `noticias` generales y `calendario`); no es solo un ocultamiento en pantalla. Si `OWNER_EMAILS` está vacío, nadie ve los precios (falla cerrado). Con Finnhub pasa lo mismo: `/api/calendar` y la herramienta `calendario` solo suman los resultados de empresas cuando quien pide es el dueño.
 
-**Agregar un amigo:** su correo va en la política de Access de la app (regla *Allow* → *Emails*, con el inicio de sesión *One-time PIN*: entran con un código que les llega por correo) **y** en `ALLOWED_EMAILS`. Al editar ese secreto hay que volver a escribir toda la lista, incluido tu correo: el panel no muestra el valor anterior. Los amigos ven una bienvenida con lo que pueden hacer y, al pie, los términos y la privacidad (`/terminos.html`), que piden los términos de la API de FRED para apps con otros usuarios.
+**Agregar a alguien** (sección «Personas», solo el dueño, `services/people.ts`): escribes su correo y Rueda lo guarda en su lista (KV `personas`) y lo copia a Cloudflare Access, que le manda un código por correo para entrar (*One-time PIN*). «Invitar» copia el mensaje con el enlace (en el celular abre «Compartir»), y × lo quita: deja de entrar en un minuto, aunque su sesión de Access siga abierta.
+- **Copia a Access** (`lib/access-api.ts`): con el secreto `ACCESS_API_TOKEN` (token de Cloudflare con un solo permiso, «Access: Apps and Policies → Edit», en la cuenta de Rueda). Rueda busca la app por su AUD y reescribe solo las reglas *Emails* de una política: la que se llama «Personas de Rueda» o, si no hay, la única que deja entrar por correo. Deja ahí exactamente tu correo y los de la lista; las demás reglas y ajustes de la política quedan igual. Sin token, la lista funciona igual en Rueda y el panel recuerda agregar cada correo también en Access.
+- **Segunda capa:** Rueda revisa su propia lista en cada pedido, así que si la regla de Access quedara abierta por error, igual no entra nadie de afuera.
+- **Antes** la lista era el secreto `ALLOWED_EMAILS`: Rueda lo usa solo mientras su lista no exista, y el primer cambio lo pasa a KV. Después se puede borrar.
+
+Los amigos ven una bienvenida con lo que pueden hacer y, al pie, los términos y la privacidad (`/terminos.html`), que piden los términos de la API de FRED para apps con otros usuarios.
 
 ## API
 
@@ -128,6 +133,8 @@ Todas las rutas exigen sesión de Cloudflare Access. Las marcadas con 🔒 son s
 | GET | `/api/curve` | Curva del Tesoro de EE. UU. (hoy, hace un mes y hace un año) y la diferencia 10 años − 2 años (FRED) |
 | GET / PUT / DELETE | `/api/hapi` | La cuenta de Hapi de quien pide, cifrada (`{blob, version, legacy}`). PUT `{"blob", "base"}` guarda (409 si otro equipo guardó antes); DELETE la borra |
 | GET | `/api/hapi/market?symbols=VOO,SCCO` | Para valorizar la cuenta: precios guardados (solo el dueño; `null` para los demás) y el dólar del BCRP |
+| GET / POST / DELETE | `/api/people` 🔒 | «Personas»: la lista, si todavía sale de `ALLOWED_EMAILS` y cómo quedó la última copia a Access. POST `{"email"}` agrega y DELETE `{"email"}` quita (el correo va en el cuerpo, no en la URL); cada cambio se copia a Access |
+| POST | `/api/people/sync` 🔒 | Vuelve a copiar la lista a Access (después de cargar el token o si falló la última vez) |
 | GET | `/api/financials?symbol=SCCO` | Resultados anuales de cualquier acción que reporte a la SEC: ingresos, utilidad operativa y utilidad neta por año fiscal (`cik: null` si la SEC no la tiene) |
 | GET | `/api/usa` | Bono a 10 años, tasa de la Fed e inflación (FRED) |
 | GET | `/conector/identidad?state=…` 🔒 | Paso del login del conector: firma tu correo y vuelve a `mercados-mcp` |
@@ -177,6 +184,8 @@ src/
   services/factors.ts   notas por factores A–F frente a las comparables (Finnhub, solo el dueño)
   services/financials.ts resultados anuales de la SEC: conceptos por línea, NIIF si hace falta y caché de 7 días
   services/hapi.ts      cuenta de Hapi cifrada: guarda y devuelve el texto cifrado de cada persona, y los precios para valorizarla
+  services/people.ts    «Personas»: quién puede entrar (lista en KV) y su copia a Access
+  lib/access-api.ts     cliente de la API de Cloudflare Access: reescribe los correos de la política de Rueda
   services/xray.ts      rayos X de la cartera simulada: composición, concentración y riesgo
   services/eod.ts       lista diaria: cierres de hasta 20 símbolos más y la tarea programada que los renueva
   lib/forecasts.ts      pronósticos del grupo: preguntas desde el calendario, puntos y cómo se resuelve cada una
@@ -218,14 +227,15 @@ Con `DEV_MODE=true` la validación de Access se salta **solo** si la petición l
 Cada push a `main` ejecuta GitHub Actions: typecheck, pruebas y `wrangler deploy` de los **dos** Workers (`mercados` y `mercados-mcp`). Los pull requests solo ejecutan las pruebas. `mercados` tiene una tarea programada (cron cada 10 minutos: lista diaria y resultados de los pronósticos) que el despliegue registra solo; se ve en Workers → mercados → Settings → Trigger events.
 
 - **Secretos del repo** (GitHub → Settings → Secrets and variables → Actions): `CLOUDFLARE_API_TOKEN` (plantilla «Edit Cloudflare Workers») y `CLOUDFLARE_ACCOUNT_ID`.
-- **Secretos de `mercados`** (panel de Cloudflare → Workers → mercados → Settings → Variables and Secrets, tipo **Secret**): `ACCESS_TEAM_DOMAIN`, `ACCESS_AUD`, `ALLOWED_EMAILS`, `OWNER_EMAILS`, `TWELVE_DATA_API_KEY`, `FRED_API_KEY`, `LOGIN_LINK_SECRET` y, opcional, `FINNHUB_API_KEY` (clave gratis de finnhub.io, para los resultados de empresas). El despliegue los conserva. Para comprobarlos: `/api/status` → `config`.
+- **Secretos de `mercados`** (panel de Cloudflare → Workers → mercados → Settings → Variables and Secrets, tipo **Secret**): `ACCESS_TEAM_DOMAIN`, `ACCESS_AUD`, `OWNER_EMAILS`, `TWELVE_DATA_API_KEY`, `FRED_API_KEY`, `LOGIN_LINK_SECRET` y, opcionales, `FINNHUB_API_KEY` (clave gratis de finnhub.io, para los resultados de empresas) y `ACCESS_API_TOKEN` (para que «Personas» escriba en Access). `ALLOWED_EMAILS` es la lista vieja: solo hace falta hasta el primer cambio en «Personas». El despliegue los conserva. Para comprobarlos: `/api/status` → `config`.
 - **Secretos de `mercados-mcp`:** ver la sección del conector.
 
 ## Problemas conocidos
 
 | Síntoma | Causa | Solución |
 |---|---|---|
-| «Acceso restringido» / 503 | Falta `ACCESS_TEAM_DOMAIN`, `ACCESS_AUD` o `ALLOWED_EMAILS` | Cárgalos en el panel de Cloudflare |
+| «Acceso restringido» / 503 | Falta `ACCESS_TEAM_DOMAIN`, `ACCESS_AUD` u `OWNER_EMAILS` | Cárgalos en el panel de Cloudflare |
+| «Personas» dice que Cloudflare no se actualizó | El token no tiene el permiso «Access: Apps and Policies → Edit», o la app tiene varias políticas con correos | Rehacer el token con ese permiso, o ponerle «Personas de Rueda» de nombre a la política de los amigos; después, «Reintentar» |
 | Un secreto con `formatOk: false` | Pegado con Ctrl+V en un prompt oculto de la terminal (guarda `\u0016`) | Cárgalo desde el panel de Cloudflare |
 | Precios «Guardado hace…» | Se alcanzó el freno de créditos o Twelve Data no respondió | Esperar al día siguiente (UTC) o revisar `/api/status` |
 | Desde 2028, gasto de créditos en feriados de EE. UU. | El calendario de la NYSE está cargado hasta `NYSE_CALENDAR_UNTIL` (2027; `/api/status` → `marketCalendarUntil`) | Agregar el año nuevo en `lib/market-hours.ts`, desde nyse.com/markets/hours-calendars |

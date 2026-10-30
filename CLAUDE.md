@@ -65,3 +65,8 @@ App de mercados (Cloudflare Worker + panel web + conector MCP para Claude). El R
   - revisar los términos de FRED (su web estaba en mantenimiento); `FRED_API_KEY` ya está cargada;
   - cargar `FINNHUB_API_KEY` en ambos Workers para prender los resultados de empresas;
   - más adelante, que cada amigo use su propia clave gratis de Twelve Data (lista y caché por persona) para que también vea precios.
+- **Quién entra: «Personas»** (`services/people.ts`, `lib/access-api.ts`). La lista la maneja el dueño en el panel y vive en KV (`personas`); el secreto `ALLOWED_EMAILS` es la lista vieja y solo se usa mientras ese registro no exista. Los dueños (`OWNER_EMAILS`) siempre entran. Cada cambio se copia a Cloudflare Access con `ACCESS_API_TOKEN` (un solo permiso: «Access: Apps and Policies → Edit»), reescribiendo solo las reglas *Emails* de la política «Personas de Rueda» o, si no hay, de la única que deja entrar por correo. Reglas:
+  - **No pidas un permiso más amplio** (por ejemplo, el de grupos e identidades: con él se podría agregar otro proveedor de identidad y entrar como el dueño).
+  - **Nunca dejes la política sin correos** y nunca toques las demás reglas ni políticas.
+  - **Los correos van en el cuerpo de los pedidos, no en la URL** (las URLs quedan en los registros).
+  - **La lista se revisa en cada pedido** (es la segunda capa si Access queda abierto por error). Cada instancia la recuerda 30 s, así que quitar a alguien tarda hasta un minuto.

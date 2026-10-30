@@ -1,4 +1,4 @@
-import { allowedEmails, roleFor, verifyAccess, type Role } from './auth/access';
+import { roleFor, verifyAccess, type Role } from './auth/access';
 import { isLocalDev, isMock, trimSecrets, type Env } from './env';
 import { CALENDAR_UNTIL, EVENTS, sourcesFor, upcoming } from './lib/calendar';
 import { ApiError, errorResponse, escapeHtml, htmlPage, json } from './lib/http';
@@ -34,6 +34,7 @@ import { EOD_NEW_NOW, eodView, knownSymbols, refreshEod, validateEodList } from 
 import { forecastView, resolveForecasts, setAlias, submitForecast, type Store } from './services/forecasts';
 import { deleteStore, hapiMarket, readStore, saveStore } from './services/hapi';
 import { marketNews, quoteName, symbolNews } from './services/news';
+import { addPerson, emailList, peopleView, removePerson, syncPeople } from './services/people';
 import { addTrade, deleteTrade, kvSource, readTrades, valuePortfolio } from './services/portfolio';
 import {
   DAILY_CREDIT_CAP,
@@ -148,6 +149,9 @@ async function route(req: Request, env: Env, url: URL, role: Role, email: string
       403,
       'Los precios de mercado son solo para el dueño de la app: la licencia gratis de Twelve Data no permite mostrarlos a otras personas.',
     );
+  }
+  if ((p === '/api/people' || p.startsWith('/api/people/')) && role !== 'owner') {
+    throw new ApiError('forbidden', 403, 'Solo el dueño de la app decide quién entra.');
   }
 
   if (req.method === 'GET') {
@@ -295,6 +299,10 @@ async function route(req: Request, env: Env, url: URL, role: Role, email: string
       case '/api/forecasts':
         return json(await forecastView(env.CACHE, needEmail(email), now, mock ? mockForecastExtras(now) : {}));
 
+      // Quién puede entrar (solo el dueño): la lista de Rueda y cómo quedó la última copia a Cloudflare Access.
+      case '/api/people':
+        return json(await peopleView(env));
+
       case '/api/calendar': {
         // Fechas oficiales cargadas en el código (sin APIs) y, solo para el dueño, los resultados de las
         // acciones de su lista (Finnhub: sus términos no permiten mostrarlos a otras personas).
@@ -362,6 +370,15 @@ async function route(req: Request, env: Env, url: URL, role: Role, email: string
     }
     sameOrigin(req, url);
     return json(await saveStore(env.CACHE, who, now, await req.json().catch(() => null)));
+  }
+
+  // Personas: agregar (POST) o quitar (DELETE) un correo, con el correo en el cuerpo (no en la URL, que queda en los
+  // registros), o volver a copiar la lista a Access (POST /api/people/sync). Cada cambio se copia a Access.
+  if ((p === '/api/people' && (req.method === 'POST' || req.method === 'DELETE')) || (p === '/api/people/sync' && req.method === 'POST')) {
+    sameOrigin(req, url);
+    if (p === '/api/people/sync') return json(await syncPeople(env, now));
+    const body = await req.json().catch(() => null);
+    return json(req.method === 'POST' ? await addPerson(env, body, now) : await removePerson(env, body, now));
   }
 
   // Guarda la lista diaria y pide ya los cierres de hasta 4 símbolos nuevos (el resto, la tarea programada).
@@ -445,9 +462,10 @@ export function configStatus(env: Env): Record<string, SecretInfo | number> {
     ACCESS_TEAM_DOMAIN: info(env.ACCESS_TEAM_DOMAIN, (s) => /^https:\/\/[a-z0-9-]+\.cloudflareaccess\.com$/.test(s)),
     ACCESS_AUD: info(env.ACCESS_AUD, (s) => /^[0-9a-f]{64}$/.test(s)),
     ALLOWED_EMAILS: info(env.ALLOWED_EMAILS, (s) => clean(s) && s.includes('@')),
-    allowedEmailCount: allowedEmails(env).length,
+    allowedEmailCount: emailList(env.ALLOWED_EMAILS).length,
     OWNER_EMAILS: info(env.OWNER_EMAILS, (s) => clean(s) && s.includes('@')),
     LOGIN_LINK_SECRET: info(env.LOGIN_LINK_SECRET, (s) => clean(s) && s.length >= 32),
+    ACCESS_API_TOKEN: info(env.ACCESS_API_TOKEN, (s) => /^[A-Za-z0-9_-]{30,200}$/.test(s)),
     TWELVE_DATA_API_KEY: info(env.TWELVE_DATA_API_KEY, (s) => /^[A-Za-z0-9]{16,64}$/.test(s)),
     FRED_API_KEY: info(env.FRED_API_KEY, (s) => /^[a-z0-9]{32}$/.test(s)),
     FINNHUB_API_KEY: info(env.FINNHUB_API_KEY, (s) => /^[A-Za-z0-9]{10,64}$/.test(s)),

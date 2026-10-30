@@ -143,6 +143,27 @@
         </div>
         <div id="peru-markets" class="pm-grid"><p class="muted">Cargando…</p></div>
       </section>
+
+      <!-- Quién puede entrar (solo el dueño). Cada cambio se copia a Cloudflare Access, que manda el código por correo. -->
+      <section class="screen owner-only" id="people" aria-labelledby="pp-h">
+        <div class="screen-head">
+          <h2 id="pp-h">Personas</h2>
+          <span class="src" id="pp-count"></span>
+          <button type="button" id="pp-add" aria-controls="pp-form" aria-expanded="false">Agregar</button>
+        </div>
+        <form id="pp-form" class="wl-form" hidden>
+          <label for="pp-input">Correo con el que va a entrar</label>
+          <div class="wl-row">
+            <input id="pp-input" type="email" autocomplete="off" autocapitalize="off" spellcheck="false" required>
+            <button type="submit">Guardar</button>
+            <button type="button" id="pp-cancel">Cancelar</button>
+          </div>
+          <p class="err" id="pp-err" hidden></p>
+        </form>
+        <ul class="pp-list" id="pp-list"><li class="muted">Cargando…</li></ul>
+        <p class="err" id="pp-note" hidden></p>
+        <p class="hint" id="pp-sync"></p>
+      </section>
     </div>
 
     <main class="col col-center" id="col-center">

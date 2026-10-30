@@ -56,7 +56,12 @@ Las tres preguntas pendientes las respondió Claude con la opción más simple, 
 - [x] **Conector reconectado en claude.ai** (23 oct): ya aparecen `comparar`, `cartera`, `empresa`, `lista_diaria`, `noticias` y `calendario`.
 - [ ] **Probar en el celular** la medición con dos dedos: hasta ahora solo se probó simulada.
 
-## 5. Abrir la app a los chicos del grupo — la app está lista (26 de octubre); faltan los pasos del panel
+## 5. Abrir la app a los chicos del grupo — abierta: 8 personas el 29 de octubre
+
+- [x] **«Personas»** (30 oct), a pedido del usuario: «debería haber una forma de estandarizarlo». Agregar a alguien ya no son dos pasos en el panel de Cloudflare (la regla de Access y reescribir entero el secreto `ALLOWED_EMAILS`): se agrega en Rueda, que lo copia a Access, y «Invitar» deja listo el mensaje. La lista vieja pasa sola a Rueda con el primer cambio. Detalle en el README («Agregar a alguien»).
+- [ ] **Conectar «Personas» con Access** (lo hace el dueño, una vez): crear un token en Cloudflare con un solo permiso, «Access: Apps and Policies → Edit», en la cuenta de Rueda. Cargarlo como secreto `ACCESS_API_TOKEN` en el Worker `mercados` y tocar «Copiar ahora» en «Personas». Si la app de Access tiene varias políticas con correos, Rueda pide ponerle «Personas de Rueda» de nombre a la de los amigos. Después se puede borrar `ALLOWED_EMAILS`.
+
+Lo de abajo es cómo se abrió la app el 26 de octubre, antes de «Personas» (sirve si hay que rehacer Access):
 
 - [x] **Términos de FRED** revisados (26 oct): se pueden mostrar sus datos a otras personas si la app muestra el enlace a sus términos, sus usuarios los aceptan y hay política de privacidad. Hecho: pie con el aviso exacto («This product uses the FRED® API but is not endorsed or certified by the Federal Reserve Bank of St. Louis.»), el enlace y la página `/terminos.html` (términos y privacidad). Las series usadas (DGS*, DFF, DFEDTAR*, CPIAUCSL) son de dominio público; solo piden citar la fuente (Junta de la Reserva Federal y BLS).
 - [x] **Vista de amigo probada en local** (`DEV_ROLE=friend`): bienvenida, noticias, Mi cuenta Hapi, Perú, EE. UU., mercados del Perú, resultados de empresas, calendario y pronósticos; sin errores y sin pedidos a rutas del dueño.
@@ -343,6 +348,12 @@ Prompt de la tarea (si cambia aquí, hay que cambiarlo también en claude.ai):
 ## 9. Ideas para después
 
 Las funciones posibles, con quién las tiene y de dónde saldrían los datos, están en la sección 8f: alertas, gráfico del día, reportes oficiales, dividendos y precios para los amigos. Además:
+
+- **«Pregúntale a Rueda»: consultas a Claude para los amigos** (pedido el 29 oct, «luego vemos»). Sería con la API de Claude, que se cobra aparte del plan Max. Serían 7 personas: el dueño usa su propio Claude.
+  - **Topes estrictos** para no gastar de más: por persona y por día, y uno total.
+  - **Solo datos públicos:** nada de Twelve Data ni de Finnhub, y nunca la cuenta Hapi.
+  - **Aviso en los términos:** las preguntas se mandan a Anthropic.
+  - Costo estimado por pregunta, con los datos de Rueda y una respuesta corta: Haiku 5.5 ~US$ 0,001, Sonnet 5.5 ~US$ 0,02, Opus 5.5 ~US$ 0,03–0,05.
 
 - **Valor cuota de las AFP:** la SBS lo muestra detrás de una verificación anti-robots (Imperva) y no se puede leer desde el Worker. Queda el archivo mensual de la SBS (xlsx de ~1 MB), sin probar. El BCRP sí publica la rentabilidad real a 12 meses de cada AFP (sección 8f, punto 2).
 - Medir el gasto de créditos de Twelve Data en un día normal y ajustar el freno si hace falta.

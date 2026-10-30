@@ -44,6 +44,9 @@
     fcEditName: false, // cambiando el nombre del ranking
     marketOpen: null, // ¿la bolsa de Nueva York está en sesión? (de /api/status y de cada pedido de precios)
     calendar: null, // respuesta de /api/calendar
+    people: null, // respuesta de /api/people (quién puede entrar; solo el dueño)
+    peopleNew: null, // correo recién agregado (se marca en la lista)
+    peopleBusy: false,
     notes: new Map(), // clave → { text, kind }
   };
 
@@ -3803,6 +3806,123 @@
     else p.replaceChildren('Versión publicada: ', link(`${REPO}/commit/${encodeURIComponent(sha)}`, sha.slice(0, 7)), ' (código público en GitHub).');
   }
 
+  // ---------- personas (solo el dueño) ----------
+  // Quién puede entrar a Rueda. El servidor guarda cada cambio y lo copia a Cloudflare Access, que es quien manda el
+  // código por correo. Sin el token de Access, el panel recuerda agregar el correo también allá.
+  async function loadPeople() {
+    try {
+      state.people = await api('/api/people');
+      renderPeople();
+    } catch (e) {
+      $('pp-list').replaceChildren(h('li', { class: 'err' }, e.message));
+    }
+  }
+
+  /** Agrega, quita o vuelve a copiar a Access; el servidor responde la lista actualizada. */
+  async function sendPeople(method, path, body, errEl) {
+    if (state.peopleBusy) return false;
+    state.peopleBusy = true;
+    errEl.hidden = true;
+    try {
+      state.people = await api(path, { method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body ?? {}) });
+      renderPeople();
+      return true;
+    } catch (e) {
+      errEl.textContent = e.message;
+      errEl.hidden = false;
+      return false;
+    } finally {
+      state.peopleBusy = false;
+    }
+  }
+
+  const inviteText = (email) =>
+    `Te agregué a Rueda: ${location.origin}\nEntra con ${email}. Te va a llegar un código de Cloudflare (revisa spam), que vale 10 minutos.`;
+
+  /** En el celular abre «Compartir» (WhatsApp, etc.); en la computadora copia el mensaje. */
+  async function invite(email, btn) {
+    const text = inviteText(email);
+    if (navigator.share && matchMedia('(pointer: coarse)').matches) {
+      try {
+        await navigator.share({ text });
+        return;
+      } catch (e) {
+        if (e.name === 'AbortError') return;
+      }
+    }
+    try {
+      await navigator.clipboard.writeText(text);
+      const icon = btn.textContent;
+      btn.textContent = 'Copiado';
+      setTimeout(() => (btn.textContent = icon), 2000);
+    } catch {
+      window.prompt('Copia el mensaje:', text.replace('\n', ' '));
+    }
+  }
+
+  function renderPeople() {
+    const v = state.people;
+    if (!v) return;
+    $('pp-count').textContent = v.people.length ? String(v.people.length) : '';
+    $('pp-list').replaceChildren(
+      ...(v.people.length
+        ? v.people.map((p) => {
+            // Íconos (✉ invitar, × quitar): el texto repetido en cada fila no deja ver el correo en la columna angosta.
+            const inv = h('button', { type: 'button', title: 'Invitar: copia el mensaje con el enlace', 'aria-label': `Invitar a ${p.email}` }, '✉︎');
+            inv.addEventListener('click', () => invite(p.email, inv));
+            const del = h('button', { type: 'button', class: 'pp-del', title: 'Quitar', 'aria-label': `Quitar a ${p.email}` }, '×');
+            del.addEventListener('click', () => {
+              if (window.confirm(`¿Quitar a ${p.email}? Ya no va a poder entrar a Rueda.`)) sendPeople('DELETE', '/api/people', { email: p.email }, $('pp-note'));
+            });
+            return h('li', { class: p.email === state.peopleNew ? 'pp-new' : null }, h('span', { class: 'pp-mail', title: p.email }, p.email), inv, del);
+          })
+        : [h('li', { class: 'muted' }, 'Todavía no agregaste a nadie.')]),
+    );
+    renderPeopleSync(v);
+  }
+
+  /** Una línea con el estado de Cloudflare Access: al día, falló (con «Reintentar») o sin conectar. */
+  function renderPeopleSync(v) {
+    const host = $('pp-sync');
+    const s = v.sync;
+    if (!v.access.connected) {
+      const link = v.access.url ? h('a', { href: v.access.url, target: '_blank', rel: 'noopener noreferrer' }, 'Abrir Access ↗') : '';
+      host.replaceChildren('Cloudflare no está conectado: agrega cada correo también en Access. ', link);
+      return;
+    }
+    const again = (label) => {
+      const b = h('button', { type: 'button', class: 'linkish' }, label);
+      b.addEventListener('click', () => sendPeople('POST', '/api/people/sync', {}, $('pp-note')));
+      return b;
+    };
+    if (!s) host.replaceChildren('Falta copiar la lista a Cloudflare. ', again('Copiar ahora'));
+    else if (!s.ok) host.replaceChildren(`Cloudflare no se actualizó: ${s.message} `, again('Reintentar'));
+    else host.replaceChildren(h('span', { title: `Última copia: ${stamp(s.at)}` }, '✓ Al día con Cloudflare'), s.removed.length ? ` · se quitó de Access: ${s.removed.join(', ')}` : '');
+  }
+
+  function openPeopleForm(open) {
+    $('pp-form').hidden = !open;
+    $('pp-add').setAttribute('aria-expanded', String(open));
+    $('pp-err').hidden = true;
+    if (open) {
+      $('pp-input').value = '';
+      $('pp-input').focus();
+    }
+  }
+
+  function setupPeople() {
+    $('pp-add').addEventListener('click', () => openPeopleForm($('pp-form').hidden));
+    $('pp-cancel').addEventListener('click', () => openPeopleForm(false));
+    $('pp-form').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      // Se marca antes de mandarlo: si ya estaba en la lista, queda marcado el que ya estaba.
+      state.peopleNew = $('pp-input').value.trim().toLowerCase();
+      if (await sendPeople('POST', '/api/people', { email: state.peopleNew }, $('pp-err'))) openPeopleForm(false);
+      else renderPeople();
+    });
+    loadPeople();
+  }
+
   // ---------- app instalable ----------
   // Rueda se instala desde el navegador, sin tienda de apps. Si Chrome o Edge ofrecen su diálogo de instalación, el
   // botón lo abre; si no (iPhone, iPad, Safari de Mac…), muestra los pasos. Abierta como app, el botón no aparece.
@@ -3993,6 +4113,7 @@
     loadPeruMarkets();
     loadCalendar();
     loadForecasts();
+    setupPeople();
     renderPortfolioForm();
     await loadQuotes(false);
     loadPortfolio();

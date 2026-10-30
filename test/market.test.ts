@@ -378,7 +378,7 @@ describe('validateWatchlist', () => {
 });
 
 describe('verifyAccess', () => {
-  it('falla cerrado si ALLOWED_EMAILS está vacío', async () => {
+  it('falla cerrado sin OWNER_EMAILS ni ALLOWED_EMAILS', async () => {
     const env = { ACCESS_TEAM_DOMAIN: 'https://x.cloudflareaccess.com', ACCESS_AUD: 'a'.repeat(64), ALLOWED_EMAILS: ' ' } as Env;
     expect(await verifyAccess(new Request('https://m.example/'), env)).toMatchObject({ ok: false, status: 503 });
   });

@@ -8,12 +8,17 @@ export interface Env {
   MCP_URL?: string;
   /** Commit publicado (lo pone GitHub Actions al desplegar): se muestra al pie para que cualquiera revise el código. */
   VERSION?: string;
+  /** Cuenta de Cloudflare de Rueda (no es secreta): para escribir en Access y enlazar su panel. */
+  CF_ACCOUNT_ID?: string;
 
   // secretos (panel de Cloudflare → Variables and Secrets, o `.env` en local)
   /** https://<equipo>.cloudflareaccess.com */
   ACCESS_TEAM_DOMAIN?: string;
   ACCESS_AUD?: string;
-  /** Correos autorizados separados por comas. Vacío = no entra nadie. */
+  /**
+   * Lista vieja de quién entra (correos separados por comas). Ahora la lista vive en Rueda («Personas»): este secreto
+   * solo se usa mientras esa lista no exista, y el primer cambio lo pasa a Rueda.
+   */
   ALLOWED_EMAILS?: string;
   /**
    * Correos del dueño (separados por comas): solo ellos ven los precios de Twelve Data, porque la licencia
@@ -26,6 +31,8 @@ export interface Env {
   FINNHUB_API_KEY?: string;
   /** Clave compartida con mercados-mcp para firmar «este correo inició sesión» (32+ caracteres). */
   LOGIN_LINK_SECRET?: string;
+  /** Token de Cloudflare con un solo permiso («Access: Apps and Policies → Edit»): copia «Personas» a Access. */
+  ACCESS_API_TOKEN?: string;
 
   // solo desarrollo local (se ignoran fuera de localhost)
   DEV_MODE?: string;
@@ -43,6 +50,7 @@ export const SECRET_KEYS = [
   'FRED_API_KEY',
   'FINNHUB_API_KEY',
   'LOGIN_LINK_SECRET',
+  'ACCESS_API_TOKEN',
 ] as const;
 
 const LOCAL_HOSTS = new Set(['localhost', '127.0.0.1', '[::1]']);

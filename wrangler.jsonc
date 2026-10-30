@@ -35,7 +35,9 @@
   "vars": {
     "TIMEZONE": "America/Lima",
     // Worker del conector de Claude: destino fijo del paso /conector/identidad.
-    "MCP_URL": "https://mercados-mcp.mercados.workers.dev"
+    "MCP_URL": "https://mercados-mcp.mercados.workers.dev",
+    // La misma cuenta de arriba: «Personas» la usa para escribir en Access y enlazar su panel.
+    "CF_ACCOUNT_ID": "44ad19052da3858dae65640ed99fcae6"
   },
 
   // Lista diaria: la tarea revisa cada 10 minutos qué cierres faltan y pide unos pocos por vez (1 crédito por símbolo

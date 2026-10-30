@@ -35,7 +35,7 @@ body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--f-mono);fo
   .bar,#install-panel,.tape,.banner{order:-2}
   #summary{order:-1}
   #welcome{order:1} #watchlist{order:2} #eod{order:3} #detail{order:4} #news{order:5} #compare{order:6} #portfolio{order:7}
-  #hapi{order:8} #macro{order:9} #pm{order:10} #fin{order:11} #cal{order:12} #forecasts{order:13}
+  #hapi{order:8} #macro{order:9} #pm{order:10} #fin{order:11} #cal{order:12} #forecasts{order:13} #people{order:14}
   .foot{order:20}
 }
 @media (min-width:900px){
@@ -528,6 +528,16 @@ a.hapi-btn:hover{border-color:var(--accent);color:var(--accent)}
   .fc-past summary{grid-template-columns:auto minmax(0,1fr)}
   .fc-res{grid-column:2;text-align:left}
 }
+
+/* Personas (solo el dueño): correo | ✉ invitar | × quitar. El correo recién agregado queda en cian. */
+.pp-list{list-style:none;margin:0;padding:0}
+.pp-list li{display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid var(--hair);min-width:0}
+.pp-list li:last-child{border-bottom:0}
+.pp-mail{flex:1 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-family:var(--f-sans);font-size:.9rem}
+.pp-new .pp-mail{color:var(--accent)}
+.pp-list button{padding:2px 9px;font-size:.82rem;flex:none}
+.pp-list .pp-del{color:var(--muted)}
+.pp-list .pp-del:hover{color:var(--down);border-color:var(--down)}
 
 .foot{font-family:var(--f-sans);font-size:.82rem;color:var(--muted);border-top:1px solid var(--line);padding-top:10px}
 .foot p{margin:0 0 4px}
