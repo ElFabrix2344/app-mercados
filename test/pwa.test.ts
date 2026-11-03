@@ -45,6 +45,16 @@ describe('index.html', () => {
     expect(touch).toBeDefined();
     expect(pngSize(touch!)).toBe('180x180');
   });
+
+  it('tiene las hojas «Mercados» y «Juego», y los pronósticos van en «Juego», fuera de las columnas', () => {
+    expect(html).toContain('role="tablist"');
+    expect(html).toMatch(/id="tab-mercados"[^>]*aria-controls="cols"/);
+    expect(html).toMatch(/id="tab-juego"[^>]*aria-controls="game"/);
+    const game = html.indexOf('id="game"');
+    expect(game).toBeGreaterThan(html.indexOf('id="cols"'));
+    expect(html.indexOf('id="forecasts"')).toBeGreaterThan(game);
+    expect(html.indexOf('id="fc-rank"')).toBeGreaterThan(game);
+  });
 });
 
 describe('service worker', () => {

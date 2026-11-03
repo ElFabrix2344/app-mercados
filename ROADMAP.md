@@ -297,6 +297,31 @@ Entre paréntesis, la opinión de Claude: **Sí**, Tal vez o No.
 
 **Para revisar:** la página de precios de Twelve Data describe el plan gratis como «Internal non-display usage» y pone «Internal display data access» recién en Grow. En cambio, sus términos permiten mostrar los datos a los «Authorized Users» (§2.2 b). Para un panel personal es zona gris: conviene preguntarles por correo.
 
+## 8h. Hoja «Juego» — 2 de noviembre
+
+El usuario pidió que lo cooperativo o competitivo tuviera su propia hoja «e ir armándolo con más ideas». Contó que un amigo hizo una app como Polymarket o Kalshi para las elecciones del centro de estudiantes de la universidad y que funcionó bien. Quiere juegos sobre la universidad o sobre economía y política en general.
+
+- [x] **Hoja «Juego»:** pestañas «Mercados» y «Juego» bajo el encabezado. Los pronósticos pasaron ahí, con todas las preguntas abiertas a la vista, el ranking y lo resuelto al costado. La pestaña muestra cuántas te faltan.
+- [ ] **Mercado de predicciones del grupo** (propuesto el 2 nov; falta que el usuario lo apruebe):
+  - **Cómo se juega:**
+    - Preguntas de Sí o No con un precio de 1 a 99 fichas, que se lee como probabilidad.
+    - El precio lo mueve un creador de mercado automático (LMSR), porque con 8 personas no hay quién venda del otro lado.
+    - Se puede vender antes del cierre, y cada acción ganadora paga 100 fichas.
+  - **Fichas:** 1.000 para empezar y 100 más cada lunes. El ranking va por fichas totales.
+  - **Preguntas:**
+    - Las propone cualquiera del grupo y el dueño las aprueba: universidad (por ejemplo, elecciones del centro de estudiantes) y política y economía en general.
+    - Las que dependen de datos de Rueda (BCRP, Fed, inflación, dólar) se resuelven solas. Las demás las resuelve el dueño, con el enlace a la fuente.
+  - **Reglas:**
+    - Sin plata real ni premios en dinero: con plata sería una apuesta, que en el Perú necesita licencia.
+    - Nada sobre la vida privada de nadie: solo hechos públicos.
+  - **Técnico:** iría en D1, la base de datos gratis de Cloudflare. Con KV, dos compras al mismo tiempo pueden pisarse, y cada vista gastaría uno de los 1.000 `list` diarios.
+- [ ] **Otras ideas** (sin elegir):
+  - **Competitivas:** temporadas mensuales con campeón, logros (rachas, «contra la corriente») y duelos 1 a 1 en una pregunta.
+  - **Cooperativas:**
+    - El grupo contra los analistas: el consenso del grupo frente a la encuesta de expectativas del BCRP.
+    - Una cartera común que se vota una vez al mes con datos públicos (dólar, oro, cobre, BVL), contra el plazo fijo.
+  - **Trivia semanal** de economía, armada por la tarea programada de Claude con el plan Max: sin costo extra.
+
 ## 8g. Resumen del día — 27 de octubre
 
 El usuario lo pidió al ver el «Resumen del mercado» de Google Finance. Se eligió usar su plan Max de Claude con una **tarea programada en la nube**, que escribe el resumen cada mañana y lo publica con el conector. Se descartaron dos opciones:
@@ -348,6 +373,10 @@ Prompt de la tarea (si cambia aquí, hay que cambiarlo también en claude.ai):
 ## 9. Ideas para después
 
 Las funciones posibles, con quién las tiene y de dónde saldrían los datos, están en la sección 8f: alertas, gráfico del día, reportes oficiales, dividendos y precios para los amigos. Además:
+
+- **Resumen de mediodía** (pedido el 30 oct, falta elegir), con dos formas posibles:
+  - **Recomendada:** la tarea en la nube corre también a las 12:00 y reescribe la tarjeta de hoy, sin tocar el código.
+  - **Alternativa:** un bloque «Últimos datos», sin IA, con los resultados que ya calcula el juego.
 
 - **«Pregúntale a Rueda»: consultas a Claude para los amigos** (pedido el 29 oct, «luego vemos»). Sería con la API de Claude, que se cobra aparte del plan Max. Serían 7 personas: el dueño usa su propio Claude.
   - **Topes estrictos** para no gastar de más: por persona y por día, y uno total.

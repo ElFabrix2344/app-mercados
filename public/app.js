@@ -39,7 +39,6 @@
     role: null, // 'owner' o 'friend' (de /api/status)
     eod: null, // respuesta de /api/eod (lista diaria: cierres, no precios en vivo)
     forecasts: null, // respuesta de /api/forecasts (pronósticos del grupo)
-    fcAll: false, // se ven todas las preguntas abiertas (si no, las que cierran primero)
     calAll: false, // el calendario muestra todo lo cargado (si no, lo más cercano)
     fcEditName: false, // cambiando el nombre del ranking
     marketOpen: null, // ¿la bolsa de Nueva York está en sesión? (de /api/status y de cada pedido de precios)
@@ -685,15 +684,18 @@
     });
   }
 
+  /** Redibuja los gráficos a su ancho actual (al cambiar el tamaño de la ventana o al volver a la hoja «Mercados»). */
+  function redrawCharts() {
+    for (const [host, spec] of charts) {
+      if (host.isConnected && !host.closest('[hidden]')) drawChart(host, spec);
+      else if (!host.isConnected) charts.delete(host);
+    }
+  }
+
   let resizeTimer = 0;
   window.addEventListener('resize', () => {
     clearTimeout(resizeTimer);
-    resizeTimer = setTimeout(() => {
-      for (const [host, spec] of charts) {
-        if (host.isConnected && !host.closest('[hidden]')) drawChart(host, spec);
-        else if (!host.isConnected) charts.delete(host);
-      }
-    }, 150);
+    resizeTimer = setTimeout(redrawCharts, 150);
   });
 
   // ---------- lista de seguimiento ----------
@@ -3452,7 +3454,6 @@
 
   // ---------- pronósticos del grupo ----------
   const FC_KIND = { bcrp: 'BCRP', fed: 'Fed', inei: 'INEI', bls: 'BLS', dolar: 'Dólar' };
-  const FC_FIRST = 3; // preguntas abiertas a la vista antes de «Ver todas»
   const FC_CHOICES = ['sube', 'mantiene', 'baja'];
   const CHOICE_LABEL = { sube: '▲ Sube', mantiene: '■ Mantiene', baja: '▼ Baja' };
   const fcClose = fmt({ weekday: 'short', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit', hourCycle: 'h23', timeZone: TZ });
@@ -3527,15 +3528,16 @@
     if (!v) return;
     renderFcName(v);
     const open = v.questions.filter((q) => q.status === 'open');
-    // Las que cierran primero; el resto con «Ver todas», para que la columna no sea interminable.
-    const shown = state.fcAll ? open : open.slice(0, FC_FIRST);
     $('fc-open').replaceChildren(
-      ...(open.length ? shown.map((q) => fcCard(q, v)) : [h('p', { class: 'muted' }, 'No hay preguntas abiertas: cada una se abre 45 días antes de su anuncio.')]),
+      ...(open.length ? open.map((q) => fcCard(q, v)) : [h('p', { class: 'muted' }, 'No hay preguntas abiertas: cada una se abre 45 días antes de su anuncio.')]),
     );
-    $('fc-more').hidden = shown.length === open.length;
-    $('fc-more').textContent = `Ver todas (${open.length})`;
+    // En la pestaña «Juego», cuántas abiertas te faltan.
+    const pending = open.filter((q) => q.mine == null).length;
+    $('game-badge').hidden = !pending;
+    $('game-badge').textContent = String(pending);
+    $('tab-juego').setAttribute('aria-label', pending ? `Juego: ${pending} ${pending === 1 ? 'pronóstico pendiente' : 'pronósticos pendientes'}` : 'Juego');
     const past = v.questions.filter((q) => q.status !== 'open').reverse();
-    $('fc-past').replaceChildren(...(past.length ? [h('p', { class: 'co-h' }, 'Cerradas y resueltas'), ...past.map(fcPast)] : []));
+    $('fc-past').replaceChildren(...(past.length ? past.map(fcPast) : [h('p', { class: 'muted' }, 'Todavía no cerró ninguna pregunta.')]));
     renderFcRanking(v);
   }
 
@@ -3645,7 +3647,6 @@
       return;
     }
     host.replaceChildren(
-      h('p', { class: 'co-h' }, 'Ranking'),
       h(
         'table',
         { class: 'co-table fc-rank' },
@@ -3804,6 +3805,47 @@
     const link = (href, text) => h('a', { href, target: '_blank', rel: 'noopener noreferrer' }, text);
     if (!sha) p.replaceChildren('Código público en ', link(REPO, 'GitHub'), '.');
     else p.replaceChildren('Versión publicada: ', link(`${REPO}/commit/${encodeURIComponent(sha)}`, sha.slice(0, 7)), ' (código público en GitHub).');
+  }
+
+  // ---------- hojas ----------
+  // «Mercados» (el panel) y «Juego» (lo que se juega en grupo). La hoja va en la dirección (#juego), así se puede
+  // compartir, y se recuerda en este equipo.
+  const SHEETS = ['mercados', 'juego'];
+  const currentSheet = () => (document.body.classList.contains('en-juego') ? 'juego' : 'mercados');
+
+  function showSheet(name, focus = false) {
+    const sheet = SHEETS.includes(name) ? name : 'mercados';
+    const changed = sheet !== currentSheet();
+    document.body.classList.toggle('en-juego', sheet === 'juego');
+    for (const s of SHEETS) {
+      const tab = $(`tab-${s}`);
+      tab.setAttribute('aria-selected', String(s === sheet));
+      tab.tabIndex = s === sheet ? 0 : -1;
+    }
+    if (focus) $(`tab-${sheet}`).focus();
+    prefs.set('mercados.hoja', sheet);
+    const url = sheet === 'juego' ? '#juego' : location.pathname + location.search;
+    if ((sheet === 'juego') !== (location.hash === '#juego')) history.replaceState(null, '', url);
+    // Los gráficos que se dibujaron con la hoja oculta quedan con el ancho de reserva: se rehacen al volver.
+    if (changed && sheet === 'mercados') redrawCharts();
+  }
+
+  function setupSheets() {
+    for (const s of SHEETS) {
+      $(`tab-${s}`).addEventListener('click', () => {
+        showSheet(s);
+        if ($('sheets').getBoundingClientRect().top < 0) $('sheets').scrollIntoView();
+      });
+    }
+    // Flechas entre pestañas, como en cualquier lista de pestañas.
+    $('sheets').addEventListener('keydown', (e) => {
+      if (e.key !== 'ArrowRight' && e.key !== 'ArrowLeft') return;
+      const i = SHEETS.indexOf(currentSheet());
+      showSheet(SHEETS[(i + (e.key === 'ArrowRight' ? 1 : SHEETS.length - 1)) % SHEETS.length], true);
+      e.preventDefault();
+    });
+    window.addEventListener('hashchange', () => showSheet(location.hash === '#juego' ? 'juego' : 'mercados'));
+    showSheet(location.hash === '#juego' ? 'juego' : prefs.get('mercados.hoja', 'mercados'));
   }
 
   // ---------- personas (solo el dueño) ----------
@@ -4011,6 +4053,7 @@
   // ---------- inicio ----------
   async function init() {
     renderClock();
+    setupSheets();
     setupInstall();
     $('refresh-btn').addEventListener('click', () => loadQuotes(true));
     $('edit-btn').addEventListener('click', () => openEditor($('wl-form').hidden));
@@ -4038,10 +4081,6 @@
     $('cal-more').addEventListener('click', () => {
       state.calAll = true;
       renderCalendar();
-    });
-    $('fc-more').addEventListener('click', () => {
-      state.fcAll = true;
-      renderForecasts();
     });
     const savedGroup = prefs.get('mercados.noticias', 'todas');
     if (NEWS_GROUPS.some(([id]) => id === savedGroup)) state.newsGroup = savedGroup;

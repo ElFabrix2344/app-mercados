@@ -32,10 +32,10 @@ body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--f-mono);fo
 .cols,.col{display:contents}
 @media (max-width:899px){
   /* En una columna, el orden de siempre: en el HTML las secciones están repartidas por columna. */
-  .bar,#install-panel,.tape,.banner{order:-2}
+  .bar,.sheets,#install-panel,.tape,.banner{order:-2}
   #summary{order:-1}
   #welcome{order:1} #watchlist{order:2} #eod{order:3} #detail{order:4} #news{order:5} #compare{order:6} #portfolio{order:7}
-  #hapi{order:8} #macro{order:9} #pm{order:10} #fin{order:11} #cal{order:12} #forecasts{order:13} #people{order:14}
+  #hapi{order:8} #macro{order:9} #pm{order:10} #fin{order:11} #cal{order:12} #people{order:14}
   .foot{order:20}
 }
 @media (min-width:900px){
@@ -49,6 +49,23 @@ body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--f-mono);fo
 @media (min-width:1280px){
   .wrap{max-width:1560px}
   .cols{grid-template-columns:minmax(260px,310px) minmax(0,1fr) minmax(280px,340px);grid-template-areas:"left center right";grid-template-rows:auto}
+}
+/* Hojas (pestañas bajo el encabezado): «Mercados» y «Juego». La activa, en cian y subrayada sobre la línea. */
+.sheets{display:flex;gap:4px;margin-top:-20px;border-bottom:1px solid var(--line)}
+.sheets [role="tab"]{border:0;border-bottom:2px solid transparent;border-radius:0;background:none;margin-bottom:-1px;padding:8px 14px 7px;
+  color:var(--muted);font-size:.85rem;text-transform:uppercase;letter-spacing:.08em}
+.sheets [role="tab"]:hover{color:var(--ink);border-color:transparent;border-bottom-color:var(--line)}
+.sheets [role="tab"][aria-selected="true"]{color:var(--accent);border-bottom-color:var(--accent)}
+/* Pronósticos que te faltan en las preguntas abiertas. */
+.sheet-badge{margin-left:2px;min-width:1.5em;padding:0 5px;border-radius:9px;background:var(--accent);color:var(--bg);font-size:.72rem;
+  font-weight:600;letter-spacing:0;line-height:1.5;text-align:center}
+/* Hoja «Juego»: la otra hoja (el panel y la cinta) se oculta. Pronósticos a lo ancho; ranking y lo resuelto al costado. */
+.game{display:none;flex-direction:column;gap:24px}
+.en-juego .game{display:flex}
+.en-juego .cols,.en-juego .tape{display:none!important}
+.game-side{display:flex;flex-direction:column;gap:24px;min-width:0}
+@media (min-width:900px){
+  .en-juego .game{display:grid;grid-template-columns:minmax(0,1fr) minmax(300px,400px);align-items:start}
 }
 .wrap.simple{max-width:40rem;padding-top:3rem}
 .wrap.simple h1{color:var(--accent);text-transform:uppercase;letter-spacing:.08em;font-size:1.1rem}
@@ -88,7 +105,8 @@ button[disabled]{opacity:.6;cursor:default}
 .help-body p:last-child{margin:0}
 
 /* ---------- barra superior ---------- */
-.bar{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:8px 16px;border-bottom:1px solid var(--line);padding-bottom:12px}
+/* La línea de abajo la pone la fila de hojas (.sheets). */
+.bar{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:8px 16px}
 .brand{display:flex;align-items:baseline;gap:14px;flex-wrap:wrap;min-width:0}
 .logo{color:var(--accent);font-weight:600;font-size:1.35rem;letter-spacing:.1em;text-transform:uppercase}
 /* La rueda del logo (el mismo dibujo que icon.svg). */
@@ -112,7 +130,7 @@ button[disabled]{opacity:.6;cursor:default}
 @keyframes spin{to{transform:rotate(360deg)}}
 /* En el celular la barra ocupa menos: sin el contador de créditos y con «Actualizar» solo como ↻. */
 @media (max-width:720px){
-  .bar{gap:6px 12px;padding-bottom:10px}
+  .bar{gap:6px 12px}
   .brand{gap:2px 12px}
   .clock,.brand .mkt{font-size:.8rem}
   #credits{display:none}
@@ -490,7 +508,8 @@ a.hapi-btn:hover{border-color:var(--accent);color:var(--accent)}
   .cal-row{grid-template-columns:auto minmax(0,1fr);grid-template-areas:"date when" "src body";gap:4px 10px}
   .cal-date{grid-area:date}
   .cal-when{grid-area:when}
-  .cal-src{grid-area:src;align-self:start}
+  /* Solo en el calendario: la etiqueta también va en los pronósticos, que tienen su propia grilla. */
+  .cal-row .cal-src{grid-area:src;align-self:start}
   .cal-body{grid-area:body}
 }
 
@@ -511,9 +530,8 @@ a.hapi-btn:hover{border-color:var(--accent);color:var(--accent)}
 .fc-who{margin:0 0 8px}
 .linkish{background:none;border:0;padding:0;color:var(--accent);text-decoration:underline;text-underline-offset:3px;cursor:pointer;font:inherit}
 .linkish:hover{background:none}
-#fc-past{margin-top:16px}
-#fc-past > .co-h{margin:0 0 4px}
 .fc-past{border-bottom:1px solid var(--hair);padding:7px 0}
+.fc-past:first-child{padding-top:0}
 .fc-past summary{cursor:pointer;display:grid;grid-template-columns:6ch minmax(0,1fr) auto;gap:4px 12px;align-items:baseline}
 .fc-title{font-family:var(--f-sans)}
 .fc-res{color:var(--muted);font-size:.85rem;text-align:right}
@@ -522,8 +540,6 @@ a.hapi-btn:hover{border-color:var(--accent);color:var(--accent)}
 .fc-entries li{display:grid;grid-template-columns:minmax(0,1fr) auto 8ch;gap:12px;font-size:.9rem}
 .fc-entries li.mine,.fc-rank tr.mine td{font-weight:600}
 .fc-entries .pts{text-align:right;color:var(--muted)}
-#fc-rank{margin-top:16px}
-#fc-rank > .co-h{margin:0 0 4px}
 @container (max-width:720px){
   .fc-past summary{grid-template-columns:auto minmax(0,1fr)}
   .fc-res{grid-column:2;text-align:left}

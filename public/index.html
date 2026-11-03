@@ -39,6 +39,12 @@
     </div>
   </header>
 
+  <!-- Hojas: el panel de mercados y el juego del grupo. La hoja va en la dirección (#juego) y se recuerda en el equipo. -->
+  <nav class="sheets" id="sheets" role="tablist" aria-label="Hojas de Rueda">
+    <button type="button" role="tab" id="tab-mercados" aria-controls="cols" aria-selected="true">Mercados</button>
+    <button type="button" role="tab" id="tab-juego" aria-controls="game" aria-selected="false" tabindex="-1">Juego<span class="sheet-badge" id="game-badge" hidden></span></button>
+  </nav>
+
   <!-- Instalar Rueda como app, sin tienda de apps: los pasos según el equipo los pone app.js. -->
   <section class="screen install" id="install-panel" aria-labelledby="install-h" tabindex="-1" hidden>
     <div class="screen-head">
@@ -59,7 +65,7 @@
   <div class="banner" id="banner" role="status" hidden></div>
 
   <!-- Columnas en computadora: tus listas | lo principal | lo de hoy. En tablet, dos; en el celular, una (styles.css). -->
-  <div class="cols">
+  <div class="cols" id="cols" role="tabpanel" aria-labelledby="tab-mercados">
     <div class="col col-left" id="col-left">
       <!-- Vista de amigos: la licencia gratis de Twelve Data no permite mostrar sus precios a otras personas. -->
       <section class="screen friend-only" id="welcome" aria-labelledby="pub-h">
@@ -68,7 +74,7 @@
           <button type="button" id="welcome-close">Entendido</button>
         </div>
         <ul class="welcome">
-          <li><strong>Pronósticos del grupo:</strong> elige tu nombre y pronostica las tasas, la inflación y el dólar. Los puntos y el ranking salen solos cuando se publica cada dato.</li>
+          <li><strong>Juego:</strong> en la hoja «Juego», arriba, elige tu nombre y pronostica las tasas, la inflación y el dólar. Los puntos y el ranking salen solos cuando se publica cada dato.</li>
           <li><strong>Mi cuenta Hapi:</strong> importa tu estado de cuenta en PDF o anota tus operaciones. Se cifra con tu frase: nadie más la puede ver, tampoco el dueño de la app.</li>
           <li><strong>Resultados de empresas:</strong> ingresos y utilidades de los últimos años de cualquier acción que reporte a la SEC.</li>
           <li><strong>Perú y EE. UU.:</strong> dólar, tasas, inflación, cobre, oro, BVL, bonos y la curva del Tesoro, con el calendario de anuncios y las noticias.</li>
@@ -436,7 +442,7 @@
       </section>
     </main>
 
-    <aside class="col col-right" id="col-right" aria-label="Agenda, pronósticos y noticias">
+    <aside class="col col-right" id="col-right" aria-label="Agenda y noticias">
       <section class="screen" id="cal" aria-labelledby="cal-h" hidden>
         <div class="screen-head">
           <h2 id="cal-h">Calendario</h2>
@@ -455,26 +461,6 @@
         <p class="hint" id="cal-note"></p>
       </section>
 
-      <section class="screen" id="forecasts" aria-labelledby="fc-h">
-        <div class="screen-head">
-          <h2 id="fc-h">Pronósticos del grupo</h2>
-          <span class="src">Sin plata · datos públicos</span>
-          <details class="help">
-            <summary aria-label="Cómo se juega">?</summary>
-            <div class="help-body">
-              <p>Cada decisión de tasas del BCRP y de la Fed, cada dato de inflación (Lima y EE. UU.) y el dólar de fin de mes son una pregunta. Se puede pronosticar, y cambiar el pronóstico, hasta la medianoche antes del anuncio; el dólar, hasta una semana antes de fin de mes.</p>
-              <p>Puntos: 10 por acertar la decisión. En los números, 10 menos 1 por cada 0,05 puntos porcentuales de error en la inflación, o por cada medio céntimo en el dólar.</p>
-              <p>Lo que puso cada uno se ve recién al cierre. Los resultados salen solos cuando el BCRP, el INEI, la Fed o el BLS publican el dato.</p>
-            </div>
-          </details>
-        </div>
-        <div id="fc-me"></div>
-        <div class="fc-grid" id="fc-open"><p class="muted">Cargando…</p></div>
-        <button type="button" id="fc-more" class="csv-btn more-btn" hidden>Ver todas</button>
-        <div id="fc-past"></div>
-        <div id="fc-rank"></div>
-      </section>
-
       <section class="screen" id="news" aria-labelledby="news-h">
         <div class="screen-head">
           <h2 id="news-h">Noticias</h2>
@@ -487,6 +473,39 @@
         </div>
       </section>
     </aside>
+  </div>
+
+  <!-- Hoja «Juego»: lo que se juega en grupo, sin plata y con datos públicos (juegan el dueño y los amigos).
+       Los pronósticos a lo ancho y, al costado, el ranking y lo ya resuelto; en el celular, uno debajo del otro. -->
+  <div class="game" id="game" role="tabpanel" aria-labelledby="tab-juego">
+    <section class="screen" id="forecasts" aria-labelledby="fc-h">
+      <div class="screen-head">
+        <h2 id="fc-h">Pronósticos</h2>
+        <span class="src">Sin plata · datos públicos</span>
+        <details class="help">
+          <summary aria-label="Cómo se juega">?</summary>
+          <div class="help-body">
+            <p>Cada decisión de tasas del BCRP y de la Fed, cada dato de inflación (Lima y EE. UU.) y el dólar de fin de mes son una pregunta. Se puede pronosticar, y cambiar el pronóstico, hasta la medianoche antes del anuncio; el dólar, hasta una semana antes de fin de mes.</p>
+            <p>Puntos: 10 por acertar la decisión. En los números, 10 menos 1 por cada 0,05 puntos porcentuales de error en la inflación, o por cada medio céntimo en el dólar.</p>
+            <p>Lo que puso cada uno se ve recién al cierre. Los resultados salen solos cuando el BCRP, el INEI, la Fed o el BLS publican el dato.</p>
+          </div>
+        </details>
+      </div>
+      <div id="fc-me"></div>
+      <div class="fc-grid" id="fc-open"><p class="muted">Cargando…</p></div>
+    </section>
+
+    <div class="game-side">
+      <section class="screen" id="ranking" aria-labelledby="rk-h">
+        <div class="screen-head"><h2 id="rk-h">Ranking</h2></div>
+        <div id="fc-rank"><p class="muted">Cargando…</p></div>
+      </section>
+
+      <section class="screen" id="fc-history" aria-labelledby="fh-h">
+        <div class="screen-head"><h2 id="fh-h">Cerradas y resueltas</h2></div>
+        <div id="fc-past"></div>
+      </section>
+    </div>
   </div>
 
   <footer class="foot">
