@@ -51,7 +51,11 @@ Claude ─► Worker «mercados-mcp» (OAuth propio) ─────────
 - **Juegos que no son de pronosticar** (hoja «Juego», `src/game/minijuegos.ts`), con datos públicos del BCRP y de FRED (`game/series.ts`, de las mismas cachés del panel) o sin datos:
   - **Gráfico del día** (`game/grafico.ts`): un gráfico sin nombre ni escala de una serie de Rueda y cuatro opciones; una respuesta por día y racha de días seguidos acertados. La serie sale de la fecha (semilla) y queda guardada todo el día; la respuesta no sale del servidor hasta que contestas.
   - **2/3 del promedio** (`game/dos-tercios.ts`): cada semana, un número del 0 al 100; gana quien quede más cerca de 2/3 del promedio. Se ve lo de cada uno al cierre (lunes 00:00 de Lima), y se cuentan las victorias.
-  - **Liga de carteras** (`game/liga.ts`): S/ 10 000 de mentira para comprar y vender dólares, oro, cobre y la Bolsa de Lima, todo en soles; lo que no se invierte rinde la tasa del BCRP. Gana el mes quien más rinde (el arranque es el valor al último día del mes anterior). Cada orden se cumple con el cierre del primer día hábil después de darla, porque el BCRP publica con un día de atraso y si no se podría comprar a precio de ayer sabiendo lo de hoy. Las acciones no entran: la licencia gratis de Twelve Data no permite mostrarles sus precios a los amigos.
+  - **Liga de acciones** (`game/acciones.ts`): cada uno simula una cartera con acciones y ETF de verdad de EE. UU. (las de Hapi), con US$ 10 000 de mentira, y gana el mes quien más rinde (contra el valor al último cierre del mes anterior).
+    - **Precios:** con la clave gratis de Twelve Data de cada jugador, porque la licencia gratis no permite mostrarles a otros los datos de la clave de Rueda. Cada uno ve sus precios; entre todos solo se comparan porcentajes y qué acciones tiene cada uno. El dueño juega con la clave de Rueda.
+    - **Entrar:** tres pasos en la tarjeta, con los enlaces a twelvedata.com/register (se puede entrar con Google) y a la página de la clave; se pega y Rueda la prueba con el precio del SPY. Las claves se guardan cifradas (`lib/secretbox.ts`: AES-GCM con una llave derivada de `LOGIN_LINK_SECRET`).
+    - **Órdenes:** se cumplen al cierre de Nueva York (antes del cierre, el de hoy; después, el siguiente); para comprar, el símbolo se valida con la clave de quien compra (que exista y cotice en dólares).
+    - **Cierre:** la tarea programada (cada 10 minutos) trae, después de cada cierre, los cierres que faltan de cada cartera con la clave de su dueño, de a 8 símbolos por pasada (4 con la de Rueda, que comparte con el panel), cumple las órdenes y guarda el valor del día.
 - **Mercado de predicciones** (hoja «Juego», `src/game/juego.ts`): preguntas de Sí o No sobre la universidad, el Perú, el mundo y la economía, como Polymarket o Kalshi, pero con fichas.
   - **Precio:** lo pone un creador de mercado automático (LMSR, `lib/lmsr.ts`, liquidez de 4 acciones), porque con pocas personas no hay quién venda del otro lado. Va de 1 a 99 fichas y se lee como probabilidad. Cada acción ganadora paga 100, y se puede vender antes del cierre. El panel calcula la compra antes de mandarla, con la misma fórmula.
   - **Fichas:** 1.000 al entrar (con el nombre del juego de pronósticos) y 100 más cada lunes, también para quien no entró esa semana. El ranking suma las fichas y lo que cada uno recibiría si vendiera hoy sus acciones. Con el último precio, comprar mucho de un lado inflaría el total.
@@ -144,10 +148,10 @@ Todas las rutas exigen sesión de Cloudflare Access. Las marcadas con 🔒 son s
 | POST | `/api/predictions/trade` | Compra (`{"id", "side": "si"\|"no", "action": "comprar", "chips"}`) o vende todo un lado (`"action": "vender"`) |
 | POST | `/api/predictions/review` 🔒 | Aprueba (`{"id", "approve": true}`) o rechaza una propuesta |
 | POST | `/api/predictions/resolve` 🔒 | Da el resultado (`{"id", "outcome": "si"\|"no"\|"anular", "source"}`) y reparte las fichas |
-| GET | `/api/games` | Gráfico del día, 2/3 del promedio y liga de carteras: lo que ve quien pide |
+| GET | `/api/games` | Gráfico del día, 2/3 del promedio y liga de acciones: lo que ve quien pide |
 | POST | `/api/games/grafico` | Responde el gráfico del día (`{"option"}`), una vez por día |
 | POST | `/api/games/dos-tercios` | Elige o cambia el número de la semana (`{"value"}`, entero del 0 al 100) |
-| POST | `/api/games/liga` | Orden de la liga: `{"action": "comprar", "asset", "soles"}`, `{"action": "vender", "asset", "soles"?}` (sin `soles`, todo) o `{"action": "cancelar", "cancel": id}` |
+| POST | `/api/games/liga` | Liga de acciones: `{"action": "conectar", "key"}` (clave de Twelve Data), `{"action": "desconectar"}`, `{"action": "entrar"}` (el dueño, con la clave de Rueda), `{"action": "comprar", "symbol", "usd"}`, `{"action": "vender", "symbol", "usd"?}` (sin `usd`, todo) o `{"action": "cancelar", "cancel": id}` |
 | GET | `/api/calendar?days=120` | Próximos eventos del calendario económico (`loaded: false` mientras no haya fechas cargadas). Al dueño, además, los resultados de su lista (eventos `empresa` y `companies`: estado, último resultado del mes y notas) |
 | GET | `/api/curve` | Curva del Tesoro de EE. UU. (hoy, hace un mes y hace un año) y la diferencia 10 años − 2 años (FRED) |
 | GET / PUT / DELETE | `/api/hapi` | La cuenta de Hapi de quien pide, cifrada (`{blob, version, legacy}`). PUT `{"blob", "base"}` guarda (409 si otro equipo guardó antes); DELETE la borra |
@@ -207,11 +211,12 @@ src/
   game/juego.ts         mercado de predicciones: fichas, propuestas, compras y ventas, resolución y ranking
   game/juego-do.ts      el Durable Object que lo atiende (de a un pedido)
   lib/lmsr.ts           creador de mercado automático (LMSR): precio, costo, compra y venta
-  game/minijuegos.ts    los otros juegos de la hoja: gráfico del día, 2/3 del promedio y liga de carteras
+  game/minijuegos.ts    los otros juegos de la hoja: gráfico del día, 2/3 del promedio y liga de acciones
   game/grafico.ts       gráfico del día: serie de cada día, respuestas y rachas
   game/dos-tercios.ts   2/3 del promedio: números de la semana, cierre y victorias
-  game/liga.ts          liga de carteras: órdenes al cierre siguiente, valor en soles y campeón del mes
-  game/series.ts        series públicas (BCRP y FRED) que usan esos juegos
+  game/acciones.ts      liga de acciones: claves de cada uno, órdenes al cierre de NY, valor diario y campeón del mes
+  game/series.ts        series públicas (BCRP y FRED) del gráfico del día
+  lib/secretbox.ts      cifrado de las claves de Twelve Data de los jugadores (AES-GCM, llave derivada de LOGIN_LINK_SECRET)
   lib/access-api.ts     cliente de la API de Cloudflare Access: reescribe los correos de la política de Rueda
   services/xray.ts      rayos X de la cartera simulada: composición, concentración y riesgo
   services/eod.ts       lista diaria: cierres de hasta 20 símbolos más y la tarea programada que los renueva

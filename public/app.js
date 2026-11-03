@@ -4011,16 +4011,14 @@
     loadPredict();
   }
 
-  // ---------- gráfico del día, 2/3 del promedio y liga de carteras ----------
-  // Servidor: src/game/minijuegos.ts, en el mismo Durable Object del mercado. Usan datos públicos (BCRP y FRED).
-  const LG_ASSETS = [
-    ['dolar', 'Dólar'],
-    ['oro', 'Oro'],
-    ['cobre', 'Cobre'],
-    ['bvl', 'Bolsa de Lima'],
-  ];
+  // ---------- gráfico del día, 2/3 del promedio y liga de acciones ----------
+  // Servidor: src/game/minijuegos.ts y src/game/acciones.ts, en el mismo Durable Object del mercado. El gráfico usa
+  // datos públicos (BCRP y FRED); la liga, la clave gratis de Twelve Data de cada jugador.
+  const TD_SIGNUP = 'https://twelvedata.com/register';
+  const TD_KEYS = 'https://twelvedata.com/account/api-keys';
   const fMonthLong = fmt({ month: 'long', timeZone: 'UTC' });
-  const solesFmt = (v) => `S/ ${nf(0).format(Math.round(v))}`;
+  const usdFmt = (v) => `US$ ${nf(0).format(Math.round(v))}`;
+  const nyDate = (d) => new Intl.DateTimeFormat('en-CA', { timeZone: 'America/New_York' }).format(d);
   /** Rendimiento (fracción) con flecha y signo, como el resto del panel: «▲ +2.1%». */
   const retFmt = (r) => {
     if (r == null) return '—';
@@ -4146,70 +4144,142 @@
   function renderLeague(v) {
     const l = v.liga;
     const err = h('p', { class: 'err', hidden: true });
-    const month = fMonthLong.format(day(`${l.month}-01`));
-    const mine = [];
-    if (l.me) {
-      const m = l.me;
-      const line = h('p', { class: 'lg-me' }, 'Tienes ', h('strong', {}, m.value != null ? solesFmt(m.value) : '—'));
-      if (m.ret != null) line.append(' · ', retSpan(m.ret), ' en el mes');
-      mine.push(line, h('p', { class: 'hint' }, `${solesFmt(m.cash)} sin invertir, rindiendo la tasa del BCRP`));
-      if (m.positions.length) {
-        mine.push(
-          h(
-            'ul',
-            { class: 'lg-pos' },
-            ...m.positions.map((p) => {
-              const sell = h('button', { type: 'button', class: 'linkish' }, 'vender');
-              sell.addEventListener('click', () => {
-                if (window.confirm(`¿Vender todo tu ${p.name.toLowerCase()}? Se vende con el cierre del próximo día hábil.`)) sendGames('/api/games/liga', { action: 'vender', asset: p.asset }, err);
-              });
-              return h('li', {}, h('span', {}, p.name), h('span', {}, solesFmt(p.value)), retSpan(p.ret), sell);
-            }),
-          ),
-        );
-      }
-      if (m.orders.length) {
-        const nameOf = Object.fromEntries(LG_ASSETS);
-        mine.push(
-          h(
-            'ul',
-            { class: 'lg-orders' },
-            ...m.orders.map((o) => {
-              const cancel = h('button', { type: 'button', class: 'linkish' }, 'cancelar');
-              cancel.addEventListener('click', () => sendGames('/api/games/liga', { action: 'cancelar', cancel: o.id }, err));
-              const what = `${o.kind === 'comprar' ? 'Comprar' : 'Vender'} ${nameOf[o.asset].toLowerCase()} ${o.soles != null ? `por ${solesFmt(o.soles)}` : '(todo)'}`;
-              return h('li', { class: 'hint' }, `${what}: con el próximo cierre · `, cancel);
-            }),
-          ),
-        );
-      }
-    } else mine.push(h('p', { class: 'hint' }, v.alias ? 'Entras con tu primera compra: empiezas con S/ 10 000.' : 'Para jugar, elige tu nombre arriba.'));
-    if (v.alias) {
-      const sel = h('select', { 'aria-label': 'Qué comprar' }, ...LG_ASSETS.map(([id, name]) => h('option', { value: id }, name)));
-      const amount = h('input', { type: 'number', inputmode: 'numeric', min: 1, step: 1, placeholder: 'Soles', required: true, 'aria-label': 'Cuántos soles' });
-      const form = h('form', { class: 'pr-trade' }, sel, amount, h('button', { type: 'submit' }, 'Comprar'));
-      form.addEventListener('submit', (e) => {
-        e.preventDefault();
-        sendGames('/api/games/liga', { action: 'comprar', asset: sel.value, soles: Number(amount.value) }, err);
-      });
-      mine.push(form);
-    }
+    const m = l.me;
+    let mine;
+    if (!v.alias) mine = [h('p', { class: 'hint' }, 'Para jugar, elige tu nombre arriba.')];
+    else if (!m || !m.connected) mine = leagueJoin(v, err);
+    else mine = leaguePortfolio(l, m, err);
     mine.push(err);
 
-    const board = [h('p', { class: 'co-h' }, `${month[0].toUpperCase()}${month.slice(1)}${l.asOf ? ` · datos al ${fDayYear.format(day(l.asOf)).replace(/\./g, '')}` : ''}`)];
-    board.push(h('ul', { class: 'lg-assets' }, ...l.assets.map((a) => h('li', {}, h('span', {}, a.name), retSpan(a.ret)))));
+    const month = fMonthLong.format(day(`${l.month}-01`));
+    const board = [h('p', { class: 'co-h' }, `${month[0].toUpperCase()}${month.slice(1)}`)];
     if (l.standings.length) {
       board.push(
         h(
           'table',
-          { class: 'co-table fc-rank' },
-          h('thead', {}, h('tr', {}, ...['#', 'Nombre', 'En el mes'].map((t) => h('th', { scope: 'col' }, t)))),
-          h('tbody', {}, ...l.standings.map((s, i) => h('tr', { class: s.mine ? 'mine' : null }, h('td', {}, String(i + 1)), h('td', {}, s.mine ? `${s.alias} (tú)` : s.alias), h('td', {}, retSpan(s.ret))))),
+          { class: 'co-table fc-rank lg-table' },
+          h('thead', {}, h('tr', {}, ...['#', 'Nombre', 'Mes', 'Total', 'Tiene'].map((t) => h('th', { scope: 'col' }, t)))),
+          h(
+            'tbody',
+            {},
+            ...l.standings.map((s, i) =>
+              h(
+                'tr',
+                { class: s.mine ? 'mine' : null },
+                h('td', {}, String(i + 1)),
+                h('td', {}, s.mine ? `${s.alias} (tú)` : s.alias),
+                h('td', {}, s.retMonth == null ? '—' : retSpan(s.retMonth)),
+                h('td', {}, retSpan(s.retTotal)),
+                h('td', { class: 'lg-syms', title: s.symbols.join(' ') }, s.symbols.length ? s.symbols.slice(0, 3).join(' ') + (s.symbols.length > 3 ? ' …' : '') : '—'),
+              ),
+            ),
+          ),
+        ),
+      );
+    } else board.push(h('p', { class: 'muted' }, 'Todavía no entró nadie: sé el primero.'));
+    if (l.last) board.push(h('p', { class: 'hint' }, `Campeón de ${fMonthLong.format(day(`${l.last.month}-01`)).toLowerCase()}: ${l.last.champion} (${retFmt(l.last.ret)})`));
+    $('lg-body').replaceChildren(h('div', { class: 'lg-grid' }, h('div', {}, ...mine), h('div', {}, ...board)));
+  }
+
+  /** Cómo entrar: el dueño, con un botón (usa la clave de Rueda); los demás, en tres pasos con su clave gratis. */
+  function leagueJoin(v, err) {
+    if (v.owner) {
+      const b = h('button', { type: 'button' }, 'Entrar a la liga');
+      b.addEventListener('click', () => sendGames('/api/games/liga', { action: 'entrar' }, err));
+      return [h('p', { class: 'lg-me' }, 'Simula una cartera con acciones de verdad y compite con el grupo. Tú juegas con la clave de Rueda: no tienes que pegar nada.'), b];
+    }
+    const link = (href, text) => h('a', { href, target: '_blank', rel: 'noopener noreferrer' }, text);
+    const input = h('input', { type: 'text', autocomplete: 'off', autocapitalize: 'off', spellcheck: 'false', placeholder: 'Pega tu clave aquí', required: true, 'aria-label': 'Tu clave de Twelve Data' });
+    const form = h('form', { class: 'pr-trade' }, input, h('button', { type: 'submit' }, 'Conectar'));
+    form.addEventListener('submit', (e) => {
+      e.preventDefault();
+      sendGames('/api/games/liga', { action: 'conectar', key: input.value }, err);
+    });
+    return [
+      h('p', { class: 'lg-me' }, 'Simula una cartera con acciones de verdad y compite con el grupo. Para entrar, conecta tu clave gratis de Twelve Data (2 minutos):'),
+      h(
+        'ol',
+        { class: 'lg-steps' },
+        h('li', {}, 'Crea tu cuenta gratis; puedes entrar con Google: ', link(TD_SIGNUP, 'crear cuenta ↗')),
+        h('li', {}, 'Copia tu clave de «API keys»: ', link(TD_KEYS, 'ver mi clave ↗')),
+        h('li', {}, 'Pégala aquí:'),
+      ),
+      form,
+      h('p', { class: 'hint' }, 'Se guarda cifrada y solo se usa para tu cartera. Puedes quitarla cuando quieras.'),
+    ];
+  }
+
+  /** Tu cartera: valor, posiciones (con sus precios, que solo ves tú), órdenes esperando el cierre y para comprar. */
+  function leaguePortfolio(l, m, err) {
+    const out = [];
+    const line = h('p', { class: 'lg-me' }, 'Tienes ', h('strong', {}, usdFmt(m.value)));
+    if (m.retMonth != null) line.append(' · ', retSpan(m.retMonth), ' en el mes');
+    if (m.spyMonth != null) line.append(' · el SPY, ', retSpan(m.spyMonth));
+    const when = m.lastValued ? ` · al cierre del ${fDayYear.format(day(m.lastValued)).replace(/\./g, '')}` : '';
+    out.push(line, h('p', { class: 'hint' }, `${usdFmt(m.cash)} sin invertir${when}`));
+    if (m.error) out.push(h('p', { class: 'err' }, m.error));
+    if (m.holdings.length) {
+      out.push(
+        h(
+          'ul',
+          { class: 'lg-pos' },
+          ...m.holdings.map((p) => {
+            const sell = h('button', { type: 'button', class: 'linkish' }, 'vender');
+            sell.addEventListener('click', () => {
+              if (window.confirm(`¿Vender todo tu ${p.symbol}? Se vende al próximo cierre de Nueva York.`)) sendGames('/api/games/liga', { action: 'vender', symbol: p.symbol }, err);
+            });
+            return h('li', {}, h('span', { title: p.name }, h('strong', {}, p.symbol)), h('span', {}, p.value == null ? '—' : usdFmt(p.value)), retSpan(p.ret), sell);
+          }),
         ),
       );
     }
-    if (l.last) board.push(h('p', { class: 'hint' }, `Campeón de ${fMonthLong.format(day(`${l.last.month}-01`))}: ${l.last.champion} (${retFmt(l.last.ret)})`));
-    $('lg-body').replaceChildren(h('div', { class: 'lg-grid' }, h('div', {}, ...mine), h('div', {}, ...board)));
+    if (m.orders.length) {
+      const today = nyDate(new Date());
+      out.push(
+        h(
+          'ul',
+          { class: 'lg-orders' },
+          ...m.orders.map((o) => {
+            const cancel = h('button', { type: 'button', class: 'linkish' }, 'cancelar');
+            cancel.addEventListener('click', () => sendGames('/api/games/liga', { action: 'cancelar', cancel: o.id }, err));
+            const close = o.session === today ? 'al cierre de hoy' : `al cierre del ${calDay(o.session)}`;
+            const what = `${o.kind === 'comprar' ? 'Comprar' : 'Vender'} ${o.symbol} ${o.usd != null ? `por ${usdFmt(o.usd)}` : '(todo)'}`;
+            return h('li', { class: 'hint' }, `${what}, ${close} · `, cancel);
+          }),
+        ),
+      );
+    }
+    const symbol = h('input', { type: 'text', autocomplete: 'off', autocapitalize: 'characters', spellcheck: 'false', placeholder: 'Símbolo', required: true, maxlength: 10, 'aria-label': 'Símbolo de la acción o ETF', class: 'lg-sym' });
+    const usd = h('input', { type: 'number', inputmode: 'numeric', min: 1, step: 1, placeholder: 'US$', required: true, 'aria-label': 'Cuántos dólares' });
+    const form = h('form', { class: 'pr-trade' }, symbol, usd, h('button', { type: 'submit' }, 'Comprar'));
+    form.addEventListener('submit', (e) => {
+      e.preventDefault();
+      sendGames('/api/games/liga', { action: 'comprar', symbol: symbol.value, usd: Number(usd.value) }, err);
+    });
+    // Accesos rápidos: tocar uno lo pone en el símbolo.
+    const chips = h(
+      'div',
+      { class: 'ranges lg-chips', role: 'group', 'aria-label': 'Acciones y ETF conocidos' },
+      ...l.popular.map((s) => {
+        const b = h('button', { type: 'button' }, s);
+        b.addEventListener('click', () => {
+          symbol.value = s;
+          usd.focus();
+        });
+        return b;
+      }),
+    );
+    out.push(form, chips);
+    if (!m.appKey) {
+      const off = h('button', { type: 'button', class: 'linkish' }, 'quitar mi clave');
+      off.addEventListener('click', () => {
+        if (window.confirm('¿Quitar tu clave de Twelve Data? Tu cartera queda guardada, pero deja de valorizarse hasta que conectes otra.')) {
+          sendGames('/api/games/liga', { action: 'desconectar' }, err);
+        }
+      });
+      out.push(h('p', { class: 'hint' }, 'Tu clave está guardada cifrada · ', off));
+    }
+    return out;
   }
 
   // ---------- lista diaria ----------

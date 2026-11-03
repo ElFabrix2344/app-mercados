@@ -32,7 +32,12 @@ App de mercados (Cloudflare Worker + panel web + conector MCP para Claude). El R
   - **Diseño que depende del ancho de la sección:** `.screen` es un contenedor, así que va con `@container`, no con `@media` (una sección puede ser angosta en una pantalla ancha).
   - **Columnas parejas:** si una crece mucho, la página entera se alarga. Mira la altura de cada una antes de mover algo.
 - **Hojas** (2 nov, pedido del usuario: que lo cooperativo o competitivo tenga su propia hoja): pestañas «Mercados» (`.cols`) y «Juego» (`#game`, dirección `#juego`) bajo el encabezado. Lo que se juega en grupo va en «Juego», no en las columnas. La hoja se recuerda en cada equipo (`mercados.hoja`); al volver a «Mercados» se redibujan los gráficos, porque con la hoja oculta se dibujan con el ancho de reserva.
-- **Juegos que no son de pronosticar** (`game/minijuegos.ts`): gráfico del día, 2/3 del promedio y liga de carteras, en el mismo Durable Object que el mercado. El usuario pidió el 2 nov «separarse de la idea de pronósticos solamente». Reglas:
+- **Juegos que no son de pronosticar** (`game/minijuegos.ts`): gráfico del día, 2/3 del promedio y liga de acciones, en el mismo Durable Object que el mercado. El usuario pidió el 2 nov «separarse de la idea de pronósticos solamente». Reglas:
+  - **Liga de acciones** (`game/acciones.ts`): el usuario pidió carteras «de verdad» y que entrar fuera «lo más fácil posible».
+    - Cada amigo juega con su propia clave gratis de Twelve Data. **Nunca uses la clave de Rueda para los amigos:** su licencia no permite mostrarles esos datos.
+    - Lo que ven los demás son solo porcentajes y símbolos, nunca precios ni montos.
+    - Las claves van cifradas (`lib/secretbox.ts`).
+    - La tarea programada pide pocos símbolos por pasada y por clave, por el límite de 8 por minuto.
   - **Solo datos públicos** (BCRP y FRED, por `game/series.ts`). Nada de Twelve Data ni de Finnhub, porque los ven los amigos.
   - **Liga:** cada orden se cumple con el cierre del primer día hábil después de darla, para que no se pueda comprar a precio de ayer sabiendo lo de hoy.
   - **2/3 del promedio:** no muestra lo de los demás antes del cierre.

@@ -110,8 +110,9 @@ export default {
     return withSecurityHeaders(res);
   },
 
-  // Tarea programada (triggers de wrangler.jsonc, cada 10 minutos): renueva la lista diaria después del cierre y
-  // resuelve los pronósticos del grupo cuando sale el dato. Casi siempre solo lee unos pocos registros de KV.
+  // Tarea programada (triggers de wrangler.jsonc, cada 10 minutos): renueva la lista diaria después del cierre,
+  // resuelve los pronósticos del grupo cuando sale el dato y valoriza las carteras de la liga de acciones (en el
+  // Durable Object del juego, con la clave de cada uno). Casi siempre solo lee unos pocos registros.
   async scheduled(controller: ScheduledController, rawEnv: Env, ctx: ExecutionContext): Promise<void> {
     const env = trimSecrets(rawEnv);
     const deps: Deps = {
@@ -129,6 +130,7 @@ export default {
         resolveForecasts(deps).then((done) => {
           if (done.length) console.log('Pronósticos resueltos:', done.join(', '));
         }),
+        env.JUEGO ? env.JUEGO.get(env.JUEGO.idFromName('grupo')).stockTick(deps.now.toISOString()) : Promise.resolve(),
       ]).then((rs) => {
         for (const r of rs) if (r.status === 'rejected') console.error('Tarea programada:', r.reason);
       }),
@@ -465,9 +467,10 @@ async function predictions(req: Request, env: Env, url: URL, role: Role, email: 
 }
 
 /**
- * Los otros juegos de la hoja «Juego»: 2/3 del promedio, gráfico del día y liga de carteras. GET: lo que ve quien
- * pide. POST /dos-tercios elige el número de la semana, /grafico responde el del día y /liga da una orden. Los
- * datos son públicos (BCRP y FRED, de las mismas cachés del panel) y los atiende el mismo Durable Object del mercado.
+ * Los otros juegos de la hoja «Juego»: 2/3 del promedio, gráfico del día y liga de acciones. GET: lo que ve quien
+ * pide. POST /dos-tercios elige el número de la semana, /grafico responde el del día y /liga conecta la clave de
+ * Twelve Data o da una orden. El gráfico usa datos públicos (BCRP y FRED, de las mismas cachés del panel); la liga,
+ * la clave de cada jugador. Los atiende el mismo Durable Object del mercado.
  */
 async function games(req: Request, env: Env, url: URL, role: Role, email: string | null, deps: Deps, mock: boolean): Promise<Response> {
   if (!env.JUEGO) throw new ApiError('not_configured', 503, 'Los juegos no están configurados.');
@@ -477,20 +480,24 @@ async function games(req: Request, env: Env, url: URL, role: Role, email: string
   const who = { pid, alias: await readAlias(env.CACHE, pid), owner: role === 'owner' };
   const data = <T>(get: () => Promise<{ data: T }>) => get().then((r) => r.data, () => null);
   const input = mock
-    ? gamesInput(mockPeru(now).data, mockPeruMarkets(now).data, mockUsa(now).data)
+    ? gamesInput(mockPeru(now).data, mockPeruMarkets(now).data, mockUsa(now).data, true)
     : gamesInput(...(await Promise.all([data(() => peru(deps)), data(() => peruMarkets(deps)), data(() => usa(deps))])));
   const game = env.JUEGO.get(env.JUEGO.idFromName('grupo'));
   const at = now.toISOString();
   let r: Reply<GamesView>;
   if (req.method === 'GET' && p === '/api/games') {
-    if (mock) await game.seedDemoGames(at, input);
+    if (mock) {
+      // En local no corre la tarea programada: los cierres de la liga se hacen al ver.
+      await game.seedDemoGames(at, input);
+      await game.stockTick(at, true);
+    }
     r = await game.games(who, at, input);
   } else if (req.method === 'POST' && ['/api/games/dos-tercios', '/api/games/grafico', '/api/games/liga'].includes(p)) {
     sameOrigin(req, url);
     const body = await req.json().catch(() => null);
     if (p === '/api/games/dos-tercios') r = await game.pick(who, body, at, input);
     else if (p === '/api/games/grafico') r = await game.answer(who, body, at, input);
-    else r = await game.order(who, body, at, input);
+    else r = await game.league(who, body, at, input);
   } else {
     return json({ error: { code: 'not_found', message: 'Ruta desconocida', provider: null } }, { status: 404 });
   }

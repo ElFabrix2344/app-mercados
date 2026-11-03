@@ -125,6 +125,34 @@ export function parseSeries(raw: unknown): DailyPoint[] {
   return pts.sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : 0));
 }
 
+/**
+ * Últimos cierres diarios de varios símbolos en un solo pedido (1 crédito por símbolo): para la liga de acciones, que
+ * valoriza cada cartera al cierre con la clave de su dueño. Lo que falla en un símbolo va en `errors`.
+ */
+export async function getRecentCloses(
+  symbols: string[],
+  apiKey: string,
+  f: Fetch = fetch,
+  outputsize = 10,
+): Promise<{ series: Record<string, DailyPoint[]>; errors: Record<string, string> }> {
+  const out = { series: {} as Record<string, DailyPoint[]>, errors: {} as Record<string, string> };
+  if (!symbols.length) return out;
+  const body = await call('/time_series', { symbol: symbols.join(','), interval: '1day', outputsize: String(outputsize) }, apiKey, f);
+  const bySymbol: Record<string, unknown> = symbols.length === 1 ? { [symbols[0]!]: body } : ((body ?? {}) as Record<string, unknown>);
+  for (const s of symbols) {
+    const err = asError(bySymbol[s]);
+    if (err) out.errors[s] = err.message;
+    else {
+      try {
+        out.series[s] = parseSeries(bySymbol[s]);
+      } catch {
+        out.errors[s] = 'sin datos';
+      }
+    }
+  }
+  return out;
+}
+
 /** Cierres diarios entre dos fechas (YYYY-MM-DD, ambas incluidas en lo posible). */
 export async function getDailySeries(symbol: string, start: string, end: string, apiKey: string, f: Fetch = fetch): Promise<DailyPoint[]> {
   const body = await call('/time_series', { symbol, interval: '1day', start_date: start, end_date: end, outputsize: '5000' }, apiKey, f);

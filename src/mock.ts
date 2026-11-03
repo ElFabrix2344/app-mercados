@@ -507,17 +507,50 @@ export async function seedDemoMinigames(store: GameStorage, minis: Minijuegos, n
     }
   }
 
-  // Liga: compras de hace 20 días (se cumplen con el cierre siguiente) y una venta de Beto hace 5.
+  // Liga de acciones: cada uno conecta una clave de prueba y compra hace 12 días; después, los cierres de cada día.
   const compras: [Who, string, number][] = [
-    [ana, 'oro', 5000],
-    [ana, 'cobre', 3000],
-    [beto, 'bvl', 6000],
-    [beto, 'dolar', 4000],
-    [caro, 'dolar', 5000],
+    [ana, 'NVDA', 4000],
+    [ana, 'SPY', 3000],
+    [beto, 'BAP', 5000],
+    [beto, 'SCCO', 3000],
+    [caro, 'GLD', 6000],
+    [caro, 'EPU', 2000],
   ];
-  for (const [who, asset, soles] of compras) await minis.order(who, { action: 'comprar', asset, soles }, ago(20), input);
-  await minis.order(beto, { action: 'vender', asset: 'dolar' }, ago(5), input);
+  for (const who of [ana, beto, caro]) await minis.league(who, { action: 'conectar', key: `demo0${who.pid.slice(5)}0clave0de0prueba` }, ago(12), input);
+  for (const [who, symbol, usd] of compras) await minis.league(who, { action: 'comprar', symbol, usd }, ago(12), input);
+  for (let days = 12; days >= 0; days--) {
+    if (days === 3) await minis.league(beto, { action: 'vender', symbol: 'SCCO' }, ago(3), input);
+    // Las 22:00 UTC: después del cierre de Nueva York.
+    const close = new Date(`${isoDate(ago(days))}T22:00:00Z`);
+    if (close < now) await minis.tick(close, true);
+  }
 }
+
+/**
+ * Twelve Data de mentira para la liga de acciones en desarrollo local: responde /quote y /time_series de cualquier
+ * símbolo con precios inventados (ondas suaves, distintas por símbolo, siempre las mismas para la misma fecha).
+ */
+export const fakeTwelve: typeof fetch = async (input) => {
+  const url = new URL(typeof input === 'string' ? input : input instanceof URL ? input.href : input.url);
+  const symbols = (url.searchParams.get('symbol') ?? '').split(',').filter(Boolean);
+  const priceOn = (symbol: string, date: string) => {
+    const seed = seedOf(symbol);
+    const day = Date.parse(`${date}T00:00:00Z`) / 86_400_000;
+    const base = 20 + (seed % 480);
+    return Number((base * (1 + 0.12 * Math.sin(day / 9 + (seed % 7)) + 0.03 * Math.sin(day / 2.3 + (seed % 5)))).toFixed(2));
+  };
+  const sessions: string[] = [];
+  for (let d = isoDate(new Date()); sessions.length < Number(url.searchParams.get('outputsize') ?? 10); d = addDays(d, -1)) {
+    const wd = new Date(`${d}T12:00:00Z`).getUTCDay();
+    if (wd !== 0 && wd !== 6) sessions.push(d);
+  }
+  const one = (symbol: string) =>
+    url.pathname === '/quote'
+      ? { symbol, name: `${symbol} (prueba)`, exchange: 'NASDAQ', currency: 'USD', close: String(priceOn(symbol, sessions[0]!)), is_market_open: false }
+      : { meta: { symbol }, status: 'ok', values: sessions.map((d) => ({ datetime: d, close: String(priceOn(symbol, d)) })) };
+  const body = symbols.length === 1 ? one(symbols[0]!) : Object.fromEntries(symbols.map((s) => [s, one(s)]));
+  return new Response(JSON.stringify(body), { headers: { 'Content-Type': 'application/json' } });
+};
 
 /** Curva de prueba: hoy con forma de «U», hace un mes parecida y hace un año invertida. */
 export function mockCurve(now: Date): Fresh<CurveData> {

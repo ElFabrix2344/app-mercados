@@ -92,3 +92,13 @@ export function lastClosedSession(d: Date, settleMin = 0): string {
   while (!isTradingDay(day)) day = addDays(day, -1);
   return day;
 }
+
+/** Sesión (fecha de NY) cuyo cierre cumple una orden dada en `d`: la de hoy si todavía no cerró; si no, la siguiente. */
+export function nextCloseSession(d: Date): string {
+  const { date, minutes } = nyParts(d);
+  const close = NYSE_EARLY_CLOSES.has(date) ? EARLY_CLOSE_MIN : CLOSE_MIN;
+  if (isTradingDay(date) && minutes < close) return date;
+  let day = addDays(date, 1);
+  while (!isTradingDay(day)) day = addDays(day, 1);
+  return day;
+}

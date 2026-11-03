@@ -607,11 +607,16 @@ a.hapi-btn:hover{border-color:var(--accent);color:var(--accent)}
   .lg-grid{grid-template-columns:1fr 1fr}
 }
 .lg-me{margin:0}
-.lg-assets,.lg-pos,.lg-orders{list-style:none;margin:6px 0 8px;padding:0}
-.lg-assets li{display:flex;justify-content:space-between;gap:8px;padding:3px 0;border-bottom:1px solid var(--hair);font-size:.9rem}
+/* Cómo entrar: tres pasos cortos, con los enlaces a Twelve Data. */
+.lg-steps{margin:8px 0;padding-left:1.3rem;display:flex;flex-direction:column;gap:4px;font-family:var(--f-sans)}
+.lg-pos,.lg-orders{list-style:none;margin:6px 0 8px;padding:0}
 .lg-pos li{display:grid;grid-template-columns:minmax(0,1fr) auto auto auto;gap:4px 12px;align-items:baseline;padding:4px 0;border-bottom:1px solid var(--hair);font-size:.9rem}
 .lg-orders li{margin:4px 0}
-#league .pr-trade select{font:inherit;font-size:16px;padding:5px 8px;border:1px solid var(--line);border-radius:var(--r);background:var(--panel);color:var(--ink)}
+#league .pr-trade .lg-sym{width:7rem;text-transform:uppercase}
+/* La clave tiene 32 caracteres: que quepa entera. */
+#league .pr-trade input[aria-label="Tu clave de Twelve Data"]{flex:1 1 16rem;width:auto}
+.lg-chips{margin:6px 0 8px}
+.lg-table .lg-syms{color:var(--muted);font-size:.82rem;white-space:nowrap}
 
 /* Personas (solo el dueño): correo | ✉ invitar | × quitar. El correo recién agregado queda en cian. */
 .pp-list{list-style:none;margin:0;padding:0}

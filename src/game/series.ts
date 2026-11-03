@@ -1,6 +1,6 @@
-// Series públicas que usan los juegos de la hoja «Juego» («Gráfico del día» y «Liga de carteras»). Salen de lo que
-// Rueda ya guarda del BCRP y de FRED (datos que también ven los amigos); nunca de Twelve Data ni de Finnhub, cuyas
-// licencias no permiten mostrarlos a otras personas. El Worker las arma y se las pasa al Durable Object del juego.
+// Series públicas que usa el «Gráfico del día». Salen de lo que Rueda ya guarda del BCRP y de FRED (datos que también
+// ven los amigos); nunca de Twelve Data ni de Finnhub, cuyas licencias no permiten mostrarlos a otras personas. El
+// Worker las arma y se las pasa al Durable Object del juego.
 
 import type { FredPoint } from '../lib/fred';
 import type { MarketSeries, PeruData, PeruMarkets, UsaData } from '../services/market';
@@ -17,23 +17,10 @@ export interface ChartSeries {
   points: SeriesPoint[];
 }
 
-/** Precios para valorizar las carteras de la liga: en dólares, salvo la Bolsa de Lima (soles) y la tasa (% anual). */
-export interface LeaguePrices {
-  /** Soles por dólar (venta). */
-  dolar: SeriesPoint[];
-  /** Dólares por onza. */
-  oro: SeriesPoint[];
-  /** Dólares por libra. */
-  cobre: SeriesPoint[];
-  /** Índice general de la BVL. */
-  bvl: SeriesPoint[];
-  /** Tasa de referencia del BCRP: a la que rinden los soles a plazo. */
-  tasa: number | null;
-}
-
 export interface GamesInput {
   catalog: ChartSeries[];
-  prices: LeaguePrices;
+  /** Desarrollo local con datos de prueba: la liga de acciones usa precios inventados en vez de Twelve Data. */
+  mock: boolean;
 }
 
 /** Puntos que se mandan de cada serie del catálogo: suficiente para la forma del gráfico. */
@@ -50,11 +37,10 @@ export function thin(points: SeriesPoint[], max = MAX_POINTS): SeriesPoint[] {
   return Array.from({ length: max }, (_, i) => points[Math.round(i * step)]!);
 }
 
-/** Arma el catálogo del «Gráfico del día» y los precios de la liga con lo guardado de Perú, sus mercados y EE. UU. */
-export function gamesInput(pe: PeruData | null, pm: PeruMarkets | null, us: UsaData | null): GamesInput {
-  const dolar = (pe?.fx ?? []).map((p) => ({ d: p.date, v: p.sell }));
+/** Arma el catálogo del «Gráfico del día» con lo guardado de Perú, sus mercados y EE. UU. */
+export function gamesInput(pe: PeruData | null, pm: PeruMarkets | null, us: UsaData | null, mock = false): GamesInput {
   const catalog: ChartSeries[] = [
-    { id: 'dolar', name: 'Dólar interbancario', points: dolar },
+    { id: 'dolar', name: 'Dólar interbancario', points: (pe?.fx ?? []).map((p) => ({ d: p.date, v: p.sell })) },
     { id: 'tasa', name: 'Tasa de referencia del BCRP', points: fromDated(pe?.policyRates) },
     { id: 'inflacion', name: 'Inflación de Lima a 12 meses', points: fromDated(pe?.inflation) },
     { id: 'cobre', name: 'Cobre', points: fromMarket(pm?.copper) },
@@ -65,8 +51,5 @@ export function gamesInput(pe: PeruData | null, pm: PeruMarkets | null, us: UsaD
     { id: 'ust10', name: 'Bono del Tesoro de EE. UU. a 10 años', points: fromFred(us?.treasury10y) },
     { id: 'cpius', name: 'Inflación de EE. UU. a 12 meses', points: fromFred(us?.cpiYoY) },
   ].map((s) => ({ ...s, points: thin(s.points) }));
-  return {
-    catalog,
-    prices: { dolar, oro: fromMarket(pm?.gold), cobre: fromMarket(pm?.copper), bvl: fromMarket(pm?.bvl), tasa: pe?.policyRate?.value ?? null },
-  };
+  return { catalog, mock };
 }

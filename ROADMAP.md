@@ -285,7 +285,7 @@ Entre paréntesis, la opinión de Claude: **Sí**, Tal vez o No.
 
 **Descartado el 27 oct:**
 - **Mapa de calor y «lo que más sube»:** Twelve Data los da desde el plan Pro (comprobado), y no hay una fuente gratis que se pueda mostrar.
-- **Liga de carteras simuladas entre amigos:** ningún plan gratis de precios permite mostrarlos a terceros. En su lugar, temporadas del juego (punto 4).
+- **Liga de carteras simuladas entre amigos:** ningún plan gratis de precios permite mostrarlos a terceros. Se hizo el 2 nov como «Liga de acciones», con la clave gratis de cada jugador (sección 8h).
 - **Kalshi, volumen en corto de FINRA y lo más comentado en Reddit:** sus términos no lo permiten o no los publican.
 - **Operaciones de congresistas:** solo dicen quién y cuándo, en PDF.
 - **ETF por dentro (solapamiento):** los datos de la SEC vienen en archivos de 230–690 MB.
@@ -315,9 +315,9 @@ El usuario pidió que lo cooperativo o competitivo tuviera su propia hoja «e ir
     - Sin plata real ni premios en dinero: con plata sería una apuesta, que en el Perú necesita licencia.
     - Nada sobre la vida privada de nadie: solo hechos públicos.
   - **Técnico:** se pensó en D1, pero quedó en un Durable Object con SQLite, también gratis. Ordena los pedidos solo y no hay que crear nada en el panel: lo crea el despliegue. Con KV, dos compras al mismo tiempo podían pisarse, y cada vista gastaba uno de los 1.000 `list` diarios.
-- [x] **Juegos que no son de pronosticar** (2 nov; el usuario: «separarse de la idea de pronósticos solamente»). Eligió **2/3 del promedio** y **Gráfico del día**, y sumó la **Liga de carteras**.
+- [x] **Juegos que no son de pronosticar** (2 nov; el usuario: «separarse de la idea de pronósticos solamente»). Eligió **2/3 del promedio** y **Gráfico del día**, y sumó una liga de carteras.
   - La liga la imaginaba como un presupuesto para comprar y vender cualquier acción. Quedó con compras y ventas, pero con dólar, oro, cobre y Bolsa de Lima (BCRP), porque la licencia gratis de Twelve Data no permite mostrarles precios de acciones a los amigos.
-- [ ] **Liga con cualquier acción:** haría falta que cada amigo use su propia clave gratis de Twelve Data, o pagar un plan que permita mostrar precios a otros. Propuesto el 2 nov, falta decidir.
+- [x] **Liga de acciones** (2 nov): el usuario quería «simular carteras de verdad y competir» y que entrar fuera «lo más fácil posible». Cada amigo conecta su clave gratis de Twelve Data en tres pasos desde la tarjeta (con Google); el dueño juega con la de Rueda. Reemplazó a la liga del BCRP (dólar, oro, cobre y BVL), que estuvo publicada menos de una hora.
 - [ ] **Otras ideas** (sin elegir):
   - **Competitivas:** temporadas mensuales con campeón, logros (rachas, «contra la corriente») y duelos 1 a 1.
   - **Teoría de juegos:** bienes públicos (pozo común) y ultimátum o dilema del prisionero en parejas.

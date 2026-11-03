@@ -1,35 +1,36 @@
 // Los otros juegos de la hoja «Juego», que no son de pronosticar: «2/3 del promedio» (semanal), «Gráfico del día»
-// (diario) y «Liga de carteras» (mensual). Viven en el mismo Durable Object que el mercado de predicciones y usan los
-// mismos jugadores y nombres. Cada pedido pone al día los tres y responde lo que ve quien pide.
+// (diario) y «Liga de acciones» (mensual). Viven en el mismo Durable Object que el mercado de predicciones y usan los
+// mismos jugadores y nombres. Cada pedido pone al día lo que corresponde y responde lo que ve quien pide.
 
 import { ApiError } from '../lib/http';
 import { isoDate } from '../lib/num';
+import type { Acciones, StockView } from './acciones';
 import { DosTercios, type K23View } from './dos-tercios';
 import { Grafico, type ChartView } from './grafico';
 import type { GameStorage, Juego, Who } from './juego';
-import { Liga, type LeagueView } from './liga';
 import type { GamesInput } from './series';
 
 export interface GamesView {
   /** null si todavía no eligió su nombre (sin nombre se ve, pero no se juega). */
   alias: string | null;
+  owner: boolean;
   dosTercios: K23View;
   grafico: ChartView;
-  liga: LeagueView;
+  liga: StockView;
 }
 
 export class Minijuegos {
   private readonly k23: DosTercios;
   private readonly chart: Grafico;
-  private readonly league: Liga;
 
   constructor(
     store: GameStorage,
     private readonly juego: Juego,
+    /** La liga de acciones, con Twelve Data o, en desarrollo local, con precios inventados. */
+    private readonly stocks: (mock: boolean) => Acciones,
   ) {
     this.k23 = new DosTercios(store);
     this.chart = new Grafico(store);
-    this.league = new Liga(store);
   }
 
   /** Para jugar hace falta el nombre (el mismo de los pronósticos y el mercado). */
@@ -39,15 +40,14 @@ export class Minijuegos {
 
   async view(who: Who, now: Date, input: GamesInput): Promise<GamesView> {
     await this.k23.settle(now);
-    await this.league.settle(now, input.prices);
     await this.juego.join(who, now);
     const aliases = await this.juego.aliases();
-    const today = isoDate(now, 'America/Lima');
     return {
       alias: who.alias,
+      owner: who.owner,
       dosTercios: await this.k23.view(who.pid, now, aliases),
-      grafico: await this.chart.view(who.pid, today, input.catalog, aliases),
-      liga: await this.league.view(who.pid, now, input.prices, aliases),
+      grafico: await this.chart.view(who.pid, isoDate(now, 'America/Lima'), input.catalog, aliases),
+      liga: await this.stocks(input.mock).view(who.pid, now, aliases),
     };
   }
 
@@ -64,11 +64,22 @@ export class Minijuegos {
     return this.view(who, now, input);
   }
 
-  /** Liga de carteras: comprar, vender o cancelar una orden que todavía no se cumplió. */
-  async order(who: Who, body: unknown, now: Date, input: GamesInput): Promise<GamesView> {
+  /** Liga de acciones: conectar o quitar la clave, entrar (el dueño, con la de Rueda), comprar, vender o cancelar. */
+  async league(who: Who, body: unknown, now: Date, input: GamesInput): Promise<GamesView> {
     await this.player(who, now);
-    await this.league.settle(now, input.prices);
-    await this.league.order(who.pid, body, now);
+    const stocks = this.stocks(input.mock);
+    const action = (body as { action?: unknown } | null)?.action;
+    if (action === 'conectar') await stocks.connect(who.pid, body, now);
+    else if (action === 'desconectar') await stocks.disconnect(who.pid);
+    else if (action === 'entrar') {
+      if (!who.owner) throw new ApiError('forbidden', 403, 'Para entrar, conecta tu clave gratis de Twelve Data.');
+      await stocks.joinWithAppKey(who.pid, now);
+    } else await stocks.order(who.pid, body, now);
     return this.view(who, now, input);
+  }
+
+  /** Después de cada cierre de Nueva York (tarea programada): valoriza las carteras de la liga. */
+  tick(now: Date, mock: boolean): Promise<void> {
+    return this.stocks(mock).tick(now);
   }
 }
