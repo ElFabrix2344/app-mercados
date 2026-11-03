@@ -1,6 +1,7 @@
 // Datos ficticios para desarrollo local (MOCK_DATA=true y DEV_MODE=true en localhost).
 // Son caminatas aleatorias con semilla fija: sirven para ver el diseño, no son precios reales.
 
+import type { Juego, Who } from './game/juego';
 import type { EarningsRelease } from './lib/finnhub';
 import { CHOICES, questionsAt, readyToResolve, resolve, type ForecastValue } from './lib/forecasts';
 import { usMarketOpen } from './lib/market-hours';
@@ -419,6 +420,61 @@ export function mockForecastExtras(now: Date): { extra: { entries: Entry[]; alia
     if (value !== null) results[q.id] = { value, at: now.toISOString() };
   }
   return { extra: { entries, aliases }, results };
+}
+
+/**
+ * Mercado de predicciones de prueba (hoja «Juego»): si está vacío, preguntas de ejemplo con compras de Ana, Beto y
+ * Caro en los últimos días, una ya resuelta y una propuesta esperando aprobación. Las fechas salen de `now`.
+ */
+export async function seedDemoGame(game: Juego, now: Date): Promise<void> {
+  if (await game.hasMarkets()) return;
+  const ago = (days: number) => new Date(now.getTime() - days * 86_400_000);
+  const start = ago(12);
+  // Ana crea las preguntas de ejemplo con permisos de dueño (así se abren de una).
+  const ana: Who = { pid: 'demo-ana', alias: 'Ana', owner: true };
+  const beto: Who = { pid: 'demo-beto', alias: 'Beto', owner: false };
+  const caro: Who = { pid: 'demo-caro', alias: 'Caro', owner: false };
+  for (const w of [ana, beto, caro]) await game.join(w, start);
+  const until = (days: number) => addDays(isoDate(start, 'America/Lima'), days);
+  const open = questionsAt(start).filter((q) => Date.parse(q.closesAt) > now.getTime());
+  const bcrp = open.find((q) => q.kind === 'bcrp');
+  const fed = open.find((q) => q.kind === 'fed');
+  const dolar = open.find((q) => q.kind === 'dolar');
+  const fx = Number((mockPeru(now).data.fx.at(-1)?.sell ?? 3.7).toFixed(2));
+  const dayName = (date: string) => new Intl.DateTimeFormat('es-PE', { day: 'numeric', month: 'short', timeZone: 'UTC' }).format(new Date(`${date}T12:00:00Z`)).replace('.', '');
+  type Trade = [Who, 'si' | 'no', number, number];
+  const specs: { body: Record<string, unknown>; trades: Trade[]; resolve?: 'si' | 'no' }[] = [
+    {
+      body: { question: '¿La lista que gane el centro de estudiantes sacará más de la mitad de los votos?', category: 'universidad', closesOn: until(30), details: 'Sí si el comité electoral publica que la lista ganadora tuvo más del 50 % de los votos válidos.' },
+      trades: [[beto, 'si', 120, 11], [caro, 'no', 200, 9], [ana, 'si', 60, 6], [beto, 'si', 80, 2]],
+    },
+    ...(bcrp
+      ? [{ body: { question: `¿El BCRP baja su tasa de referencia el ${dayName(bcrp.date)}?`, category: 'economia', auto: { qid: bcrp.id, value: 'baja' } }, trades: [[caro, 'no', 150, 10], [beto, 'no', 90, 7], [ana, 'si', 70, 3]] as Trade[] }]
+      : []),
+    ...(fed
+      ? [{ body: { question: `¿La Fed baja su tasa el ${dayName(fed.date)}?`, category: 'mundo', auto: { qid: fed.id, value: 'baja' } }, trades: [[ana, 'si', 180, 9], [caro, 'si', 60, 4], [beto, 'no', 50, 1]] as Trade[] }]
+      : []),
+    ...(dolar
+      ? [{ body: { question: `¿El dólar cierra el mes en S/ ${fx} o más?`, category: 'economia', auto: { qid: dolar.id, op: 'min', value: fx } }, trades: [[beto, 'si', 100, 8], [ana, 'no', 100, 5]] as Trade[] }]
+      : []),
+    {
+      body: { question: '¿El Congreso aprobará el presupuesto público de 2027 antes del 1 de diciembre?', category: 'peru', closesOn: until(25), details: 'Sí si el Diario Oficial El Peruano publica la ley de presupuesto 2027 antes del 1 de diciembre.' },
+      trades: [[caro, 'si', 100, 8], [beto, 'si', 50, 3]],
+    },
+    {
+      body: { question: '¿Habrá segunda vuelta en las elecciones del centro de estudiantes?', category: 'universidad', closesOn: until(5), details: 'Sí si el comité electoral convoca a una segunda vuelta.' },
+      trades: [[ana, 'no', 100, 10], [beto, 'si', 150, 9]],
+      resolve: 'si',
+    },
+  ];
+  let id = 0;
+  for (const s of specs) {
+    await game.propose(ana, s.body, start, {});
+    id++;
+    for (const [who, side, chips, days] of s.trades) await game.trade(who, { id, side, action: 'comprar', chips }, ago(days), {});
+    if (s.resolve) await game.resolve(ana, { id, outcome: s.resolve, source: 'https://example.com/acta-comite-electoral' }, ago(6), {});
+  }
+  await game.propose(beto, { question: '¿La universidad anunciará clases virtuales la última semana del ciclo?', category: 'universidad', closesOn: addDays(isoDate(now, 'America/Lima'), 20), details: 'Sí si la universidad lo comunica por correo institucional antes del cierre.' }, ago(1), {});
 }
 
 /** Curva de prueba: hoy con forma de «U», hace un mes parecida y hace un año invertida. */

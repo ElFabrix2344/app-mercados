@@ -40,6 +40,24 @@ export function memoryKV(initial: Record<string, unknown> = {}) {
   return { kv: kv as unknown as KVNamespace, store, meta, writes: () => writes };
 }
 
+/** Almacenamiento de un Durable Object en memoria (get, put y list por prefijo, en orden), con copias como el real. */
+export function memoryStorage() {
+  const data = new Map<string, unknown>();
+  return {
+    data,
+    async get<T>(key: string): Promise<T | undefined> {
+      return structuredClone(data.get(key)) as T | undefined;
+    },
+    async put<T>(key: string, value: T): Promise<void> {
+      data.set(key, structuredClone(value));
+    },
+    async list<T>({ prefix }: { prefix: string }): Promise<Map<string, T>> {
+      const keys = [...data.keys()].filter((k) => k.startsWith(prefix)).sort();
+      return new Map(keys.map((k) => [k, structuredClone(data.get(k)) as T]));
+    },
+  };
+}
+
 /** fetch falso: responde con la función dada y registra las URLs pedidas. */
 export function fakeFetch(handler: (url: URL) => { status?: number; body: unknown }) {
   const calls: URL[] = [];

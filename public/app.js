@@ -43,6 +43,8 @@
     fcEditName: false, // cambiando el nombre del ranking
     marketOpen: null, // ¿la bolsa de Nueva York está en sesión? (de /api/status y de cada pedido de precios)
     calendar: null, // respuesta de /api/calendar
+    predict: null, // respuesta de /api/predictions (mercado de predicciones de la hoja «Juego»)
+    prSuggested: null, // pregunta que sugirió el formulario (se reemplaza mientras no escribas otra)
     people: null, // respuesta de /api/people (quién puede entrar; solo el dueño)
     peopleNew: null, // correo recién agregado (se marca en la lista)
     peopleBusy: false,
@@ -3512,6 +3514,8 @@
       state.forecasts = await api(path, { method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
       state.fcEditName = false;
       renderForecasts();
+      // El nombre es el mismo en el mercado de predicciones: con él ya se puede jugar ahí.
+      if (path === '/api/forecasts/name') loadPredict();
     } catch (e) {
       errEl.textContent = e.message;
       errEl.hidden = false;
@@ -3520,7 +3524,8 @@
 
   /** Cuando llegan Perú o EE. UU., las tarjetas suman el dato de hoy (salvo que estés escribiendo en una). */
   function refreshForecastContext() {
-    if (state.forecasts && !$('forecasts').contains(document.activeElement)) renderForecasts();
+    const typing = $('forecasts').contains(document.activeElement) || $('fc-me').contains(document.activeElement);
+    if (state.forecasts && !typing) renderForecasts();
   }
 
   function renderForecasts() {
@@ -3668,6 +3673,341 @@
         ),
       ),
     );
+  }
+
+  // ---------- mercado de predicciones ----------
+  // Preguntas de Sí o No con fichas (servidor: src/game/juego.ts). El precio es la probabilidad que le da el grupo. La
+  // compra se calcula aquí antes de mandarla, con el mismo creador de mercado del servidor (src/lib/lmsr.ts).
+  const PR_CATEGORY = { universidad: 'Universidad', peru: 'Perú', mundo: 'Mundo', economia: 'Economía' };
+  const prSide = new Map(); // pregunta → lado elegido para comprar ('si' | 'no')
+  const pct = (p) => Math.min(99, Math.max(1, Math.round(p * 100)));
+  const chipsFmt = (v) => nf(0).format(Math.round(v));
+
+  /** Acciones que se compran con `spend` (en acciones: 1 = lo que paga una ganadora) y el precio de Sí después. */
+  function lmsrBuy(m, side, spend) {
+    const [qs, qo] = side === 'si' ? [m.qYes, m.qNo] : [m.qNo, m.qYes];
+    const top = Math.max(qs, qo);
+    const es = Math.exp((qs - top) / m.b);
+    const eo = Math.exp((qo - top) / m.b);
+    const shares = top + m.b * Math.log(Math.exp(spend / m.b) * (es + eo) - eo) - qs;
+    const qYes = m.qYes + (side === 'si' ? shares : 0);
+    const qNo = m.qNo + (side === 'no' ? shares : 0);
+    const mx = Math.max(qYes, qNo);
+    const ey = Math.exp((qYes - mx) / m.b);
+    const en = Math.exp((qNo - mx) / m.b);
+    return { shares, price: ey / (ey + en) };
+  }
+
+  async function loadPredict() {
+    try {
+      state.predict = await api('/api/predictions');
+      renderPredict();
+    } catch (e) {
+      $('pr-open').replaceChildren(h('p', { class: 'err' }, e.message));
+    }
+  }
+
+  /** Propone, compra, vende, aprueba o resuelve; el servidor responde el mercado actualizado. */
+  async function sendPredict(path, body, errEl) {
+    errEl.hidden = true;
+    try {
+      state.predict = await api(path, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+      renderPredict();
+      return true;
+    } catch (e) {
+      errEl.textContent = e.message;
+      errEl.hidden = false;
+      return false;
+    }
+  }
+
+  function renderPredict() {
+    const v = state.predict;
+    if (!v) return;
+    const me = v.me;
+    $('pr-chips').textContent =
+      me.chips == null
+        ? 'Para jugar, elige tu nombre arriba.'
+        : `Tienes ${chipsFmt(me.chips)} fichas${me.value - me.chips >= 1 ? ` (${chipsFmt(me.value)} con tus acciones)` : ''} · +${v.rules.weekly} cada lunes`;
+    $('pr-new').hidden = me.chips == null;
+    $('pr-send').textContent = state.role === 'owner' ? 'Abrir pregunta' : 'Proponer';
+    renderPrProposals(v);
+    const open = v.markets.filter((m) => m.state === 'abierta' || m.state === 'cerrada');
+    $('pr-open').replaceChildren(...(open.length ? open.map((m) => prCard(m, v)) : [h('p', { class: 'muted' }, 'Todavía no hay preguntas abiertas: propón la primera.')]));
+    const done = v.markets.filter((m) => m.state === 'resuelta' || m.state === 'anulada');
+    $('pr-done').hidden = !done.length;
+    $('pr-done-sum').textContent = `Resueltas (${done.length})`;
+    $('pr-done-list').replaceChildren(...done.map((m) => prDone(m, v)));
+    renderPrRanking(v);
+  }
+
+  function prCard(m, v) {
+    const err = h('p', { class: 'err', hidden: true });
+    const p = pct(m.price);
+    const spark = h('div', { class: 'pr-spark chart c-spark', 'aria-hidden': 'true' });
+    const card = h(
+      'article',
+      { class: `fc-card pr-card${m.state === 'cerrada' ? ' pr-closed' : ''}` },
+      h(
+        'div',
+        { class: 'fc-head' },
+        h('span', { class: 'cal-src' }, PR_CATEGORY[m.category] ?? m.category),
+        h('span', { class: 'fc-when', title: `Cierra el ${fcClose.format(new Date(m.closesAt))}` }, m.state === 'cerrada' ? 'cerrada' : fcCloses(m.closesAt).text),
+      ),
+      h('h3', {}, m.question),
+      h('div', { class: 'pr-odds' }, h('span', { class: 'pr-pct' }, `${p}%`), h('span', { class: 'muted' }, 'Sí'), spark),
+    );
+    const rerender = () => card.replaceWith(prCard(m, v));
+    if (m.state === 'abierta') {
+      const picked = prSide.get(m.id) ?? null;
+      const can = v.me.chips != null;
+      card.append(
+        h(
+          'div',
+          { class: 'fc-choices', role: 'group', 'aria-label': 'Comprar' },
+          ...['si', 'no'].map((side) => {
+            const b = h('button', { type: 'button', 'aria-pressed': String(picked === side), disabled: !can }, side === 'si' ? `Sí · ${p}` : `No · ${100 - p}`);
+            b.addEventListener('click', () => {
+              if (picked === side) prSide.delete(m.id);
+              else prSide.set(m.id, side);
+              rerender();
+            });
+            return b;
+          }),
+        ),
+      );
+      if (picked && can) card.append(prTradeForm(m, picked, v, err));
+    } else card.append(h('p', { class: 'hint' }, 'Cerrada: esperando el resultado.'));
+
+    const mine = m.mine;
+    if (mine && (mine.yes > 1e-6 || mine.no > 1e-6)) {
+      const parts = [mine.yes > 1e-6 ? `${nf(1).format(mine.yes)} Sí` : null, mine.no > 1e-6 ? `${nf(1).format(mine.no)} No` : null].filter(Boolean);
+      const line = h('p', { class: 'hint' }, `Tienes ${parts.join(' y ')} · si vendes ahora: ${chipsFmt(mine.value)} fichas`);
+      if (m.state === 'abierta') {
+        for (const side of ['si', 'no']) {
+          if (mine[side === 'si' ? 'yes' : 'no'] <= 1e-6) continue;
+          const sell = h('button', { type: 'button', class: 'linkish' }, `vender ${side === 'si' ? 'Sí' : 'No'}`);
+          sell.addEventListener('click', () => sendPredict('/api/predictions/trade', { id: m.id, side, action: 'vender' }, err));
+          line.append(' · ', sell);
+        }
+      }
+      card.append(line);
+    }
+    card.append(
+      h('details', { class: 'pr-how' }, h('summary', {}, 'Cómo se resuelve'), h('p', { class: 'hint' }, m.details)),
+      h('p', { class: 'hint' }, m.traders ? `${m.traders} ${m.traders === 1 ? 'jugó' : 'jugaron'} · ${chipsFmt(m.volume)} fichas movidas` : 'Nadie compró todavía'),
+    );
+    if (state.role === 'owner') card.append(prResolve(m, err));
+    card.append(err);
+    // El minigráfico necesita el ancho de la tarjeta: se dibuja cuando ya está en la página. La escala abarca al menos
+    // 20 puntos de probabilidad, así un cambio chico no parece enorme y uno de 10 puntos se nota.
+    requestAnimationFrame(() => {
+      const pts = m.history.map((x) => ({ date: x.at.slice(0, 10), v: x.p * 100 }));
+      if (!spark.isConnected || pts.length < 2) return;
+      const vs = pts.map((x) => x.v);
+      const mid = (Math.min(...vs) + Math.max(...vs)) / 2;
+      const half = Math.max(10, (Math.max(...vs) - Math.min(...vs)) / 2 + 2);
+      const lo = Math.max(0, Math.min(mid - half, 100 - 2 * half));
+      drawLine(spark, pts, { domain: [lo, Math.min(100, lo + 2 * half)], height: 28 });
+    });
+    return card;
+  }
+
+  /** Cuántas fichas poner, con lo que recibirías y cómo queda el precio, antes de comprar. */
+  function prTradeForm(m, side, v, err) {
+    const max = Math.floor(v.me.chips);
+    const input = h('input', { type: 'number', inputmode: 'numeric', min: 1, max, step: 1, value: Math.min(50, max), 'aria-label': 'Fichas que pones' });
+    const est = h('p', { class: 'hint' });
+    const update = () => {
+      const n = Math.floor(Number(input.value));
+      if (!(n >= 1)) {
+        est.textContent = '';
+        return;
+      }
+      const r = lmsrBuy(m, side, n / v.rules.payout);
+      est.textContent = `≈ ${nf(1).format(r.shares)} acciones · si gana: ${chipsFmt(r.shares * v.rules.payout)} fichas · el Sí queda en ${pct(r.price)}%`;
+    };
+    input.addEventListener('input', update);
+    update();
+    const form = h('form', { class: 'pr-trade' }, input, h('span', { class: 'muted' }, 'fichas'), h('button', { type: 'submit' }, `Comprar ${side === 'si' ? 'Sí' : 'No'}`));
+    form.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      prSide.delete(m.id);
+      if (!(await sendPredict('/api/predictions/trade', { id: m.id, side, action: 'comprar', chips: Number(input.value) }, err))) prSide.set(m.id, side);
+    });
+    return h('div', {}, form, est);
+  }
+
+  /** Solo el dueño: da el resultado (con el enlace a la fuente) o anula la pregunta. */
+  function prResolve(m, err) {
+    const src = h('input', { type: 'url', placeholder: 'Enlace de la fuente (https://…)', 'aria-label': 'Enlace de la fuente' });
+    const act = (label, outcome) => {
+      const b = h('button', { type: 'button' }, label);
+      b.addEventListener('click', () => {
+        const what = outcome === 'anular' ? 'anular' : `resolver como ${label}`;
+        if (window.confirm(`¿${what[0].toUpperCase()}${what.slice(1)} «${m.question}»? Se reparten las fichas y no se puede deshacer.`)) {
+          sendPredict('/api/predictions/resolve', { id: m.id, outcome, source: src.value }, err);
+        }
+      });
+      return b;
+    };
+    return h('details', { class: 'pr-how' }, h('summary', {}, m.auto ? 'Resolver a mano' : 'Resolver'), h('div', { class: 'pr-resolve' }, src, act('Sí', 'si'), act('No', 'no'), act('Anular', 'anular')));
+  }
+
+  /** Para el dueño, las propuestas por aprobar; para los demás, las suyas. */
+  function renderPrProposals(v) {
+    const host = $('pr-proposals');
+    if (!v.proposals.length) return host.replaceChildren();
+    const owner = state.role === 'owner';
+    host.replaceChildren(
+      h('p', { class: 'co-h' }, owner ? `Por aprobar (${v.proposals.length})` : 'Tus propuestas'),
+      h(
+        'ul',
+        { class: 'pr-list' },
+        ...v.proposals.map((m) => {
+          const err = h('p', { class: 'err', hidden: true });
+          const info = [m.details, `cierra el ${fcClose.format(new Date(m.closesAt)).replace(/[.,]/g, '')}`, owner && m.proposer ? `propuso ${m.proposer}` : null];
+          const li = h('li', {}, h('p', {}, h('span', { class: 'cal-src' }, PR_CATEGORY[m.category] ?? m.category), ' ', h('span', { class: 'fc-title' }, m.question)), h('p', { class: 'hint' }, info.filter(Boolean).join(' · ')));
+          if (owner) {
+            const review = (label, approve) => {
+              const b = h('button', { type: 'button' }, label);
+              b.addEventListener('click', () => sendPredict('/api/predictions/review', { id: m.id, approve }, err));
+              return b;
+            };
+            li.append(h('div', { class: 'wl-row' }, review('Aprobar', true), review('Rechazar', false)));
+          } else li.append(h('p', { class: 'hint' }, m.state === 'rechazada' ? 'Rechazada' : 'Esperando aprobación'));
+          li.append(err);
+          return li;
+        }),
+      ),
+    );
+  }
+
+  function prDone(m, v) {
+    const res = m.state === 'anulada' ? 'Anulada' : `Ganó el ${m.outcome === 'si' ? 'Sí' : 'No'}`;
+    let mine = null;
+    if (m.mine && m.state === 'anulada') mine = 'te devolvieron lo puesto';
+    else if (m.mine) {
+      const net = Math.round((m.outcome === 'si' ? m.mine.yes : m.mine.no) * v.rules.payout - m.mine.spent);
+      mine = `tú: ${net >= 0 ? '+' : '−'}${nf(0).format(Math.abs(net))}`;
+    }
+    const status = h('span', { class: 'fc-res' }, [res, mine].filter(Boolean).join(' · '));
+    if (m.source) status.append(' · ', h('a', { href: m.source, target: '_blank', rel: 'noopener noreferrer' }, 'fuente ↗'));
+    return h('div', { class: 'pr-past' }, h('span', { class: 'cal-src' }, PR_CATEGORY[m.category] ?? m.category), h('span', { class: 'fc-title' }, m.question), status);
+  }
+
+  function renderPrRanking(v) {
+    const host = $('pr-rank');
+    if (!v.ranking.length) return host.replaceChildren(h('p', { class: 'hint' }, 'Cada uno entra al ranking al elegir su nombre.'));
+    host.replaceChildren(
+      h(
+        'table',
+        { class: 'co-table fc-rank' },
+        h('thead', {}, h('tr', {}, ...['#', 'Nombre', 'Fichas'].map((t) => h('th', { scope: 'col' }, t)))),
+        h(
+          'tbody',
+          {},
+          ...v.ranking.map((r, i) => h('tr', { class: r.mine ? 'mine' : null }, h('td', {}, String(i + 1)), h('td', {}, r.mine ? `${r.alias} (tú)` : r.alias), h('td', {}, chipsFmt(r.value)))),
+        ),
+      ),
+      h('p', { class: 'hint' }, 'Las fichas que tiene cada uno más lo que recibiría si vendiera hoy sus acciones.'),
+    );
+  }
+
+  /** «Fichas» (mercado) o «Pronósticos» (puntos): se recuerda en este equipo. */
+  function showRanking(tab) {
+    prefs.set('mercados.ranking', tab);
+    $('rk-fichas').setAttribute('aria-pressed', String(tab === 'fichas'));
+    $('rk-pron').setAttribute('aria-pressed', String(tab === 'pron'));
+    $('pr-rank').hidden = tab !== 'fichas';
+    $('fc-rank').hidden = tab !== 'pron';
+  }
+
+  // Formulario para proponer (o, el dueño, abrir) una pregunta.
+  function openPrForm(open) {
+    $('pr-form').hidden = !open;
+    $('pr-new').setAttribute('aria-expanded', String(open));
+    $('pr-err').hidden = true;
+    if (!open) return;
+    $('pr-q').value = '';
+    $('pr-how').value = '';
+    const days = (n) => limaDate(new Date(Date.now() + n * 86_400_000));
+    $('pr-close').min = days(1);
+    $('pr-close').max = days(366);
+    $('pr-close').value = days(14);
+    if (state.role === 'owner') fillPrAuto();
+    $('pr-q').focus();
+  }
+
+  /** Las preguntas abiertas del juego de pronósticos a las que el dueño puede ligar una pregunta del mercado. */
+  function fillPrAuto() {
+    const qs = (state.forecasts?.questions ?? []).filter((q) => q.status === 'open');
+    $('pr-auto').replaceChildren(h('option', { value: '' }, 'No: la resuelvo yo, con la fuente'), ...qs.map((q) => h('option', { value: q.id }, `${FC_KIND[q.kind]} · ${calDay(q.date)} · ${q.title}`)));
+    state.prSuggested = null;
+    renderPrCond();
+  }
+
+  /** La condición del Sí según el dato elegido, y una pregunta sugerida mientras no escribas otra. */
+  function renderPrCond() {
+    const q = (state.forecasts?.questions ?? []).find((x) => x.id === $('pr-auto').value);
+    $('pr-form').classList.toggle('pr-auto-on', !!q);
+    const host = $('pr-cond');
+    if (!q) return host.replaceChildren();
+    if (q.type === 'choice') {
+      const sel = h('select', { id: 'pr-cond-v', 'aria-label': 'Resultado que da Sí' }, ...FC_CHOICES.map((c) => h('option', { value: c, selected: c === 'baja' }, CHOICE_LABEL[c])));
+      sel.addEventListener('change', suggestPr);
+      host.replaceChildren(h('span', { class: 'muted' }, 'Sí si'), sel);
+    } else {
+      const op = h('select', { id: 'pr-cond-op', 'aria-label': 'Mayor o menor' }, h('option', { value: 'min' }, 'al menos'), h('option', { value: 'max' }, 'a lo más'));
+      const val = h('input', { id: 'pr-cond-v', type: 'number', inputmode: 'decimal', step: q.step, min: q.min, max: q.max, required: true, 'aria-label': `Valor (${q.unit})` });
+      op.addEventListener('change', suggestPr);
+      val.addEventListener('input', suggestPr);
+      host.replaceChildren(h('span', { class: 'muted' }, 'Sí si es'), op, val, h('span', { class: 'muted' }, q.unit === 'S/' ? 'soles' : '%'));
+    }
+    suggestPr();
+  }
+
+  function suggestPr() {
+    const q = (state.forecasts?.questions ?? []).find((x) => x.id === $('pr-auto').value);
+    const input = $('pr-q');
+    if (!q || (input.value && input.value !== state.prSuggested)) return;
+    const when = calDay(q.date);
+    let text;
+    if (q.type === 'choice') {
+      text = `¿${q.kind === 'bcrp' ? 'El BCRP' : 'La Fed'} ${$('pr-cond-v').value} su tasa el ${when}?`;
+    } else {
+      const month = q.ref ? fMonthYear.format(day(`${q.ref}-01`)).replace('.', '') : when;
+      const what = { inei: `la inflación de Lima de ${month}`, bls: `la inflación de EE. UU. de ${month}`, dolar: `el dólar al cierre de ${month}` }[q.kind];
+      const v = $('pr-cond-v').value;
+      const amount = v ? (q.unit === 'S/' ? `S/ ${v}` : `${v}%`) : '…';
+      text = `¿Será ${what} ${$('pr-cond-op').value === 'min' ? 'al menos' : 'a lo más'} ${amount}?`;
+    }
+    input.value = text;
+    state.prSuggested = text;
+  }
+
+  function prAuto() {
+    const qid = state.role === 'owner' ? $('pr-auto').value : '';
+    if (!qid) return null;
+    return { qid, op: $('pr-cond-op')?.value ?? 'es', value: $('pr-cond-v')?.value ?? '' };
+  }
+
+  function setupPredict() {
+    $('pr-new').addEventListener('click', () => openPrForm($('pr-form').hidden));
+    $('pr-cancel').addEventListener('click', () => openPrForm(false));
+    $('pr-auto').addEventListener('change', renderPrCond);
+    $('pr-form').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const auto = prAuto();
+      const body = { question: $('pr-q').value, category: $('pr-cat').value };
+      if (auto) body.auto = auto;
+      else Object.assign(body, { closesOn: $('pr-close').value, details: $('pr-how').value });
+      if (await sendPredict('/api/predictions', body, $('pr-err'))) openPrForm(false);
+    });
+    $('rk-fichas').addEventListener('click', () => showRanking('fichas'));
+    $('rk-pron').addEventListener('click', () => showRanking('pron'));
+    showRanking(prefs.get('mercados.ranking', 'fichas') === 'pron' ? 'pron' : 'fichas');
+    loadPredict();
   }
 
   // ---------- lista diaria ----------
@@ -3828,6 +4168,8 @@
     if ((sheet === 'juego') !== (location.hash === '#juego')) history.replaceState(null, '', url);
     // Los gráficos que se dibujaron con la hoja oculta quedan con el ancho de reserva: se rehacen al volver.
     if (changed && sheet === 'mercados') redrawCharts();
+    // Al entrar a «Juego», el mercado con lo último que compraron los demás.
+    if (changed && sheet === 'juego' && state.predict) loadPredict();
   }
 
   function setupSheets() {
@@ -4127,6 +4469,7 @@
       loadPeruMarkets();
       loadCalendar();
       loadForecasts();
+      setupPredict();
       setInterval(renderClock, 30_000);
       // Sin precios no hay pedidos periódicos: la rueda abre y cierra según el estado del servidor.
       setInterval(() => readStatus().catch(() => {}), QUOTE_POLL_MS);
@@ -4152,6 +4495,7 @@
     loadPeruMarkets();
     loadCalendar();
     loadForecasts();
+    setupPredict();
     setupPeople();
     renderPortfolioForm();
     await loadQuotes(false);

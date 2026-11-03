@@ -82,6 +82,12 @@ export async function setAlias(kv: KVNamespace, email: string, raw: unknown): Pr
   return { pid, alias };
 }
 
+/** El nombre del jugador (null si todavía no eligió uno). El mercado de predicciones usa el mismo. */
+export async function readAlias(kv: KVNamespace, pid: string): Promise<string | null> {
+  const { metadata } = await kv.getWithMetadata<Meta>(`${PREFIX}p:${pid}`);
+  return metadata?.a ?? null;
+}
+
 /** Guarda (o cambia) el pronóstico del jugador mientras la pregunta está abierta. */
 export async function submitForecast(kv: KVNamespace, email: string, now: Date, body: unknown): Promise<Entry> {
   const b = (body ?? {}) as { questionId?: unknown; value?: unknown };

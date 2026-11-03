@@ -1,6 +1,10 @@
+import type { JuegoDO } from './game/juego-do';
+
 export interface Env {
   ASSETS: Fetcher;
   CACHE: KVNamespace;
+  /** Mercado de predicciones de la hoja «Juego» (Durable Object con SQLite). */
+  JUEGO?: DurableObjectNamespace<JuegoDO>;
 
   // vars (wrangler.jsonc)
   TIMEZONE: string;

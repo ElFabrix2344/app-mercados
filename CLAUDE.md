@@ -32,6 +32,14 @@ App de mercados (Cloudflare Worker + panel web + conector MCP para Claude). El R
   - **Diseño que depende del ancho de la sección:** `.screen` es un contenedor, así que va con `@container`, no con `@media` (una sección puede ser angosta en una pantalla ancha).
   - **Columnas parejas:** si una crece mucho, la página entera se alarga. Mira la altura de cada una antes de mover algo.
 - **Hojas** (2 nov, pedido del usuario: que lo cooperativo o competitivo tenga su propia hoja): pestañas «Mercados» (`.cols`) y «Juego» (`#game`, dirección `#juego`) bajo el encabezado. Lo que se juega en grupo va en «Juego», no en las columnas. La hoja se recuerda en cada equipo (`mercados.hoja`); al volver a «Mercados» se redibujan los gráficos, porque con la hoja oculta se dibujan con el ancho de reserva.
+- **Mercado de predicciones** (`game/juego.ts`, `game/juego-do.ts`, `lib/lmsr.ts`): preguntas de Sí o No con fichas, en un Durable Object con SQLite (gratis). Es una sola instancia («grupo»), que atiende los pedidos de a uno. Reglas:
+  - **Sin plata real ni premios**: con plata sería una apuesta, que en el Perú necesita licencia. Las fichas no se compran ni se cambian por nada.
+  - **Solo hechos públicos**, nada sobre la vida privada de nadie. Las preguntas de los amigos las aprueba el dueño, y no se muestra lo que compró cada uno (solo el total en el ranking).
+  - **El ranking valora las acciones a lo que daría venderlas hoy, no al último precio**: con el precio, comprar mucho de un lado inflaría el total.
+  - **El jugador y el nombre son los del juego de pronósticos** (`playerId`, `readAlias`).
+  - **Las preguntas ligadas a un dato** se resuelven con `pron-results` en el siguiente pedido; no hay tarea programada.
+  - **Lo que cruza el RPC** son objetos (no tuplas, que pierden el tipo) y los errores vuelven como datos (`reply`).
+  - **Las pruebas** usan un almacenamiento en memoria (`memoryStorage` en `test/helpers.ts`), y el stub de `cloudflare:workers` trae `DurableObject`.
 - El calendario económico (`lib/calendar.ts`) se carga a mano, como los feriados de la NYSE: cada fecha se verifica en su fuente oficial. Sin fechas, el panel oculta la sección y el conector no ofrece `calendario`.
 - **Resumen del día** (`services/summary.ts`): lo publica una tarea programada del dueño, en la nube de Anthropic y con su plan Max, por la herramienta `publicar_resumen` del conector. **El Worker no llama a ninguna IA ni guarda claves de Anthropic:** los términos de Claude no permiten usar la cuenta de Max desde un programa propio, y la API se cobra aparte.
   - Lo ven los amigos, así que la tarea solo usa titulares y datos públicos, nunca precios de Twelve Data ni datos de Finnhub. Por eso pide `calendario` con `publico: true`: sin ese parámetro el calendario del dueño trae los resultados de empresas de Finnhub, y en la primera prueba se coló uno.

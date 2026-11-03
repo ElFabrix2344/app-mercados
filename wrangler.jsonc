@@ -30,6 +30,11 @@
     }
   ],
 
+  // Mercado de predicciones (hoja «Juego»): un Durable Object con SQLite (en el plan gratis) que atiende los pedidos
+  // de a uno, así dos compras al mismo tiempo no se pisan. La clase se exporta desde src/index.ts.
+  "durable_objects": { "bindings": [{ "name": "JUEGO", "class_name": "JuegoDO" }] },
+  "migrations": [{ "tag": "v1", "new_sqlite_classes": ["JuegoDO"] }],
+
   // Variables NO secretas. Claves y configuración de Access van como secretos
   // (panel de Cloudflare → Variables and Secrets), nunca en el repo.
   "vars": {

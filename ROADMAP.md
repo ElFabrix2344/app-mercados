@@ -302,19 +302,19 @@ Entre paréntesis, la opinión de Claude: **Sí**, Tal vez o No.
 El usuario pidió que lo cooperativo o competitivo tuviera su propia hoja «e ir armándolo con más ideas». Contó que un amigo hizo una app como Polymarket o Kalshi para las elecciones del centro de estudiantes de la universidad y que funcionó bien. Quiere juegos sobre la universidad o sobre economía y política en general.
 
 - [x] **Hoja «Juego»:** pestañas «Mercados» y «Juego» bajo el encabezado. Los pronósticos pasaron ahí, con todas las preguntas abiertas a la vista, el ranking y lo resuelto al costado. La pestaña muestra cuántas te faltan.
-- [ ] **Mercado de predicciones del grupo** (propuesto el 2 nov; falta que el usuario lo apruebe):
+- [x] **Mercado de predicciones del grupo** (aprobado el 2 nov: «Sí, ármalo»). Detalle en el README.
   - **Cómo se juega:**
     - Preguntas de Sí o No con un precio de 1 a 99 fichas, que se lee como probabilidad.
     - El precio lo mueve un creador de mercado automático (LMSR), porque con 8 personas no hay quién venda del otro lado.
     - Se puede vender antes del cierre, y cada acción ganadora paga 100 fichas.
-  - **Fichas:** 1.000 para empezar y 100 más cada lunes. El ranking va por fichas totales.
+  - **Fichas:** 1.000 para empezar y 100 más cada lunes. El ranking va por fichas totales, con las acciones a lo que daría venderlas hoy.
   - **Preguntas:**
     - Las propone cualquiera del grupo y el dueño las aprueba: universidad (por ejemplo, elecciones del centro de estudiantes) y política y economía en general.
-    - Las que dependen de datos de Rueda (BCRP, Fed, inflación, dólar) se resuelven solas. Las demás las resuelve el dueño, con el enlace a la fuente.
+    - El dueño puede ligar una pregunta a un dato del juego de pronósticos (BCRP, Fed, inflación, dólar), y entonces se resuelve sola. Las demás las resuelve el dueño, con el enlace a la fuente, o las anula.
   - **Reglas:**
     - Sin plata real ni premios en dinero: con plata sería una apuesta, que en el Perú necesita licencia.
     - Nada sobre la vida privada de nadie: solo hechos públicos.
-  - **Técnico:** iría en D1, la base de datos gratis de Cloudflare. Con KV, dos compras al mismo tiempo pueden pisarse, y cada vista gastaría uno de los 1.000 `list` diarios.
+  - **Técnico:** se pensó en D1, pero quedó en un Durable Object con SQLite, también gratis. Ordena los pedidos solo y no hay que crear nada en el panel: lo crea el despliegue. Con KV, dos compras al mismo tiempo podían pisarse, y cada vista gastaba uno de los 1.000 `list` diarios.
 - [ ] **Otras ideas** (sin elegir):
   - **Competitivas:** temporadas mensuales con campeón, logros (rachas, «contra la corriente») y duelos 1 a 1 en una pregunta.
   - **Cooperativas:**

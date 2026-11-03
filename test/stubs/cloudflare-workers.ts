@@ -6,3 +6,11 @@ export class WorkerEntrypoint<Env = unknown> {
     protected env: Env,
   ) {}
 }
+
+/** El mercado de predicciones (src/game/juego-do.ts): en las pruebas se le pasa un almacenamiento en memoria. */
+export class DurableObject<Env = unknown> {
+  constructor(
+    protected ctx: DurableObjectState,
+    protected env: Env,
+  ) {}
+}
