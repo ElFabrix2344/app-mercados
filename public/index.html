@@ -479,8 +479,58 @@
        Los pronósticos a lo ancho y, al costado, el ranking y lo ya resuelto; en el celular, uno debajo del otro. -->
   <div class="game" id="game" role="tabpanel" aria-labelledby="tab-juego">
     <div class="game-main">
-    <!-- El nombre con que juegas: el mismo en el mercado y en los pronósticos. -->
+    <!-- El nombre con que juegas: el mismo en todos los juegos de la hoja. -->
     <div class="game-me" id="fc-me"></div>
+
+    <!-- Los juegos que no son de pronosticar (src/game/minijuegos.ts): uno diario y uno semanal, lado a lado. -->
+    <div class="game-row">
+      <section class="screen" id="chart-day" aria-labelledby="gd-h">
+        <div class="screen-head">
+          <h2 id="gd-h">Gráfico del día</h2>
+          <span class="src">BCRP · FRED</span>
+          <details class="help">
+            <summary aria-label="Cómo se juega el gráfico del día">?</summary>
+            <div class="help-body">
+              <p>Un gráfico sin nombre ni escala de una serie de Rueda. Adivina cuál es: una respuesta por día.</p>
+              <p>La racha cuenta los días seguidos que aciertas; si fallas o faltas un día, vuelve a cero.</p>
+            </div>
+          </details>
+        </div>
+        <div id="gd-body"><p class="muted">Cargando…</p></div>
+      </section>
+
+      <section class="screen" id="k23" aria-labelledby="k23-h">
+        <div class="screen-head">
+          <h2 id="k23-h">2/3 del promedio</h2>
+          <span class="src">Semanal</span>
+          <details class="help">
+            <summary aria-label="Cómo se juega 2/3 del promedio">?</summary>
+            <div class="help-body">
+              <p>Cada semana eliges un número del 0 al 100. Gana quien quede más cerca de 2/3 del promedio de todos.</p>
+              <p>Puedes cambiarlo hasta el domingo a la medianoche. Lo de cada uno se ve el lunes, al cierre.</p>
+              <p>Está inspirado en el «concurso de belleza» de Keynes: no gana un número correcto, sino adivinar qué van a elegir los demás.</p>
+            </div>
+          </details>
+        </div>
+        <div id="k23-body"><p class="muted">Cargando…</p></div>
+      </section>
+    </div>
+
+    <section class="screen" id="league" aria-labelledby="lg-h">
+      <div class="screen-head">
+        <h2 id="lg-h">Liga de carteras</h2>
+        <span class="src">BCRP · mensual</span>
+        <details class="help">
+          <summary aria-label="Cómo se juega la liga de carteras">?</summary>
+          <div class="help-body">
+            <p>Empiezas con S/ 10 000 de mentira. Compra y vende dólares, oro, cobre y la Bolsa de Lima; lo que no inviertes rinde la tasa del BCRP. Todo se valoriza en soles.</p>
+            <p>Cada orden se cumple con el cierre del día hábil siguiente: los datos del BCRP llegan con un día de atraso y así nadie compra a precio de ayer sabiendo lo de hoy.</p>
+            <p>Gana el mes quien más rinda en el mes. Las acciones no están: la licencia gratis de su proveedor no permite mostrar sus precios a otras personas.</p>
+          </div>
+        </details>
+      </div>
+      <div id="lg-body"><p class="muted">Cargando…</p></div>
+    </section>
 
     <!-- Mercado de predicciones: preguntas de Sí o No con fichas (game/juego.ts, en un Durable Object). -->
     <section class="screen" id="predict" aria-labelledby="pr-h">

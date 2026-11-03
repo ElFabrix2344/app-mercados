@@ -100,6 +100,7 @@ export interface GameStorage {
   get<T>(key: string): Promise<T | undefined>;
   put<T>(key: string, value: T): Promise<void>;
   list<T>(options: { prefix: string }): Promise<Map<string, T>>;
+  delete(key: string): Promise<boolean>;
 }
 
 export interface MarketView {
@@ -138,10 +139,10 @@ export interface GameView {
   rules: { start: number; weekly: number; payout: number; maxPending: number };
 }
 
-export type Reply = { view: GameView } | { error: { status: number; message: string } };
+export type Reply<T = GameView> = { view: T } | { error: { status: number; message: string } };
 
 /** Respuesta para el Worker: los errores del juego viajan como datos (los de RPC no conservan su clase). */
-export async function reply(fn: () => Promise<GameView>): Promise<Reply> {
+export async function reply<T>(fn: () => Promise<T>): Promise<Reply<T>> {
   try {
     return { view: await fn() };
   } catch (e) {
@@ -201,6 +202,11 @@ export class Juego {
     const out = new Map<string, Player>();
     for (const p of (await this.store.list<Player>({ prefix: 'player:' })).values()) out.set(p.pid, p);
     return out;
+  }
+
+  /** Nombre de cada jugador (los otros juegos de la hoja usan los mismos). */
+  async aliases(): Promise<Map<string, string>> {
+    return new Map([...(await this.players()).values()].map((p) => [p.pid, p.alias]));
   }
 
   private async market(id: unknown): Promise<Market> {

@@ -1,7 +1,9 @@
 // Datos ficticios para desarrollo local (MOCK_DATA=true y DEV_MODE=true en localhost).
 // Son caminatas aleatorias con semilla fija: sirven para ver el diseño, no son precios reales.
 
-import type { Juego, Who } from './game/juego';
+import type { GameStorage, Juego, Who } from './game/juego';
+import type { Minijuegos } from './game/minijuegos';
+import type { GamesInput } from './game/series';
 import type { EarningsRelease } from './lib/finnhub';
 import { CHOICES, questionsAt, readyToResolve, resolve, type ForecastValue } from './lib/forecasts';
 import { usMarketOpen } from './lib/market-hours';
@@ -475,6 +477,46 @@ export async function seedDemoGame(game: Juego, now: Date): Promise<void> {
     if (s.resolve) await game.resolve(ana, { id, outcome: s.resolve, source: 'https://example.com/acta-comite-electoral' }, ago(6), {});
   }
   await game.propose(beto, { question: '¿La universidad anunciará clases virtuales la última semana del ciclo?', category: 'universidad', closesOn: addDays(isoDate(now, 'America/Lima'), 20), details: 'Sí si la universidad lo comunica por correo institucional antes del cierre.' }, ago(1), {});
+}
+
+/**
+ * Los otros juegos de prueba (hoja «Juego»), una sola vez: números de 2/3 del promedio de la semana pasada y de esta,
+ * respuestas al gráfico de los últimos días (Caro con racha) y carteras de la liga desde hace 20 días.
+ */
+export async function seedDemoMinigames(store: GameStorage, minis: Minijuegos, now: Date, input: GamesInput): Promise<void> {
+  if (await store.get('demo-minis')) return;
+  await store.put('demo-minis', true);
+  const ago = (days: number) => new Date(now.getTime() - days * 86_400_000);
+  const ana: Who = { pid: 'demo-ana', alias: 'Ana', owner: false };
+  const beto: Who = { pid: 'demo-beto', alias: 'Beto', owner: false };
+  const caro: Who = { pid: 'demo-caro', alias: 'Caro', owner: false };
+
+  for (const [who, value] of [[ana, 22], [beto, 35], [caro, 15]] as const) await minis.pick(who, { value }, ago(7), input);
+  for (const [who, value] of [[ana, 20], [beto, 28]] as const) await minis.pick(who, { value }, now, input);
+
+  // Gráfico: el de cada día se arma al verlo; después se lee cuál era para responder.
+  for (const days of [3, 2, 1]) {
+    const when = ago(days);
+    await minis.view(caro, when, input);
+    const p = await store.get<{ answer: string; options: string[] }>(`gd:${isoDate(when, 'America/Lima')}`);
+    if (!p) continue;
+    await minis.answer(caro, { option: p.answer }, when, input);
+    if (days === 1) {
+      await minis.answer(ana, { option: p.answer }, when, input);
+      await minis.answer(beto, { option: p.options.find((o) => o !== p.answer) }, when, input);
+    }
+  }
+
+  // Liga: compras de hace 20 días (se cumplen con el cierre siguiente) y una venta de Beto hace 5.
+  const compras: [Who, string, number][] = [
+    [ana, 'oro', 5000],
+    [ana, 'cobre', 3000],
+    [beto, 'bvl', 6000],
+    [beto, 'dolar', 4000],
+    [caro, 'dolar', 5000],
+  ];
+  for (const [who, asset, soles] of compras) await minis.order(who, { action: 'comprar', asset, soles }, ago(20), input);
+  await minis.order(beto, { action: 'vender', asset: 'dolar' }, ago(5), input);
 }
 
 /** Curva de prueba: hoy con forma de «U», hace un mes parecida y hace un año invertida. */

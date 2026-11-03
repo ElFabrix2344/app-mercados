@@ -32,6 +32,11 @@ App de mercados (Cloudflare Worker + panel web + conector MCP para Claude). El R
   - **Diseño que depende del ancho de la sección:** `.screen` es un contenedor, así que va con `@container`, no con `@media` (una sección puede ser angosta en una pantalla ancha).
   - **Columnas parejas:** si una crece mucho, la página entera se alarga. Mira la altura de cada una antes de mover algo.
 - **Hojas** (2 nov, pedido del usuario: que lo cooperativo o competitivo tenga su propia hoja): pestañas «Mercados» (`.cols`) y «Juego» (`#game`, dirección `#juego`) bajo el encabezado. Lo que se juega en grupo va en «Juego», no en las columnas. La hoja se recuerda en cada equipo (`mercados.hoja`); al volver a «Mercados» se redibujan los gráficos, porque con la hoja oculta se dibujan con el ancho de reserva.
+- **Juegos que no son de pronosticar** (`game/minijuegos.ts`): gráfico del día, 2/3 del promedio y liga de carteras, en el mismo Durable Object que el mercado. El usuario pidió el 2 nov «separarse de la idea de pronósticos solamente». Reglas:
+  - **Solo datos públicos** (BCRP y FRED, por `game/series.ts`). Nada de Twelve Data ni de Finnhub, porque los ven los amigos.
+  - **Liga:** cada orden se cumple con el cierre del primer día hábil después de darla, para que no se pueda comprar a precio de ayer sabiendo lo de hoy.
+  - **2/3 del promedio:** no muestra lo de los demás antes del cierre.
+  - **Gráfico del día:** no manda la respuesta antes de que contesten. La serie del día se guarda la primera vez y no cambia aunque cambien los datos.
 - **Mercado de predicciones** (`game/juego.ts`, `game/juego-do.ts`, `lib/lmsr.ts`): preguntas de Sí o No con fichas, en un Durable Object con SQLite (gratis). Es una sola instancia («grupo»), que atiende los pedidos de a uno. Reglas:
   - **Sin plata real ni premios**: con plata sería una apuesta, que en el Perú necesita licencia. Las fichas no se compran ni se cambian por nada.
   - **Solo hechos públicos**, nada sobre la vida privada de nadie. Las preguntas de los amigos las aprueba el dueño, y no se muestra lo que compró cada uno (solo el total en el ranking).

@@ -584,6 +584,35 @@ a.hapi-btn:hover{border-color:var(--accent);color:var(--accent)}
 .pr-past .fc-res{grid-column:2;text-align:left}
 #pr-rank > .hint{margin:8px 0 0}
 
+/* ---------- gráfico del día, 2/3 del promedio y liga de carteras ---------- */
+/* El gráfico y el 2/3 van lado a lado si la columna principal es ancha; si no, uno debajo del otro. */
+.game-main{container-type:inline-size}
+.game-row{display:grid;gap:24px;align-items:start}
+@container (min-width:700px){
+  .game-row{grid-template-columns:1fr 1fr}
+}
+.gd-chart{height:90px;margin:2px 0 4px}
+.gd-span{margin:0 0 8px}
+.gd-options{display:grid;grid-template-columns:1fr 1fr;gap:6px}
+.gd-options button{justify-content:center;text-align:center;white-space:normal;line-height:1.25;min-height:2.7em;padding:5px 8px;
+  font-family:var(--f-sans);font-size:.85rem}
+.gd-options button.ok{border-color:var(--accent);color:var(--accent);background:var(--accent-soft)}
+.gd-options button.bad{border-color:var(--down);color:var(--down)}
+/* Ya respondido: las opciones se leen igual, aunque no se puedan tocar. */
+.gd-done button[disabled]{opacity:1}
+.gd-result,.k23-mine,.k23-last,.lg-me{margin:8px 0 0;font-family:var(--f-sans)}
+.k23-mine{margin:0 0 6px}
+.lg-grid{display:grid;gap:16px}
+@container (min-width:640px){
+  .lg-grid{grid-template-columns:1fr 1fr}
+}
+.lg-me{margin:0}
+.lg-assets,.lg-pos,.lg-orders{list-style:none;margin:6px 0 8px;padding:0}
+.lg-assets li{display:flex;justify-content:space-between;gap:8px;padding:3px 0;border-bottom:1px solid var(--hair);font-size:.9rem}
+.lg-pos li{display:grid;grid-template-columns:minmax(0,1fr) auto auto auto;gap:4px 12px;align-items:baseline;padding:4px 0;border-bottom:1px solid var(--hair);font-size:.9rem}
+.lg-orders li{margin:4px 0}
+#league .pr-trade select{font:inherit;font-size:16px;padding:5px 8px;border:1px solid var(--line);border-radius:var(--r);background:var(--panel);color:var(--ink)}
+
 /* Personas (solo el dueño): correo | ✉ invitar | × quitar. El correo recién agregado queda en cian. */
 .pp-list{list-style:none;margin:0;padding:0}
 .pp-list li{display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid var(--hair);min-width:0}

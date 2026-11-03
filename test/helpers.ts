@@ -55,6 +55,9 @@ export function memoryStorage() {
       const keys = [...data.keys()].filter((k) => k.startsWith(prefix)).sort();
       return new Map(keys.map((k) => [k, structuredClone(data.get(k)) as T]));
     },
+    async delete(key: string): Promise<boolean> {
+      return data.delete(key);
+    },
   };
 }
 

@@ -33,6 +33,8 @@ import { companyCalendar } from './services/earnings';
 import { EOD_NEW_NOW, eodView, knownSymbols, refreshEod, validateEodList } from './services/eod';
 import { forecastView, playerId, readAlias, resolveForecasts, RESULTS_KEY, setAlias, submitForecast, type Results, type Store } from './services/forecasts';
 import type { Reply } from './game/juego';
+import type { GamesView } from './game/minijuegos';
+import { gamesInput } from './game/series';
 
 // Mercado de predicciones de la hoja «Juego»: Durable Object (wrangler.jsonc → durable_objects).
 export { JuegoDO } from './game/juego-do';
@@ -159,6 +161,7 @@ async function route(req: Request, env: Env, url: URL, role: Role, email: string
   }
   // Mercado de predicciones: juegan el dueño y los amigos (aprobar y resolver, solo el dueño: lo revisa el juego).
   if (p === '/api/predictions' || p.startsWith('/api/predictions/')) return predictions(req, env, url, role, email, now, mock);
+  if (p === '/api/games' || p.startsWith('/api/games/')) return games(req, env, url, role, email, deps, mock);
 
   if (req.method === 'GET') {
     switch (p) {
@@ -454,6 +457,40 @@ async function predictions(req: Request, env: Env, url: URL, role: Role, email: 
     else if (p === '/api/predictions/trade') r = await game.trade(who, body, at, results);
     else if (p === '/api/predictions/review') r = await game.review(who, body, at, results);
     else r = await game.resolve(who, body, at, results);
+  } else {
+    return json({ error: { code: 'not_found', message: 'Ruta desconocida', provider: null } }, { status: 404 });
+  }
+  if ('error' in r) throw new ApiError(r.error.status === 403 ? 'forbidden' : 'bad_request', r.error.status, r.error.message);
+  return json(r.view);
+}
+
+/**
+ * Los otros juegos de la hoja «Juego»: 2/3 del promedio, gráfico del día y liga de carteras. GET: lo que ve quien
+ * pide. POST /dos-tercios elige el número de la semana, /grafico responde el del día y /liga da una orden. Los
+ * datos son públicos (BCRP y FRED, de las mismas cachés del panel) y los atiende el mismo Durable Object del mercado.
+ */
+async function games(req: Request, env: Env, url: URL, role: Role, email: string | null, deps: Deps, mock: boolean): Promise<Response> {
+  if (!env.JUEGO) throw new ApiError('not_configured', 503, 'Los juegos no están configurados.');
+  const p = url.pathname;
+  const now = deps.now;
+  const pid = await playerId(needEmail(email));
+  const who = { pid, alias: await readAlias(env.CACHE, pid), owner: role === 'owner' };
+  const data = <T>(get: () => Promise<{ data: T }>) => get().then((r) => r.data, () => null);
+  const input = mock
+    ? gamesInput(mockPeru(now).data, mockPeruMarkets(now).data, mockUsa(now).data)
+    : gamesInput(...(await Promise.all([data(() => peru(deps)), data(() => peruMarkets(deps)), data(() => usa(deps))])));
+  const game = env.JUEGO.get(env.JUEGO.idFromName('grupo'));
+  const at = now.toISOString();
+  let r: Reply<GamesView>;
+  if (req.method === 'GET' && p === '/api/games') {
+    if (mock) await game.seedDemoGames(at, input);
+    r = await game.games(who, at, input);
+  } else if (req.method === 'POST' && ['/api/games/dos-tercios', '/api/games/grafico', '/api/games/liga'].includes(p)) {
+    sameOrigin(req, url);
+    const body = await req.json().catch(() => null);
+    if (p === '/api/games/dos-tercios') r = await game.pick(who, body, at, input);
+    else if (p === '/api/games/grafico') r = await game.answer(who, body, at, input);
+    else r = await game.order(who, body, at, input);
   } else {
     return json({ error: { code: 'not_found', message: 'Ruta desconocida', provider: null } }, { status: 404 });
   }

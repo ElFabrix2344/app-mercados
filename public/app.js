@@ -44,6 +44,8 @@
     marketOpen: null, // ¿la bolsa de Nueva York está en sesión? (de /api/status y de cada pedido de precios)
     calendar: null, // respuesta de /api/calendar
     predict: null, // respuesta de /api/predictions (mercado de predicciones de la hoja «Juego»)
+    games: null, // respuesta de /api/games (gráfico del día, 2/3 del promedio y liga de carteras)
+    k23Edit: false, // cambiando el número de esta semana
     prSuggested: null, // pregunta que sugirió el formulario (se reemplaza mientras no escribas otra)
     people: null, // respuesta de /api/people (quién puede entrar; solo el dueño)
     peopleNew: null, // correo recién agregado (se marca en la lista)
@@ -3514,8 +3516,11 @@
       state.forecasts = await api(path, { method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
       state.fcEditName = false;
       renderForecasts();
-      // El nombre es el mismo en el mercado de predicciones: con él ya se puede jugar ahí.
-      if (path === '/api/forecasts/name') loadPredict();
+      // El nombre es el mismo en todos los juegos de la hoja: con él ya se puede jugar en los demás.
+      if (path === '/api/forecasts/name') {
+        loadPredict();
+        loadGames();
+      }
     } catch (e) {
       errEl.textContent = e.message;
       errEl.hidden = false;
@@ -3536,11 +3541,7 @@
     $('fc-open').replaceChildren(
       ...(open.length ? open.map((q) => fcCard(q, v)) : [h('p', { class: 'muted' }, 'No hay preguntas abiertas: cada una se abre 45 días antes de su anuncio.')]),
     );
-    // En la pestaña «Juego», cuántas abiertas te faltan.
-    const pending = open.filter((q) => q.mine == null).length;
-    $('game-badge').hidden = !pending;
-    $('game-badge').textContent = String(pending);
-    $('tab-juego').setAttribute('aria-label', pending ? `Juego: ${pending} ${pending === 1 ? 'pronóstico pendiente' : 'pronósticos pendientes'}` : 'Juego');
+    renderGameBadge();
     const past = v.questions.filter((q) => q.status !== 'open').reverse();
     $('fc-past').replaceChildren(...(past.length ? past.map(fcPast) : [h('p', { class: 'muted' }, 'Todavía no cerró ninguna pregunta.')]));
     renderFcRanking(v);
@@ -4010,6 +4011,207 @@
     loadPredict();
   }
 
+  // ---------- gráfico del día, 2/3 del promedio y liga de carteras ----------
+  // Servidor: src/game/minijuegos.ts, en el mismo Durable Object del mercado. Usan datos públicos (BCRP y FRED).
+  const LG_ASSETS = [
+    ['dolar', 'Dólar'],
+    ['oro', 'Oro'],
+    ['cobre', 'Cobre'],
+    ['bvl', 'Bolsa de Lima'],
+  ];
+  const fMonthLong = fmt({ month: 'long', timeZone: 'UTC' });
+  const solesFmt = (v) => `S/ ${nf(0).format(Math.round(v))}`;
+  /** Rendimiento (fracción) con flecha y signo, como el resto del panel: «▲ +2.1%». */
+  const retFmt = (r) => {
+    if (r == null) return '—';
+    const t = trend(Math.round(r * 1000));
+    return `${t === 'up' ? '▲' : t === 'down' ? '▼' : '■'} ${r > 0 ? '+' : r < 0 ? '−' : ''}${nf(1).format(Math.abs(r * 100))}%`;
+  };
+  const retSpan = (r) => h('span', { class: r == null ? 'muted' : trend(Math.round(r * 1000)) }, retFmt(r));
+
+  async function loadGames() {
+    try {
+      state.games = await api('/api/games');
+      renderGames();
+    } catch (e) {
+      for (const id of ['gd-body', 'k23-body', 'lg-body']) $(id).replaceChildren(h('p', { class: 'err' }, e.message));
+    }
+  }
+
+  /** Elige, responde o da una orden; el servidor responde los tres juegos actualizados. */
+  async function sendGames(path, body, errEl) {
+    errEl.hidden = true;
+    try {
+      state.games = await api(path, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+      renderGames();
+      return true;
+    } catch (e) {
+      errEl.textContent = e.message;
+      errEl.hidden = false;
+      return false;
+    }
+  }
+
+  function renderGames() {
+    const v = state.games;
+    if (!v) return;
+    renderChartDay(v);
+    renderK23(v);
+    renderLeague(v);
+    renderGameBadge();
+  }
+
+  /** La pestaña «Juego» cuenta lo que te falta: pronósticos abiertos, el gráfico de hoy y el número de la semana. */
+  function renderGameBadge() {
+    const fc = state.forecasts ? state.forecasts.questions.filter((q) => q.status === 'open' && q.mine == null).length : 0;
+    const g = state.games;
+    const n = fc + (g ? (g.grafico.available && !g.grafico.mine ? 1 : 0) + (g.dosTercios.mine == null ? 1 : 0) : 0);
+    $('game-badge').hidden = !n;
+    $('game-badge').textContent = String(n);
+    $('tab-juego').setAttribute('aria-label', n ? `Juego: ${n} ${n === 1 ? 'pendiente' : 'pendientes'}` : 'Juego');
+  }
+
+  function renderChartDay(v) {
+    const g = v.grafico;
+    const body = $('gd-body');
+    if (!g.available) {
+      body.replaceChildren(h('p', { class: 'muted' }, 'Hoy no hay gráfico: faltan datos. Vuelve más tarde.'));
+      return;
+    }
+    const err = h('p', { class: 'err', hidden: true });
+    const chart = h('div', { class: 'chart gd-chart', role: 'img', 'aria-label': 'Gráfico de una serie sin nombre' });
+    const can = !!v.alias && !g.mine;
+    const options = h(
+      'div',
+      { class: `gd-options${g.mine ? ' gd-done' : ''}`, role: 'group', 'aria-label': '¿Qué serie es?' },
+      ...g.options.map((o) => {
+        const cls = g.answer ? (o.id === g.answer.id ? 'ok' : g.mine?.option === o.id ? 'bad' : null) : null;
+        const b = h('button', { type: 'button', class: cls, disabled: !can, 'aria-pressed': String(g.mine?.option === o.id) }, o.name);
+        b.addEventListener('click', () => sendGames('/api/games/grafico', { option: o.id }, err));
+        return b;
+      }),
+    );
+    const lines = [];
+    if (g.mine && g.answer) lines.push(h('p', { class: 'gd-result' }, `${g.mine.correct ? '¡Bien! Era' : 'Era'} «${g.answer.name}». Hoy acertaron ${g.today.correct} de ${g.today.played}.`));
+    else if (!v.alias) lines.push(h('p', { class: 'hint' }, 'Para jugar, elige tu nombre arriba.'));
+    else lines.push(h('p', { class: 'hint' }, g.today.played ? `${g.today.played} ya ${g.today.played === 1 ? 'respondió' : 'respondieron'} hoy.` : 'Nadie respondió todavía.'));
+    if (g.me) lines.push(h('p', { class: 'hint' }, `Tu racha: ${g.me.streak} · la mejor: ${g.me.best} · aciertos: ${g.me.correct} de ${g.me.played}`));
+    if (g.top.length) lines.push(h('p', { class: 'hint' }, `Mejores rachas: ${g.top.map((t) => `${t.alias} ${t.best}`).join(' · ')}`));
+    if (g.yesterday) lines.push(h('p', { class: 'hint' }, `Ayer era «${g.yesterday.name}»: acertaron ${g.yesterday.correct} de ${g.yesterday.played}.`));
+    const when = (d) => fDayYear.format(day(d)).replace(/\./g, '');
+    body.replaceChildren(chart, h('p', { class: 'hint gd-span' }, `Del ${when(g.from)} al ${when(g.to)}`), options, ...lines, err);
+    // Sin escala: solo la forma (el servidor la manda de 0 a 100).
+    requestAnimationFrame(() => {
+      if (chart.isConnected) drawLine(chart, g.points.map((p, i) => ({ date: String(i), v: p })), { domain: [0, 100], height: 90 });
+    });
+  }
+
+  function renderK23(v) {
+    const k = v.dosTercios;
+    const err = h('p', { class: 'err', hidden: true });
+    const parts = [];
+    const closes = fcClose.format(new Date(Date.parse(k.closesAt) - 60_000)).replace(/[.,]/g, '');
+    if (!v.alias) parts.push(h('p', { class: 'hint' }, 'Para jugar, elige tu nombre arriba.'));
+    else if (k.mine != null && !state.k23Edit) {
+      const change = h('button', { type: 'button', class: 'linkish' }, 'cambiar');
+      change.addEventListener('click', () => {
+        state.k23Edit = true;
+        renderK23(v);
+      });
+      parts.push(h('p', { class: 'k23-mine' }, 'Elegiste ', h('strong', {}, String(k.mine)), ' · ', change));
+    } else {
+      const input = h('input', { type: 'number', inputmode: 'numeric', min: 0, max: 100, step: 1, value: k.mine ?? '', required: true, 'aria-label': 'Tu número, del 0 al 100' });
+      const form = h('form', { class: 'pr-trade' }, input, h('button', { type: 'submit' }, k.mine == null ? 'Elegir' : 'Cambiar'));
+      form.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        state.k23Edit = false;
+        if (!(await sendGames('/api/games/dos-tercios', { value: Number(input.value) }, err))) state.k23Edit = true;
+      });
+      parts.push(form);
+    }
+    parts.push(h('p', { class: 'hint' }, `${k.count ? `${k.count} ${k.count === 1 ? 'eligió' : 'eligieron'} esta semana` : 'Nadie eligió todavía'} · cierra el ${closes}`));
+    const last = k.last;
+    if (last && last.avg == null) parts.push(h('p', { class: 'hint' }, 'La semana pasada jugó una sola persona: no hubo ganador.'));
+    else if (last) {
+      parts.push(h('p', { class: 'k23-last' }, `Semana pasada: promedio ${nf(1).format(last.avg)} → 2/3: `, h('strong', {}, nf(1).format(last.target)), `. Ganó ${listJoin(last.winners)}.`));
+      parts.push(
+        h('details', { class: 'pr-how' }, h('summary', {}, 'Lo que eligió cada uno'), h('p', { class: 'hint' }, last.picks.map((p) => `${p.mine ? `${p.alias} (tú)` : p.alias} ${p.value}`).join(' · '))),
+      );
+    }
+    if (k.wins.length) parts.push(h('p', { class: 'hint' }, `Victorias: ${k.wins.map((w) => `${w.alias} ${w.wins}`).join(' · ')}`));
+    parts.push(err);
+    $('k23-body').replaceChildren(...parts);
+  }
+
+  function renderLeague(v) {
+    const l = v.liga;
+    const err = h('p', { class: 'err', hidden: true });
+    const month = fMonthLong.format(day(`${l.month}-01`));
+    const mine = [];
+    if (l.me) {
+      const m = l.me;
+      const line = h('p', { class: 'lg-me' }, 'Tienes ', h('strong', {}, m.value != null ? solesFmt(m.value) : '—'));
+      if (m.ret != null) line.append(' · ', retSpan(m.ret), ' en el mes');
+      mine.push(line, h('p', { class: 'hint' }, `${solesFmt(m.cash)} sin invertir, rindiendo la tasa del BCRP`));
+      if (m.positions.length) {
+        mine.push(
+          h(
+            'ul',
+            { class: 'lg-pos' },
+            ...m.positions.map((p) => {
+              const sell = h('button', { type: 'button', class: 'linkish' }, 'vender');
+              sell.addEventListener('click', () => {
+                if (window.confirm(`¿Vender todo tu ${p.name.toLowerCase()}? Se vende con el cierre del próximo día hábil.`)) sendGames('/api/games/liga', { action: 'vender', asset: p.asset }, err);
+              });
+              return h('li', {}, h('span', {}, p.name), h('span', {}, solesFmt(p.value)), retSpan(p.ret), sell);
+            }),
+          ),
+        );
+      }
+      if (m.orders.length) {
+        const nameOf = Object.fromEntries(LG_ASSETS);
+        mine.push(
+          h(
+            'ul',
+            { class: 'lg-orders' },
+            ...m.orders.map((o) => {
+              const cancel = h('button', { type: 'button', class: 'linkish' }, 'cancelar');
+              cancel.addEventListener('click', () => sendGames('/api/games/liga', { action: 'cancelar', cancel: o.id }, err));
+              const what = `${o.kind === 'comprar' ? 'Comprar' : 'Vender'} ${nameOf[o.asset].toLowerCase()} ${o.soles != null ? `por ${solesFmt(o.soles)}` : '(todo)'}`;
+              return h('li', { class: 'hint' }, `${what}: con el próximo cierre · `, cancel);
+            }),
+          ),
+        );
+      }
+    } else mine.push(h('p', { class: 'hint' }, v.alias ? 'Entras con tu primera compra: empiezas con S/ 10 000.' : 'Para jugar, elige tu nombre arriba.'));
+    if (v.alias) {
+      const sel = h('select', { 'aria-label': 'Qué comprar' }, ...LG_ASSETS.map(([id, name]) => h('option', { value: id }, name)));
+      const amount = h('input', { type: 'number', inputmode: 'numeric', min: 1, step: 1, placeholder: 'Soles', required: true, 'aria-label': 'Cuántos soles' });
+      const form = h('form', { class: 'pr-trade' }, sel, amount, h('button', { type: 'submit' }, 'Comprar'));
+      form.addEventListener('submit', (e) => {
+        e.preventDefault();
+        sendGames('/api/games/liga', { action: 'comprar', asset: sel.value, soles: Number(amount.value) }, err);
+      });
+      mine.push(form);
+    }
+    mine.push(err);
+
+    const board = [h('p', { class: 'co-h' }, `${month[0].toUpperCase()}${month.slice(1)}${l.asOf ? ` · datos al ${fDayYear.format(day(l.asOf)).replace(/\./g, '')}` : ''}`)];
+    board.push(h('ul', { class: 'lg-assets' }, ...l.assets.map((a) => h('li', {}, h('span', {}, a.name), retSpan(a.ret)))));
+    if (l.standings.length) {
+      board.push(
+        h(
+          'table',
+          { class: 'co-table fc-rank' },
+          h('thead', {}, h('tr', {}, ...['#', 'Nombre', 'En el mes'].map((t) => h('th', { scope: 'col' }, t)))),
+          h('tbody', {}, ...l.standings.map((s, i) => h('tr', { class: s.mine ? 'mine' : null }, h('td', {}, String(i + 1)), h('td', {}, s.mine ? `${s.alias} (tú)` : s.alias), h('td', {}, retSpan(s.ret))))),
+        ),
+      );
+    }
+    if (l.last) board.push(h('p', { class: 'hint' }, `Campeón de ${fMonthLong.format(day(`${l.last.month}-01`))}: ${l.last.champion} (${retFmt(l.last.ret)})`));
+    $('lg-body').replaceChildren(h('div', { class: 'lg-grid' }, h('div', {}, ...mine), h('div', {}, ...board)));
+  }
+
   // ---------- lista diaria ----------
   /** Fila de la lista diaria con cierre (null si no está o todavía no se cargó). */
   const eodRowFor = (sym) => state.eod?.rows.find((r) => r.symbol === sym && !r.pending) ?? null;
@@ -4168,8 +4370,9 @@
     if ((sheet === 'juego') !== (location.hash === '#juego')) history.replaceState(null, '', url);
     // Los gráficos que se dibujaron con la hoja oculta quedan con el ancho de reserva: se rehacen al volver.
     if (changed && sheet === 'mercados') redrawCharts();
-    // Al entrar a «Juego», el mercado con lo último que compraron los demás.
+    // Al entrar a «Juego», lo último que jugaron los demás.
     if (changed && sheet === 'juego' && state.predict) loadPredict();
+    if (changed && sheet === 'juego' && state.games) loadGames();
   }
 
   function setupSheets() {
@@ -4470,6 +4673,7 @@
       loadCalendar();
       loadForecasts();
       setupPredict();
+      loadGames();
       setInterval(renderClock, 30_000);
       // Sin precios no hay pedidos periódicos: la rueda abre y cierra según el estado del servidor.
       setInterval(() => readStatus().catch(() => {}), QUOTE_POLL_MS);
@@ -4496,6 +4700,7 @@
     loadCalendar();
     loadForecasts();
     setupPredict();
+    loadGames();
     setupPeople();
     renderPortfolioForm();
     await loadQuotes(false);

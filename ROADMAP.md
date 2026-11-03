@@ -315,11 +315,16 @@ El usuario pidió que lo cooperativo o competitivo tuviera su propia hoja «e ir
     - Sin plata real ni premios en dinero: con plata sería una apuesta, que en el Perú necesita licencia.
     - Nada sobre la vida privada de nadie: solo hechos públicos.
   - **Técnico:** se pensó en D1, pero quedó en un Durable Object con SQLite, también gratis. Ordena los pedidos solo y no hay que crear nada en el panel: lo crea el despliegue. Con KV, dos compras al mismo tiempo podían pisarse, y cada vista gastaba uno de los 1.000 `list` diarios.
+- [x] **Juegos que no son de pronosticar** (2 nov; el usuario: «separarse de la idea de pronósticos solamente»). Eligió **2/3 del promedio** y **Gráfico del día**, y sumó la **Liga de carteras**.
+  - La liga la imaginaba como un presupuesto para comprar y vender cualquier acción. Quedó con compras y ventas, pero con dólar, oro, cobre y Bolsa de Lima (BCRP), porque la licencia gratis de Twelve Data no permite mostrarles precios de acciones a los amigos.
+- [ ] **Liga con cualquier acción:** haría falta que cada amigo use su propia clave gratis de Twelve Data, o pagar un plan que permita mostrar precios a otros. Propuesto el 2 nov, falta decidir.
 - [ ] **Otras ideas** (sin elegir):
-  - **Competitivas:** temporadas mensuales con campeón, logros (rachas, «contra la corriente») y duelos 1 a 1 en una pregunta.
+  - **Competitivas:** temporadas mensuales con campeón, logros (rachas, «contra la corriente») y duelos 1 a 1.
+  - **Teoría de juegos:** bienes públicos (pozo común) y ultimátum o dilema del prisionero en parejas.
   - **Cooperativas:**
     - El grupo contra los analistas: el consenso del grupo frente a la encuesta de expectativas del BCRP.
-    - Una cartera común que se vota una vez al mes con datos públicos (dólar, oro, cobre, BVL), contra el plazo fijo.
+    - Una cartera común que se vota una vez al mes, contra el plazo fijo.
+  - **Retos diarios:** «¿Más o menos?» con dos datos públicos.
   - **Trivia semanal** de economía, armada por la tarea programada de Claude con el plan Max: sin costo extra.
 
 ## 8g. Resumen del día — 27 de octubre
