@@ -17,6 +17,7 @@ import { computeThermometer, THERMO_SYMBOL, type Thermometer } from './services/
 import type { CryptoReply, CryptoSeries } from './services/crypto';
 import { shapeSmv, type SmvView } from './services/smv';
 import type { PmData } from './services/polymarket';
+import type { FundamentalsData } from './services/fundamentals';
 import type { PmEvent } from './lib/polymarket';
 import type { Entry, Results } from './services/forecasts';
 import { EARNINGS_AHEAD_DAYS, shapeCompanies, type CompanyCalendar } from './services/earnings';
@@ -131,6 +132,27 @@ const mockPoints = (symbol: string, now: Date) => walk(symbol, now).map((p) => [
 
 function fresh<T>(data: T, now: Date): Fresh<T> {
   return { data, fetchedAt: now.toISOString(), stale: false, note: 'Datos de prueba' };
+}
+
+/** Flujos y balance de prueba, coherentes con los resultados de prueba (los bancos, sin flujo de caja libre). */
+export function mockFundamentals(symbol: string, now: Date): Fresh<FundamentalsData> {
+  const fin = mockFinancials(symbol, now).data;
+  const rand = rng(seedOf(`secx${symbol}`));
+  const years = fin.years.slice(-6).map((y) => {
+    const rev = y.revenue;
+    return {
+      year: y.year,
+      end: y.end,
+      ocf: rev === null ? null : Math.round((y.netIncome ?? 0) * 1.25 + rev * 0.05),
+      capex: rev === null ? null : Math.round(rev * (0.05 + rand() * 0.04)),
+      da: rev === null ? null : Math.round(rev * 0.05),
+      cash: rev === null ? null : Math.round(rev * (0.1 + rand() * 0.1)),
+      debt: rev === null ? null : Math.round(rev * (0.2 + rand() * 0.3)),
+      equity: Math.round((rev ?? 5e9) * (0.7 + rand() * 0.5)),
+      assets: Math.round((rev ?? 5e9) * 2),
+    };
+  });
+  return fresh({ symbol, cik: fin.cik, standard: fin.standard, currency: fin.currency, years: fin.cik ? years : [] }, now);
 }
 
 /** Cripto de prueba (sin CoinGecko): un año de precios inventados de cada moneda. */

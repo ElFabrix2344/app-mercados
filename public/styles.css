@@ -481,6 +481,11 @@ a.news-title:hover{color:var(--accent);text-decoration:underline}
 #fin-body > .co-h{margin:0 0 4px}
 .fin-stats{border-top:0;margin-top:4px;padding-top:0;margin-bottom:12px}
 .table-view .fin-table{max-width:560px}
+/* Las mismas tablas fuera de «Ver tabla»: el comparador por P/S y la sensibilidad del DCF. */
+.fin-table{border-collapse:collapse;font-size:.9rem;width:100%}
+.fin-table th{font-family:var(--f-sans);color:var(--muted);font-weight:400;font-size:.82rem}
+.fin-table th,.fin-table td{text-align:right;padding:4px 8px;border-bottom:1px solid var(--hair)}
+.fin-table th:first-child,.fin-table td:first-child{text-align:left}
 
 /* ---------- cartera simulada ---------- */
 .pf-form{display:flex;flex-wrap:wrap;gap:8px 12px;align-items:flex-end;margin-bottom:12px}
@@ -694,6 +699,21 @@ a.cta{display:inline-flex;align-items:center;gap:6px;border-radius:var(--r);text
 .smv-text{margin:0;font-family:var(--f-sans);font-size:.92rem;line-height:1.45}
 .smv-when{font-family:var(--f-sans);font-size:.8rem;color:var(--muted)}
 .cg-credit{margin-top:10px}
+
+/* Resumen rápido de la ficha: cuatro miradas en una fila (dos por fila en una sección angosta). Verde y rojo solo en lo
+   que tiene dirección (tendencia y ventas), siempre con ▲/▼. */
+.d-quick{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px;margin:0 0 12px}
+@container (max-width:620px){.d-quick{grid-template-columns:repeat(2,minmax(0,1fr))}}
+.dq{display:flex;flex-direction:column;gap:2px;min-width:0;padding:8px 10px;border:1px solid var(--line);border-radius:var(--r);background:var(--raise)}
+.dq-k{font-size:.8rem;color:var(--muted);text-transform:uppercase;letter-spacing:.05em}
+.dq-v{font-weight:600}
+.dq-s{font-family:var(--f-sans);font-size:.82rem;line-height:1.35;color:var(--muted)}
+/* Ratios y DCF: los supuestos en casillas y la tabla de sensibilidad (el caso base, resaltado). */
+.dcf-h{margin:14px 0 4px;color:var(--accent);font-size:.9rem;text-transform:uppercase;letter-spacing:.06em}
+.dcf-inputs{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:8px 12px;margin:8px 0}
+.dcf-inputs label{display:flex;flex-direction:column;gap:4px;font-family:var(--f-sans);font-size:.85rem;color:var(--muted)}
+.dcf-inputs .ps-target{width:100%}
+.dcf-table td{text-align:right}
 
 /* Valorar por P/S: la tabla de la acción y sus comparables (la acción en cian) y la casilla del P/S objetivo. */
 .ps-peers{width:16ch}

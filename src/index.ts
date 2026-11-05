@@ -16,6 +16,7 @@ import {
   mockFactors,
   mockFinancials,
   mockForecastExtras,
+  mockFundamentals,
   mockHistory,
   mockNews,
   mockPeru,
@@ -38,6 +39,7 @@ import { readSummaries } from './services/summary';
 import { portfolioXray, type ProfileOf } from './services/xray';
 import { factorGrades } from './services/factors';
 import { financials } from './services/financials';
+import { fundamentals } from './services/fundamentals';
 import { companyCalendar } from './services/earnings';
 import { EOD_NEW_NOW, eodView, knownSymbols, refreshEod, validateEodList } from './services/eod';
 import { forecastView, playerId, readAlias, resolveForecasts, setAlias, submitForecast, type Store } from './services/forecasts';
@@ -308,6 +310,15 @@ async function route(req: Request, env: Env, url: URL, role: Role, email: string
           throw new ApiError('bad_request', 400, 'Escribe el símbolo de una acción, como SCCO o AAPL.');
         }
         return json(mock ? mockFinancials(symbol, now) : await financials(deps, symbol));
+      }
+
+      // Flujo de caja, inversión, deuda, caja y patrimonio de la SEC (públicos): para los ratios y el DCF de la ficha.
+      case '/api/fundamentals': {
+        const symbol = (url.searchParams.get('symbol') ?? '').trim().toUpperCase();
+        if (!SYMBOL_RE.test(symbol) || !isUsEquity(symbol)) {
+          throw new ApiError('bad_request', 400, 'Escribe el símbolo de una acción, como SCCO o AAPL.');
+        }
+        return json(mock ? mockFundamentals(symbol, now) : await fundamentals(deps, symbol));
       }
 
       case '/api/peru':

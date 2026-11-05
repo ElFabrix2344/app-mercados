@@ -1137,6 +1137,9 @@
     renderStrategy();
     renderDetailFin();
     renderDetailPs();
+    renderDetailVal();
+    renderQuick();
+    $('d-claude').href = detailClaudeHref(sym);
     const q = quoteFor(sym);
     const hist = detailHistory(sym, state.range);
     renderIndicatorToggles(hist);
@@ -1359,6 +1362,7 @@
           renderSeason();
           renderStrategy();
           renderDetailPs();
+          renderQuick();
         });
     }
     return undefined;
@@ -1760,12 +1764,15 @@
     const ready = !!data && data !== 'cargando';
     csv.disabled = !ready;
     sec.classList.toggle('is-loading', data === 'cargando' && chart.childElementCount > 0);
+    const toClaude = $('cmp-claude');
+    toClaude.hidden = !ready;
     const message = (cls, text) => {
       charts.delete(chart);
       chart.replaceChildren(h('p', { class: cls }, text));
       grid.hidden = true;
       note.textContent = '';
       csv.disabled = true;
+      toClaude.hidden = true;
     };
     if (picks.length < 2) return message('muted', `Elige de 2 a ${CMP_MAX} símbolos de tu lista para compararlos.`);
     if (state.cmpError?.key === key) return message('err', state.cmpError.message);
@@ -1775,6 +1782,7 @@
     }
     const n = data.dates.length;
     if (n < 2) return message('muted', 'No hay suficientes días en común para comparar en este periodo.');
+    toClaude.href = compareClaudeHref(data);
 
     const slotOf = new Map(picks.map((p) => [p.sym, p.slot]));
     const series = data.series
@@ -2225,6 +2233,9 @@
         if (state.selected === sym) {
           renderDetailFin();
           renderDetailPs();
+          renderDetailVal();
+          renderQuick();
+          $('d-claude').href = detailClaudeHref(sym);
         }
         if (psState.sym === sym || psState.peers.includes(sym)) renderPsSection();
       });
@@ -2547,6 +2558,7 @@
       $('ps-peers').focus();
     });
     host.replaceChildren(
+      ...[
       h(
         'dl',
         { class: 'stats' },
@@ -2558,6 +2570,7 @@
       h('div', { class: 'ps-calc' }, h('label', { for: 'd-ps-target' }, 'P/S objetivo'), target, out),
       table,
       h('p', { class: 'hint' }, psNotes(b), ' También puedes ', toPeers, '.'),
+      ].filter(Boolean),
     );
   }
 
@@ -2699,6 +2712,268 @@
     $('ps-sym').value = sym;
     $('ps-peers').value = peers.join(', ');
     pickPs(sym, peers.join(','));
+  }
+
+  // ---------- resumen rápido, ratios y DCF, y «Analizar con Claude» (4 nov: «añade las estrellas») ----------
+  // Para que analizar sea accesible y rápido: el resumen arriba de la ficha (describe, no predice), los ratios y un DCF
+  // simple con supuestos que se cambian a mano (datos de la SEC y tu precio), y un enlace que abre Claude con la pregunta
+  // y los números ya escritos, con la cuenta de quien lo usa (a Rueda no le cuesta nada; sirve en el celular).
+  const fundCache = new Map(); // símbolo → /api/fundamentals | { error } | 'cargando'
+
+  function fundamentalsFor(sym) {
+    const c = fundCache.get(sym);
+    if (c) return c === 'cargando' ? undefined : c;
+    fundCache.set(sym, 'cargando');
+    api(`/api/fundamentals?symbol=${encodeURIComponent(sym)}`)
+      .then((r) => fundCache.set(sym, r))
+      .catch((e) => fundCache.set(sym, { error: e.message }))
+      .finally(() => {
+        if (state.selected === sym) renderDetailVal();
+      });
+    return undefined;
+  }
+
+  /** Las cuatro miradas del resumen, con lo que ya trae la ficha (las de la SEC, solo para acciones). */
+  function quickTiles(sym) {
+    const tiles = [];
+    const hist = state.hist.get(sym);
+    const l = hist?.latest;
+    if (l?.sma200) {
+      const dist = l.close / l.sma200 - 1;
+      const up = dist > 0 && l.sma50 != null && l.sma50 > l.sma200;
+      const down = dist < 0 && l.sma50 != null && l.sma50 < l.sma200;
+      const rsi = l.rsi14 == null ? '' : ` · RSI ${nf(0).format(l.rsi14)}${l.rsi14 > 70 ? ', sobrecompra' : l.rsi14 < 30 ? ', sobreventa' : ''}`;
+      tiles.push({ k: 'Tendencia', v: up ? '▲ Alcista' : down ? '▼ Bajista' : 'Mixta', cls: up ? 'up' : down ? 'down' : null, s: `${pctFrac(dist)} frente a su media de 200 días${rsi}` });
+    }
+    const st = hist?.stats;
+    if (st?.annualVol != null) {
+      const v = st.annualVol;
+      tiles.push({ k: 'Riesgo (1 año)', v: v < 0.2 ? 'Bajo' : v < 0.35 ? 'Medio' : 'Alto', s: `Volatilidad ${pctFrac(v).replace('+', '')} al año${st.maxDrawdown ? ` · mayor caída ${pctFrac(st.maxDrawdown.value)}` : ''}` });
+    }
+    if (sym.includes('/')) return tiles;
+    const fr = financialsFor(sym);
+    const fin = fr && !fr.error ? fr.data : null;
+    if (!fin?.cik) return tiles;
+    const b = psBase(fin);
+    const kp = knownPrice(sym);
+    if (b.error) tiles.push({ k: 'Valoración (P/S)', v: '—', s: /bancos/.test(b.error) ? 'Sin ventas: el P/S no le sirve' : 'Sin datos para el P/S' });
+    else if (kp) {
+      const full = fullHistory(sym);
+      const years = full?.points ? psByYear(fin, b, full.points) : [];
+      const med = medianOf(years.map((y) => y.ps));
+      const now = psOf(b, kp.price);
+      if (med) {
+        const rel = now / med - 1;
+        tiles.push({ k: 'Valoración (P/S)', v: rel > 0.15 ? 'Sobre su historia' : rel < -0.15 ? 'Bajo su historia' : 'En su promedio', s: `${psFmt(now)} frente a ${psFmt(med)} de mediana (${years.length} cierres fiscales)` });
+      } else tiles.push({ k: 'Valoración (P/S)', v: psFmt(now), s: `Con las ventas de ${b.year}` });
+    }
+    const last = fin.years.at(-1);
+    const prev = fin.years.at(-2);
+    if (last?.revenue > 0 && prev?.revenue > 0) {
+      const g = last.revenue / prev.revenue - 1;
+      const m = last.netIncome != null ? ` · margen neto ${rate((last.netIncome / last.revenue) * 100, 1)}` : '';
+      tiles.push({ k: `Fundamentales (${last.year})`, v: `${arrowOf(g)} Ventas ${pctFrac(g)}`, cls: trend(g), s: `Frente a ${prev.year}${m}` });
+    } else if (last?.netIncome != null && prev?.netIncome > 0) {
+      const g = last.netIncome / prev.netIncome - 1;
+      tiles.push({ k: `Fundamentales (${last.year})`, v: `${arrowOf(g)} Utilidad ${pctFrac(g)}`, cls: trend(g), s: `Frente a ${prev.year}` });
+    }
+    return tiles;
+  }
+
+  function renderQuick() {
+    const sym = state.selected;
+    const box = $('d-quick');
+    const tiles = sym ? quickTiles(sym) : [];
+    box.hidden = !tiles.length;
+    box.replaceChildren(...tiles.map((t) => h('div', { class: 'dq' }, h('span', { class: 'dq-k' }, t.k), h('span', { class: `dq-v ${t.cls ?? ''}` }, t.v), h('span', { class: 'dq-s' }, t.s))));
+  }
+
+  // Ratios y DCF de la ficha. Los montos de la SEC se pasan a dólares como en el P/S (en soles, con el dólar de hoy).
+  const dcfSaved = new Map(); // símbolo → supuestos escritos en esta sesión
+  const half = (v) => Math.round(v * 2) / 2;
+
+  /**
+   * Valor por acción (o por ADR) de un DCF simple: el flujo de caja libre del último año crece `g` % por 5 años y
+   * después `gt` % para siempre, todo descontado a `r` %; al valor de la empresa se le resta la deuda neta (`nd`, en
+   * millones de US$). null si la tasa no supera al crecimiento perpetuo por al menos medio punto.
+   */
+  function dcfValue(fcf, sharesAdr, { g, gt, r, nd }) {
+    if (!(r > gt + 0.5)) return null;
+    let f = fcf;
+    let pv = 0;
+    for (let t = 1; t <= 5; t++) {
+      f *= 1 + g / 100;
+      pv += f / (1 + r / 100) ** t;
+    }
+    const tv = (f * (1 + gt / 100)) / (r / 100 - gt / 100) / (1 + r / 100) ** 5;
+    return { perShare: (pv + tv - nd * 1e6) / sharesAdr, pv, tv };
+  }
+
+  function renderDetailVal() {
+    const box = $('d-val');
+    const sym = state.selected;
+    box.hidden = !sym || sym.includes('/');
+    if (box.hidden || !box.open) return;
+    const host = $('d-val-body');
+    const say = (cls, text) => host.replaceChildren(h('p', { class: cls }, text));
+    const fr = financialsFor(sym);
+    const xr = fundamentalsFor(sym);
+    if (!fr || !xr) return say('muted', `Buscando los informes de ${sym} en la SEC…`);
+    if (fr.error || xr.error) return say('err', fr.error ?? xr.error);
+    const fin = fr.data;
+    if (!fin.cik || !fin.years.length) return say('muted', 'La SEC no tiene sus informes (pasa con los ETF y los fondos).');
+    const kp = knownPrice(sym);
+    if (!kp) return say('muted', 'Todavía no llega el precio de hoy.');
+    const sh = fin.shares?.at(-1);
+    if (!sh) return say('muted', 'La SEC no tiene sus acciones en circulación.');
+    const fx = usdPenNow();
+    const k = fin.currency === 'USD' ? 1 : fin.currency === 'PEN' && fx ? 1 / fx : null;
+    if (k == null) return say('muted', `Reporta en ${fin.currency}: por ahora Rueda solo pasa a dólares los montos en soles.`);
+    const last = fin.years.at(-1);
+    const fy = xr.data.years.find((y) => y.end === last.end) ?? null;
+    const adr = fin.adrRatio ?? 1;
+    const sharesAdr = sh.value / adr;
+    const cap = kp.price * sharesAdr;
+    const usdOf = (v) => (v == null ? null : v * k);
+    const [ni, rev, op] = [usdOf(last.netIncome), usdOf(last.revenue), usdOf(last.operatingIncome)];
+    const [eq, assets, debt, cash, ocf, capex, da] = ['equity', 'assets', 'debt', 'cash', 'ocf', 'capex', 'da'].map((key) => usdOf(fy?.[key]));
+    const ebitda = op != null && da != null ? op + da : null;
+    const ev = debt != null && cash != null ? cap + debt - cash : null;
+    const fcf = ocf != null && capex != null ? ocf - capex : null;
+    const per = (a, b) => (a != null && b != null && b > 0 ? a / b : null);
+    const xTimes = (v) => `${nf(1).format(v)}×`;
+    const pctV = (v) => rate(v * 100, 1);
+
+    // Ratios con valor; los que no se pueden calcular se explican en una línea.
+    const rows = [
+      ['P/E (precio / utilidad)', ni > 0 ? cap / ni : null, xTimes, `Utilidad ${last.year}: ${ni != null ? usdBig(ni) : '—'}`],
+      ['P/B (precio / valor contable)', per(cap, eq), xTimes, eq != null ? `Patrimonio ${usdBig(eq)}` : null],
+      ['EV / EBITDA', ev != null && ebitda > 0 ? ev / ebitda : null, xTimes, ev != null ? `Valor de la empresa ${usdBig(ev)}` : null],
+      ['Rendimiento del flujo libre', fcf != null ? fcf / cap : null, pctV, fcf != null ? `Flujo de caja libre ${usdBig(fcf)}` : null],
+      ['ROE (utilidad / patrimonio)', per(ni, eq), pctV, null],
+      ['ROA (utilidad / activos)', per(ni, assets), pctV, null],
+      ['Margen operativo', per(op, rev), pctV, null],
+      ['Deuda / patrimonio', per(debt, eq), xTimes, debt != null ? `Deuda ${usdBig(debt)} · caja ${cash != null ? usdBig(cash) : '—'}` : null],
+      ['Deuda neta / EBITDA', debt != null && cash != null && ebitda > 0 ? (debt - cash) / ebitda : null, xTimes, null],
+    ];
+    const shown = rows.filter(([, v]) => v != null);
+    const missing = rows.filter(([, v]) => v == null).map(([label]) => label.split(' (')[0]);
+    const ratios = h('dl', { class: 'stats' }, ...shown.map(([label, v, f, sub]) => stat(label, f(v), sub)));
+
+    let dcf;
+    if (fcf == null || fcf <= 0) {
+      dcf = h('p', { class: 'muted' }, fcf == null ? 'Sin flujo de caja en los datos de la SEC: no hay DCF.' : `Con flujo de caja libre negativo en ${last.year}, un DCF simple no sirve.`);
+    } else {
+      const revs = fin.years.filter((y) => y.revenue > 0);
+      const a = revs.at(-4) ?? revs[0];
+      const z = revs.at(-1);
+      const cagr = a && z && z.year > a.year ? (z.revenue / a.revenue) ** (1 / (z.year - a.year)) - 1 : 0.03;
+      const rf = state.usaData?.treasury10y?.at(-1)?.value ?? null;
+      const def = { g: Math.min(15, Math.max(0, half(cagr * 100))), gt: 2.5, r: half((rf ?? 4) + 5), nd: debt != null && cash != null ? Math.round((debt - cash) / 1e6) : 0 };
+      const v = { ...def, ...dcfSaved.get(sym) };
+      const out = h('div', { class: 'dcf-out' });
+      const field = (key, label, step, title) => {
+        const input = h('input', { type: 'number', step, inputmode: 'decimal', class: 'ps-target', 'aria-label': label, title });
+        input.value = String(v[key]);
+        input.addEventListener('input', () => {
+          const n = Number(input.value);
+          if (!Number.isFinite(n)) return;
+          v[key] = n;
+          dcfSaved.set(sym, { ...v });
+          update();
+        });
+        return h('label', {}, label, input);
+      };
+      const update = () => {
+        const base = dcfValue(fcf, sharesAdr, v);
+        if (!base) return out.replaceChildren(h('p', { class: 'err' }, 'La tasa de descuento tiene que ser mayor que el crecimiento perpetuo (por al menos medio punto).'));
+        const cell = (r, gt) => {
+          const x = dcfValue(fcf, sharesAdr, { ...v, r, gt });
+          return h('td', { class: r === v.r && gt === v.gt ? 'ps-val' : null }, x ? fmtPrice(x.perShare) : '—');
+        };
+        const gts = [v.gt - 0.5, v.gt, v.gt + 0.5];
+        const table = h(
+          'table',
+          { class: 'fin-table dcf-table' },
+          h('thead', {}, h('tr', {}, h('th', { scope: 'col' }, 'Tasa / perpetuo'), ...gts.map((g) => h('th', { scope: 'col' }, rate(g, 1))))),
+          h('tbody', {}, ...[v.r - 1, v.r, v.r + 1].map((r) => h('tr', {}, h('th', { scope: 'row' }, rate(r, 1)), ...gts.map((g) => cell(r, g))))),
+        );
+        const tvShare = base.tv / (base.pv + base.tv);
+        out.replaceChildren(
+          h('p', { class: 'ps-out' }, 'Valor por acción: ', h('strong', {}, fmtPrice(base.perShare)), ' · ', vsToday(base.perShare, kp.price), '.'),
+          h('p', { class: 'hint' }, `El valor terminal es el ${rate(tvShare * 100, 0)} del total: el resultado depende mucho de la tasa y del crecimiento perpetuo.`),
+          h('div', { class: 'ps-wrap' }, table),
+        );
+      };
+      update();
+      dcf = h(
+        'div',
+        { class: 'dcf' },
+        h('p', { class: 'hint' }, `Flujo de caja libre ${last.year}: ${usdBig(fcf)} (flujo operativo menos inversión en activo fijo).`),
+        h(
+          'div',
+          { class: 'dcf-inputs' },
+          field('g', 'Crecimiento años 1 a 5 (%)', '0.5', `Para partir: el de las ventas desde ${a?.year ?? '—'} (${rate(cagr * 100, 1)} al año), entre 0 y 15 %`),
+          field('gt', 'Crecimiento perpetuo (%)', '0.5', 'Para partir: 2,5 %, cerca del crecimiento de largo plazo de la economía'),
+          field('r', 'Tasa de descuento (%)', '0.5', `Para partir: el bono a 10 años de EE. UU. (${rf != null ? rate(rf, 2) : '≈4 %'}) más 5 puntos de prima por riesgo`),
+          field('nd', 'Deuda neta (US$ millones)', '100', debt != null && cash != null ? 'Deuda menos caja del último balance (SEC)' : 'La SEC no tiene su deuda en el formato estándar: escríbela'),
+        ),
+        out,
+        h('p', { class: 'hint' }, `Supuestos simples para empezar: cámbialos. Para empresas peruanas, súmale el riesgo país a la tasa.${debt == null || cash == null ? ' Ojo: la SEC no trae su deuda o su caja en el formato estándar.' : ''}`),
+      );
+    }
+
+    // replaceChildren escribe «null» si le llega uno: lo que falta se deja fuera.
+    host.replaceChildren(
+      ...[
+        h('p', { class: 'hint' }, `Con tu precio (${fmtPrice(kp.price)}, ${kp.src}) y los informes de la SEC del año fiscal ${last.year}${fin.currency === 'PEN' ? ', pasados a dólares con el dólar de hoy' : ''}.`),
+        ratios,
+        missing.length ? h('p', { class: 'hint' }, `Sin datos suficientes en la SEC para: ${listJoin(missing.map((m) => m.toLowerCase()))}.`) : null,
+        h('h4', { class: 'dcf-h' }, 'DCF simple'),
+        dcf,
+      ].filter(Boolean),
+    );
+  }
+
+  /** Enlace a Claude con el análisis de la ficha ya pedido y los números que Rueda tiene a mano. */
+  function detailClaudeHref(sym) {
+    const q = quoteFor(sym);
+    const hist = state.hist.get(sym);
+    const st = hist?.stats;
+    const l = hist?.latest;
+    const name = q?.name ?? eodRowFor(sym)?.name ?? sym;
+    const lines = [`Analiza ${sym} (${name}) conmigo, en español y con números. Datos de mi panel Rueda al ${fDayYear.format(new Date())}:`];
+    if (q?.price != null) lines.push(`- Precio ${fmtPrice(q.price)} ${q.currency ?? ''}${q.changePct != null ? `, ${pctFrac(q.changePct / 100, 2)} hoy` : ''}.`);
+    if (st) lines.push(`- Último año: rendimiento ${pctFrac(st.totalReturn)}, volatilidad ${st.annualVol != null ? pctFrac(st.annualVol).replace('+', '') : '—'} anual${st.maxDrawdown ? `, mayor caída ${pctFrac(st.maxDrawdown.value)}` : ''}.`);
+    if (l?.sma200) lines.push(`- Está ${pctFrac(l.close / l.sma200 - 1)} frente a su media de 200 días${l.rsi14 != null ? `; RSI 14 de ${nf(0).format(l.rsi14)}` : ''}.`);
+    const fr = state.fin.get(sym);
+    const fin = fr && fr !== 'cargando' && !fr.error ? fr.data : null;
+    if (fin?.cik) {
+      const b = psBase(fin);
+      const kp = knownPrice(sym);
+      if (!b.error && kp) lines.push(`- P/S de ${psFmt(psOf(b, kp.price))} con las ventas de ${b.year} (US$ ${millions(b.revenueUsd / 1e6)}).`);
+      const [a, z] = [fin.years.at(-2), fin.years.at(-1)];
+      if (z?.revenue > 0 && a?.revenue > 0) lines.push(`- Ventas ${z.year}: ${pctFrac(z.revenue / a.revenue - 1)} frente a ${a.year}${z.netIncome != null ? `; margen neto ${rate((z.netIncome / z.revenue) * 100, 1)}` : ''}.`);
+    }
+    lines.push(
+      'Explícame: 1) qué dicen la tendencia y el riesgo; 2) si se ve cara o barata frente a su historia y a empresas parecidas; 3) qué viene (resultados, noticias, riesgos); 4) qué revisar antes de decidir. Si tienes el conector de Rueda, úsalo para completar (historial, empresa, resultados_anuales, valorar_ps, noticias). No me des una recomendación de compra o venta.',
+    );
+    return `https://claude.ai/new?q=${encodeURIComponent(lines.join('\n'))}`;
+  }
+
+  /** Enlace a Claude con la comparación ya pedida: rendimiento, riesgo y correlaciones del periodo. */
+  function compareClaudeHref(data) {
+    const syms = data.series.map((s) => s.symbol);
+    const lines = [`Compara ${listJoin(syms)} conmigo, en español y con números. Datos de mi panel Rueda (${RANGE_NAMES[data.range]}, hasta el ${fDayYear.format(day(data.dates.at(-1)))}):`];
+    for (const s of data.series) {
+      if (!s.stats) continue;
+      lines.push(`- ${s.symbol}: rendimiento ${pctFrac(s.stats.totalReturn)}, volatilidad ${s.stats.annualVol != null ? pctFrac(s.stats.annualVol).replace('+', '') : '—'} anual, mayor caída ${s.stats.maxDrawdown != null ? pctFrac(s.stats.maxDrawdown) : '—'}.`);
+    }
+    const pairs = [];
+    for (let i = 0; i < syms.length; i++) for (let j = i + 1; j < syms.length; j++) if (data.correlation[i]?.[j] != null) pairs.push(`${syms[i]} y ${syms[j]}: ${nf(2).format(data.correlation[i][j])}`);
+    if (pairs.length) lines.push(`- Correlación de los rendimientos diarios: ${pairs.join('; ')}.`);
+    lines.push('Explícame cuál rindió mejor por el riesgo que tuvo, si se diversifican entre sí y qué mueve a cada uno. Si tienes el conector de Rueda, usa comparar y empresa. No me des una recomendación de compra o venta.');
+    return `https://claude.ai/new?q=${encodeURIComponent(lines.join('\n'))}`;
   }
 
   // ---------- cartera simulada ----------
@@ -3520,9 +3795,13 @@
       renderCalendar();
       renderTape();
       refreshForecastContext();
-      // Con el dólar, el P/S de las empresas que reportan en soles.
+      // Con el dólar, el P/S, los ratios y el DCF de las empresas que reportan en soles.
       if (psState.sym) renderPsSection();
-      if (state.selected) renderDetailPs();
+      if (state.selected) {
+        renderDetailPs();
+        renderDetailVal();
+        renderQuick();
+      }
       const { fx, policyRate, inflation } = r.data;
       const lastFx = fx.at(-1);
       const lastInf = inflation.at(-1);
@@ -5507,6 +5786,7 @@
     $('d-strat-kind').addEventListener('change', renderStrategy);
     $('d-fin').addEventListener('toggle', renderDetailFin);
     $('d-ps').addEventListener('toggle', renderDetailPs);
+    $('d-val').addEventListener('toggle', renderDetailVal);
     $('pf-xray').addEventListener('toggle', loadXray);
     $('pf-form').addEventListener('submit', submitTrade);
     $('tape-toggle').addEventListener('click', () => {

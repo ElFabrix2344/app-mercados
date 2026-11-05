@@ -81,6 +81,16 @@ Las tres preguntas pendientes las respondió Claude con la opción más simple, 
   - **Temas de partida:** «Bolsa y empresas» y «Política y mundo». El dueño fija otros pegando su enlace.
   - **Kalshi quedó fuera:** sus términos de datos prohíben mostrarlos a otros, guardarlos y usarlos con IA.
   - **No se eligió:** la herramienta del conector ni los enlaces en los pronósticos del grupo.
+- [x] **Analizar más rápido** (4 nov). El usuario pidió opciones de análisis «accesible, rápido» y, de la lista, «añade las estrellas»:
+  - **Resumen rápido** arriba de la ficha.
+  - **Ratios y DCF desde la SEC.**
+  - **«Analizar con Claude ↗»** en la ficha y en Comparar.
+- [ ] **Otras opciones de análisis de la misma lista** (sin elegir):
+  - un filtro de acciones con los datos de todas las empresas de la SEC (`frames`);
+  - el análisis de la cuenta Hapi (frente al SPY, Sharpe y beta; en el navegador, porque está cifrada);
+  - la frontera eficiente de la lista;
+  - un estudio de eventos (reacción del precio a los resultados y a los hechos de la SMV);
+  - alertas al celular.
 - [ ] **Cargar `COINGECKO_API_KEY`** (lo hace el dueño): crear la clave Demo en el panel de desarrolladores de CoinGecko y cargarla en Cloudflare, tipo Secret. Sin ella, «Cripto» no aparece.
 - [x] **Valorar por P/S** (4 nov). El usuario pidió «facilita con alguna herramienta el método P/S» y eligió las tres opciones:
   - **Calculadora en la ficha:** P/S de hoy, el de cada cierre fiscal y un P/S objetivo.

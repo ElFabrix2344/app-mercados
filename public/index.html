@@ -257,16 +257,20 @@
               <p>Velas: cada una muestra la apertura, el máximo, el mínimo y el cierre del día. Hueca si cerró más arriba de lo que abrió; rellena si cerró más abajo. Se ven hasta 1 año.</p>
               <p class="owner-only">Los datos de la empresa vienen de Finnhub, solo los ves tú y se guardan 24 horas. El PER y el BPA son de los últimos 12 meses; los montos van en la moneda en que reporta la empresa.</p>
               <p>Los resultados anuales vienen de los informes que la empresa presenta a la SEC (10-K o 20-F): son públicos y se guardan una semana.</p>
+              <p>El resumen de arriba describe lo que ya está en la ficha (tendencia, riesgo, valoración y fundamentales): no predice. «Ratios y DCF» usa los informes de la SEC y tu precio; el DCF es simple y sus supuestos se cambian a mano. Nada de esto es una recomendación de inversión.</p>
             </div>
           </details>
           <button type="button" id="d-close">Cerrar</button>
         </div>
+        <!-- Resumen rápido (4 nov): tendencia, riesgo, valoración y fundamentales en una mirada, con lo que ya trae la ficha. -->
+        <div class="d-quick" id="d-quick" hidden></div>
         <p class="d-earn" id="d-earn" hidden></p>
         <div class="d-tools">
           <div class="ranges" id="d-ranges" role="group" aria-label="Periodo del gráfico"></div>
           <div class="legend" id="d-ind" role="group" aria-label="Indicadores técnicos"></div>
           <button type="button" id="d-csv" class="csv-btn" title="Cierres, rendimientos diarios e indicadores del periodo, para Excel">⤓ CSV</button>
           <a id="d-hapi" class="csv-btn hapi-btn" target="_blank" rel="noopener noreferrer" title="Página de esta acción en Hapi (no abre la app)" hidden>Ver en Hapi ↗</a>
+          <a id="d-claude" class="csv-btn hapi-btn" target="_blank" rel="noopener noreferrer" title="Abre Claude con la pregunta y los números de Rueda ya escritos, con tu cuenta">Analizar con Claude ↗</a>
         </div>
         <div class="chart" id="d-chart"></div>
         <div id="d-vol-wrap" hidden>
@@ -311,6 +315,10 @@
           <summary>Valorar por P/S (precio / ventas)</summary>
           <div id="d-ps-body"></div>
         </details>
+        <details class="d-tool" id="d-val">
+          <summary>Ratios y DCF (SEC)</summary>
+          <div id="d-val-body"></div>
+        </details>
         <div class="d-co" id="d-co" hidden>
           <p class="hint">Datos de la empresa <span id="d-co-meta"></span></p>
           <dl class="stats" id="d-co-stats"></dl>
@@ -353,6 +361,7 @@
           <div class="ranges" id="cmp-ranges" role="group" aria-label="Periodo de la comparación"></div>
           <div class="legend" id="cmp-chips" role="group" aria-label="Símbolos a comparar (de 2 a 4)"></div>
           <button type="button" id="cmp-csv" class="csv-btn" title="Cierres alineados y base 100, para Excel" disabled>⤓ CSV</button>
+          <a id="cmp-claude" class="csv-btn hapi-btn" target="_blank" rel="noopener noreferrer" title="Abre Claude con la comparación ya escrita, con tu cuenta" hidden>Analizar con Claude ↗</a>
         </div>
         <div class="chart" id="cmp-chart"></div>
         <div class="cmp-grid" id="cmp-grid" hidden>

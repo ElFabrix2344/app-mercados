@@ -120,12 +120,30 @@ export async function sharesOutstanding(cik: number, f: typeof fetch = fetch): P
   return shareCounts(body?.units?.shares ?? []);
 }
 
-/** Un concepto XBRL de la empresa en su moneda (USD, PEN…); null si no lo reporta. */
+/**
+ * Saldos a una fecha (caja, deuda, patrimonio, activos) de los informes anuales: no tienen inicio, solo la fecha del
+ * balance. El balance trae también el del año anterior: queda el del informe más nuevo para cada fecha.
+ */
+export function instantValues(facts: Fact[]): AnnualValue[] {
+  const byEnd = new Map<string, { value: number; filed: string }>();
+  for (const x of facts) {
+    if (!x.form || !ANNUAL_FORMS.has(x.form) || x.start || !x.end || typeof x.val !== 'number') continue;
+    const prev = byEnd.get(x.end);
+    if (!prev || (x.filed ?? '') >= prev.filed) byEnd.set(x.end, { value: x.val, filed: x.filed ?? '' });
+  }
+  return [...byEnd.entries()].map(([end, v]) => ({ end, value: v.value })).sort((a, b) => (a.end < b.end ? -1 : 1));
+}
+
+/**
+ * Un concepto XBRL de la empresa en su moneda (USD, PEN…); null si no lo reporta. `instant` para los saldos del
+ * balance; si no, los valores de cada año (ingresos, flujos).
+ */
 export async function companyConcept(
   cik: number,
   taxonomy: 'us-gaap' | 'ifrs-full',
   concept: string,
   f: typeof fetch = fetch,
+  kind: 'duration' | 'instant' = 'duration',
 ): Promise<{ currency: string; values: AnnualValue[] } | null> {
   const id = String(cik).padStart(10, '0');
   const body = (await secJson(`https://data.sec.gov/api/xbrl/companyconcept/CIK${id}/${taxonomy}/${concept}.json`, f)) as {
@@ -134,6 +152,6 @@ export async function companyConcept(
   // La unidad monetaria es un código de 3 letras (las de por acción vienen como «USD/shares»).
   const unit = Object.keys(body?.units ?? {}).find((u) => /^[A-Z]{3}$/.test(u));
   if (!unit) return null;
-  const values = annualValues(body!.units![unit]!);
+  const values = kind === 'instant' ? instantValues(body!.units![unit]!) : annualValues(body!.units![unit]!);
   return values.length ? { currency: unit, values } : null;
 }
