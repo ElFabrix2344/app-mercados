@@ -1,6 +1,7 @@
 import { roleFor, verifyAccess, type Role } from './auth/access';
 import { isLocalDev, isMock, trimSecrets, type Env } from './env';
 import { CALENDAR_UNTIL, EVENTS, sourcesFor, upcoming } from './lib/calendar';
+import { isBirthday, nextBirthday, parseBirthday } from './lib/cumple';
 import { ApiError, errorResponse, escapeHtml, htmlPage, json } from './lib/http';
 import { NYSE_CALENDAR_UNTIL, usMarketOpen } from './lib/market-hours';
 import { isoDate } from './lib/num';
@@ -170,7 +171,9 @@ async function route(req: Request, env: Env, url: URL, role: Role, email: string
       case '/api/status':
         // A los amigos no se les muestra la configuración ni el consumo de créditos. El estado de la bolsa
         // («Rueda abierta / cerrada») sale del horario de la NYSE, no de Twelve Data: lo ven todos.
-        if (role !== 'owner') return json({ role, now: now.toISOString(), market: { open: usMarketOpen(now) }, version: env.VERSION ?? null });
+        if (role !== 'owner') {
+          return json({ role, now: now.toISOString(), market: { open: usMarketOpen(now) }, birthday: await birthdayToday(env, role, email, now), version: env.VERSION ?? null });
+        }
         return json({
           role,
           market: { open: usMarketOpen(now) },
@@ -178,6 +181,8 @@ async function route(req: Request, env: Env, url: URL, role: Role, email: string
           credits: { used: await creditsUsed(env.CACHE, now), cap: DAILY_CREDIT_CAP, plan: 800 },
           // Hasta cuándo están cargados los feriados de la NYSE (después solo se excluyen fines de semana).
           marketCalendarUntil: NYSE_CALENDAR_UNTIL,
+          // Solo el día del cumpleaños del dueño (OWNER_BIRTHDAY): un detalle chico en el panel, para todos.
+          birthday: await birthdayToday(env, role, email, now),
           mock,
           now: now.toISOString(),
           version: env.VERSION ?? null,
@@ -332,7 +337,12 @@ async function route(req: Request, env: Env, url: URL, role: Role, email: string
           companies = mock ? mockCompanyCalendar(list, now, today) : await companyCalendar(deps, list, today);
         }
         const { events: companyEvents = [], ...companyInfo } = companies ?? {};
+        // El cumpleaños del dueño en la agenda de todos (pidió que lo vea el grupo). No es un dato del mercado: no va
+        // al conector de Claude.
+        const bday = nextBirthday(env.OWNER_BIRTHDAY, now, tz);
+        const until = isoDate(new Date(now.getTime() + days * 86_400_000), tz);
         return json({
+          birthday: bday && bday <= until ? { date: bday, alias: await ownerAlias(env, role, email), mine: owner } : null,
           loaded: EVENTS.length > 0,
           events: upcoming([...EVENTS, ...companyEvents], now, days, tz),
           coverage: CALENDAR_UNTIL,
@@ -523,7 +533,27 @@ export function configStatus(env: Env): Record<string, SecretInfo | number> {
     TWELVE_DATA_API_KEY: info(env.TWELVE_DATA_API_KEY, (s) => /^[A-Za-z0-9]{16,64}$/.test(s)),
     FRED_API_KEY: info(env.FRED_API_KEY, (s) => /^[a-z0-9]{32}$/.test(s)),
     FINNHUB_API_KEY: info(env.FINNHUB_API_KEY, (s) => /^[A-Za-z0-9]{10,64}$/.test(s)),
+    OWNER_BIRTHDAY: info(env.OWNER_BIRTHDAY, (s) => parseBirthday(s) !== null),
   };
+}
+
+/**
+ * El día del cumpleaños del dueño (OWNER_BIRTHDAY, con la fecha de Lima): su nombre del juego, si eligió uno, y si
+ * quien pide es el dueño (a él se lo saluda; a los demás se les avisa).
+ */
+async function birthdayToday(env: Env, role: Role, email: string | null, now: Date): Promise<{ alias: string | null; mine: boolean } | null> {
+  if (!isBirthday(env.OWNER_BIRTHDAY, now, env.TIMEZONE || 'America/Lima')) return null;
+  return { alias: await ownerAlias(env, role, email), mine: role === 'owner' };
+}
+
+/** El nombre del juego del dueño: el de quien pide si es el dueño; si no, el primero que haya entre OWNER_EMAILS. */
+async function ownerAlias(env: Env, role: Role, email: string | null): Promise<string | null> {
+  const emails = role === 'owner' && email ? [email] : emailList(env.OWNER_EMAILS);
+  for (const e of emails) {
+    const alias = await readAlias(env.CACHE, await playerId(e));
+    if (alias) return alias;
+  }
+  return null;
 }
 
 function withSecurityHeaders(res: Response): Response {

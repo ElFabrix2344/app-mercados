@@ -37,6 +37,11 @@ export interface Env {
   LOGIN_LINK_SECRET?: string;
   /** Token de Cloudflare con un solo permiso («Access: Apps and Policies → Edit»): copia «Personas» a Access. */
   ACCESS_API_TOKEN?: string;
+  /**
+   * Cumpleaños del dueño, «MM-DD» (p. ej. 11-09): ese día Rueda lo saluda y la fecha sale en su agenda. Va como
+   * secreto y no en wrangler.jsonc porque el repositorio es público.
+   */
+  OWNER_BIRTHDAY?: string;
 
   // solo desarrollo local (se ignoran fuera de localhost)
   DEV_MODE?: string;
@@ -55,6 +60,7 @@ export const SECRET_KEYS = [
   'FINNHUB_API_KEY',
   'LOGIN_LINK_SECRET',
   'ACCESS_API_TOKEN',
+  'OWNER_BIRTHDAY',
 ] as const;
 
 const LOCAL_HOSTS = new Set(['localhost', '127.0.0.1', '[::1]']);

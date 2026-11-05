@@ -119,6 +119,14 @@ button[disabled]{opacity:.6;cursor:default}
 .brand .mkt::before{content:"●";margin-right:6px}
 .brand .mkt:not(.open)::before{content:"○"}
 .clock{color:var(--muted);text-transform:uppercase;letter-spacing:.04em}
+/* Cumpleaños del dueño: un chip discreto junto a la hora, ese día y para todos. Al tocarlo, un poco de confeti (con
+   «menos movimiento», solo un 🎉 al lado). */
+.cumple{align-self:center;max-width:100%;min-width:0;padding:1px 10px;border-color:var(--accent);border-radius:999px;background:var(--accent-soft);
+  color:var(--accent);font-family:var(--f-sans);font-size:.8rem;white-space:nowrap}
+.cumple:hover{background:var(--panel)}
+#cumple-text{min-width:0;overflow:hidden;text-overflow:ellipsis}
+.cumple.cheers::after{content:"🎉"}
+.confeti{position:fixed;inset:0;width:100%;height:100%;pointer-events:none;z-index:60}
 .hactions{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
 .status{font-family:var(--f-sans);color:var(--muted);font-size:.85rem}
 .status::before{content:"●";color:var(--up);margin-right:6px}

@@ -37,6 +37,7 @@
     fin: new Map(), // símbolo → respuesta de /api/financials | { error } | 'cargando' (SEC: ficha y sección pública)
     finSym: null, // símbolo que muestra la sección «Resultados de empresas»
     role: null, // 'owner' o 'friend' (de /api/status)
+    birthday: null, // de /api/status, solo el día del cumpleaños del dueño: { alias, mine }
     eod: null, // respuesta de /api/eod (lista diaria: cierres, no precios en vivo)
     forecasts: null, // respuesta de /api/forecasts (pronósticos del grupo)
     calAll: false, // el calendario muestra todo lo cargado (si no, lo más cercano)
@@ -806,6 +807,9 @@
     if (pe10?.length) items.push({ sym: 'Bono Perú 10A', value: rate(pe10.at(-1)[1]), pp: pe10.length > 1 ? pe10.at(-1)[1] - pe10.at(-2)[1] : null });
     const t10 = state.usaData?.treasury10y;
     if (t10?.length) items.push({ sym: 'Bono EE. UU. 10A', value: rate(t10.at(-1).value), pp: t10.length > 1 ? t10.at(-1).value - t10.at(-2).value : null });
+    // El día del cumpleaños del dueño, primero en la cinta (si ya hay datos que mostrar).
+    const b = state.birthday;
+    if (b && items.length) items.unshift({ sym: 'Cumpleaños', value: b.alias ?? 'Rueda', text: '▲ +1 año', cls: 'up' });
     return items;
   }
 
@@ -835,14 +839,104 @@
         { class: 'tape-half' },
         ...items.map((it) => {
           const d = it.pp ?? it.ch;
-          const text = d == null ? null : it.pp != null ? `${arrowOf(d)} ${sign(d)}${nf(2).format(Math.abs(d))} pp` : `${arrowOf(d)} ${pctFrac(d, 2)}`;
-          return h('span', { class: 'tape-item' }, h('span', { class: 'tape-sym' }, it.sym), it.value, text ? h('span', { class: trend(d) }, text) : null);
+          const text = it.text ?? (d == null ? null : it.pp != null ? `${arrowOf(d)} ${sign(d)}${nf(2).format(Math.abs(d))} pp` : `${arrowOf(d)} ${pctFrac(d, 2)}`);
+          return h('span', { class: 'tape-item' }, h('span', { class: 'tape-sym' }, it.sym), it.value, text ? h('span', { class: it.cls ?? trend(d) }, text) : null);
         }),
       );
     const track = $('tape-track');
     // Dos copias seguidas: al correr media cinta vuelve a empezar sin que se note el corte.
     track.replaceChildren(half(), half());
     track.style.animationDuration = `${Math.max(30, items.length * 6)}s`;
+  }
+
+  // ---------- cumpleaños del dueño (OWNER_BIRTHDAY) ----------
+  // Ese día, para todos y sin molestar: un chip junto a la hora, una línea en la cinta y la fecha en la agenda. Al
+  // dueño se lo saluda; a los demás se les avisa. El confeti sale solo si alguien toca el chip.
+  const birthdayName = (b) => b.alias ?? 'quien creó Rueda';
+
+  function renderBirthday() {
+    const b = state.birthday;
+    const chip = $('cumple');
+    chip.hidden = !b;
+    if (!b) return;
+    $('cumple-text').textContent = b.mine ? '¡Feliz cumple!' : `Hoy cumple ${birthdayName(b)}`;
+    chip.title = b.mine ? '¡Feliz cumpleaños! Toca para tirar confeti.' : `Hoy es el cumpleaños de ${birthdayName(b)}. Toca para tirar confeti.`;
+  }
+
+  /** Un puñado de confeti que sale del chip y cae (unos 2,5 s), con colores de la paleta. Con «menos movimiento», solo 🎉. */
+  function confetti() {
+    const chip = $('cumple');
+    if (window.matchMedia?.('(prefers-reduced-motion: reduce)').matches) {
+      chip.classList.add('cheers');
+      setTimeout(() => chip.classList.remove('cheers'), 2500);
+      return;
+    }
+    document.querySelector('canvas.confeti')?.remove();
+    const canvas = h('canvas', { class: 'confeti', 'aria-hidden': 'true' });
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+    document.body.append(canvas);
+    const W = window.innerWidth;
+    const H = window.innerHeight;
+    const dpr = Math.min(2, window.devicePixelRatio || 1);
+    canvas.width = Math.round(W * dpr);
+    canvas.height = Math.round(H * dpr);
+    ctx.scale(dpr, dpr);
+    const css = getComputedStyle(document.documentElement);
+    const colors = ['--accent', '--ink', '--s2', '--s3', '--s4'].map((v) => css.getPropertyValue(v).trim()).filter(Boolean);
+    const at = chip.getBoundingClientRect();
+    const pieces = Array.from({ length: 90 }, () => {
+      // Hacia arriba, en un abanico; después cae con la gravedad.
+      const angle = -Math.PI / 2 + (Math.random() - 0.5) * 1.8;
+      const speed = 6 + Math.random() * 7;
+      return {
+        x: at.left + at.width / 2,
+        y: at.top + at.height / 2,
+        vx: Math.cos(angle) * speed,
+        vy: Math.sin(angle) * speed,
+        w: 4 + Math.random() * 4,
+        h: 7 + Math.random() * 6,
+        r: Math.random() * Math.PI,
+        vr: (Math.random() - 0.5) * 0.3,
+        c: colors[Math.floor(Math.random() * colors.length)],
+      };
+    });
+    const DURATION = 2600;
+    const start = performance.now();
+    let last = start;
+    const frame = (t) => {
+      const age = t - start;
+      // Pasos medidos en cuadros de 60 por segundo: cae igual en una pantalla de 60 Hz que en una de 120 Hz.
+      const dt = Math.min(3, Math.max(0, (t - last) / 16.7));
+      last = t;
+      ctx.clearRect(0, 0, W, H);
+      // Se desvanece en el último 40 %.
+      ctx.globalAlpha = Math.min(1, Math.max(0, (DURATION - age) / (DURATION * 0.4)));
+      for (const p of pieces) {
+        p.vy += 0.25 * dt;
+        p.vx *= 0.99 ** dt;
+        p.x += p.vx * dt;
+        p.y += p.vy * dt;
+        p.r += p.vr * dt;
+        ctx.save();
+        ctx.translate(p.x, p.y);
+        ctx.rotate(p.r);
+        ctx.fillStyle = p.c;
+        ctx.fillRect(-p.w / 2, -p.h / 2, p.w, p.h);
+        ctx.restore();
+      }
+      if (age < DURATION) requestAnimationFrame(frame);
+      else canvas.remove();
+    };
+    requestAnimationFrame(frame);
+  }
+
+  /** El cumpleaños en la agenda: el servidor lo manda aparte (no es un evento del mercado) y va en su día. */
+  function withBirthday(events, b) {
+    if (!b) return events;
+    const ev = { date: b.date, kind: 'cumple', title: b.mine ? 'Tu cumpleaños' : `Cumpleaños de ${birthdayName(b)}`, at: null };
+    const i = events.findIndex((e) => e.date > b.date);
+    return i === -1 ? [...events, ev] : [...events.slice(0, i), ev, ...events.slice(i)];
   }
 
   function renderClock() {
@@ -3411,7 +3505,7 @@
   }
 
   // ---------- calendario ----------
-  const KIND_LABEL = { bcrp: 'BCRP', fed: 'Fed', inei: 'INEI', bls: 'BLS', empresa: 'Empresa' };
+  const KIND_LABEL = { bcrp: 'BCRP', fed: 'Fed', inei: 'INEI', bls: 'BLS', empresa: 'Empresa', cumple: '🎂' };
   const CAL_FIRST = 6; // eventos a la vista antes de «Ver más»
   const fCalDay = fmt({ weekday: 'short', day: 'numeric', month: 'short', timeZone: 'UTC' });
   const calDay = (date) => fCalDay.format(day(date)).replace(/[.,]/g, '');
@@ -3485,8 +3579,9 @@
     if (!r) return;
     const list = $('calendar');
     // Va en una columna angosta: primero lo más cercano y el resto con «Ver más».
-    const events = r.events.slice(0, state.calAll ? 12 : CAL_FIRST);
-    $('cal-more').hidden = state.calAll || r.events.length <= CAL_FIRST;
+    const all = withBirthday(r.events, r.birthday);
+    const events = all.slice(0, state.calAll ? 12 : CAL_FIRST);
+    $('cal-more').hidden = state.calAll || all.length <= CAL_FIRST;
     if (!events.length) {
       list.replaceChildren(h('li', { class: 'muted' }, 'No hay eventos cargados para los próximos meses.'));
     } else {
@@ -4850,11 +4945,15 @@
       return st;
     };
     try {
-      role = (await readStatus()).role ?? 'owner';
+      const st = await readStatus();
+      role = st.role ?? 'owner';
+      state.birthday = st.birthday ?? null;
     } catch {
       /* si falla, sigue como dueño: las rutas protegidas responden con su propio error */
     }
     state.role = role;
+    renderBirthday();
+    $('cumple').addEventListener('click', confetti);
     // Cuenta de Hapi: cada uno la suya, cifrada (también los amigos).
     setupHapi();
     if (role !== 'owner') {

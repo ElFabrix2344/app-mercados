@@ -55,6 +55,12 @@ Las tres preguntas pendientes las respondió Claude con la opción más simple, 
 - [x] **`FINNHUB_API_KEY`** cargada. Verificada el 23 de octubre con el conector: resultados de SCCO (26 oct) y BVN (28 oct) en el calendario, y datos de SCCO coherentes (capitalización US$ 155.013 millones / 844 millones de acciones ≈ US$ 184; PER 28 × BPA 6,81 ≈ US$ 190).
 - [x] **Conector reconectado en claude.ai** (23 oct): ya aparecen `comparar`, `cartera`, `empresa`, `lista_diaria`, `noticias` y `calendario`.
 - [ ] **Probar en el celular** la medición con dos dedos: hasta ahora solo se probó simulada.
+- [x] **Cumpleaños del dueño** (4 nov). El usuario pidió un evento «que se active el 9 de noviembre». Después agregó «se puede mostrar a todos», pero «no tan intrusivo».
+  - **Ese día:** aparece un chip junto a la hora. Al dueño le dice «¡Feliz cumple!» y a los demás, «Hoy cumple …» con su nombre del juego. También sale una línea en la cinta.
+  - **En la agenda:** la fecha aparece para todos.
+  - **Confeti:** sale solo si alguien toca el chip. Con «menos movimiento» activado, solo aparece un 🎉.
+  - **La fecha:** va en el secreto `OWNER_BIRTHDAY` (`MM-DD`) y no en el código, porque el repositorio es público.
+- [ ] **Cargar `OWNER_BIRTHDAY`** (lo hace el dueño, antes del 9 de noviembre): en el panel de Cloudflare, tipo Secret, con el valor `11-09`.
 
 ## 5. Abrir la app a los chicos del grupo — abierta: 8 personas el 29 de octubre
 
