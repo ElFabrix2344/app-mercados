@@ -4,10 +4,10 @@
 
 import { ApiError } from '../lib/http';
 import { fetchRss, type RssItem } from '../lib/rss';
-import { cached, type Deps, type Fresh, type QuotesData, type Stored } from './market';
+import { cached, type CacheStore, type Deps, type Fresh, type QuotesData, type Stored } from './market';
 
-/** Nombre de la empresa según los precios guardados (para buscarla en Google News). */
-export async function quoteName(kv: KVNamespace, symbol: string): Promise<string | null> {
+/** Nombre de la empresa según los precios guardados (para buscarla en Google News): los de Rueda o los de un amigo. */
+export async function quoteName(kv: CacheStore, symbol: string): Promise<string | null> {
   const q = await kv.get<Stored<QuotesData>>('quotes', 'json');
   return q?.data.quotes.find((x) => x.symbol === symbol)?.name ?? null;
 }
@@ -118,7 +118,7 @@ export const yahooSymbol = (symbol: string) => (symbol.includes('/') ? symbol.re
  * Titulares de una acción: Yahoo Finance (en inglés, por símbolo) y Google News (en español, por nombre). Se
  * piden al momento, sin guardar nada en KV.
  */
-export async function symbolNews(d: Deps, symbol: string, name: string | null, max = 8): Promise<NewsItem[]> {
+export async function symbolNews(d: { fetch?: typeof fetch }, symbol: string, name: string | null, max = 8): Promise<NewsItem[]> {
   const q = newsQuery(symbol, name);
   const feeds: { url: string; source: string }[] = [
     { url: `https://feeds.finance.yahoo.com/rss/2.0/headline?s=${encodeURIComponent(yahooSymbol(symbol))}&region=US&lang=en-US`, source: 'Yahoo Finance' },

@@ -9,6 +9,7 @@ import { fakeTwelve, seedDemoMinigames } from '../mock';
 import { Acciones } from './acciones';
 import { Jugadores, reply, type Reply, type Who } from './juego';
 import { Minijuegos, type GamesView } from './minijuegos';
+import { PanelAmigo, panelReply, type PanelReply, type PanelRequest } from './panel';
 import type { GamesInput } from './series';
 
 export class JuegoDO extends DurableObject<Env> {
@@ -39,6 +40,16 @@ export class JuegoDO extends DurableObject<Env> {
 
   league(who: Who, body: unknown, at: string, input: GamesInput): Promise<Reply<GamesView>> {
     return reply(() => this.minis.league(who, body, new Date(at), input));
+  }
+
+  /**
+   * Precios, gráficos y termómetro de un amigo con su propia clave (la de la liga), con su caché aparte (game/panel.ts).
+   * En local, con el Twelve Data de mentira.
+   */
+  panel(pid: string, at: string, req: PanelRequest, mock = false): Promise<PanelReply> {
+    const stocks = this.stocks(mock);
+    const panel = new PanelAmigo(this.ctx.storage, (p) => stocks.ownKey(p), mock ? { fetch: fakeTwelve, mock: true } : {});
+    return panelReply(() => panel.handle(pid, new Date(at), req));
   }
 
   /** Lo llama la tarea programada cada 10 minutos: después de cada cierre, valoriza las carteras de la liga. */

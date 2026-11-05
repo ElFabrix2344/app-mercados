@@ -37,6 +37,7 @@
     fin: new Map(), // símbolo → respuesta de /api/financials | { error } | 'cargando' (SEC: ficha y sección pública)
     finSym: null, // símbolo que muestra la sección «Resultados de empresas»
     role: null, // 'owner' o 'friend' (de /api/status)
+    keyed: false, // un amigo con su propia clave de Twelve Data (la de la liga): ve su lista, sus precios y sus gráficos
     birthday: null, // de /api/status, solo el día del cumpleaños del dueño: { alias, mine }
     eod: null, // respuesta de /api/eod (lista diaria: cierres, no precios en vivo)
     forecasts: null, // respuesta de /api/forecasts (pronósticos del grupo)
@@ -787,8 +788,9 @@
   const lastChange = (pts) => (pts?.length >= 2 ? pts.at(-1)[1] / pts.at(-2)[1] - 1 : null);
 
   /**
-   * Lo que pasa por la cinta: la lista del dueño (precios ya guardados, sin gastar créditos) y, para todos,
-   * los datos públicos del BCRP y de FRED. Los amigos no tienen lista: la licencia de Twelve Data no lo permite.
+   * Lo que pasa por la cinta: la lista (precios ya guardados, sin gastar créditos) y, para todos, los datos públicos
+   * del BCRP y de FRED. Un amigo tiene lista solo con su propia clave: la licencia de Twelve Data no deja mostrarle la
+   * de Rueda.
    */
   function tapeItems() {
     const items = [];
@@ -2001,6 +2003,11 @@
   function renderCompany() {
     const sym = state.selected;
     const wrap = $('d-co');
+    // Finnhub es solo para el dueño (sus términos): un amigo con su clave de Twelve Data no ve este bloque.
+    if (state.role !== 'owner') {
+      wrap.hidden = true;
+      return;
+    }
     const r = sym ? companyFor(sym) : null;
     // Divisas y cripto no tienen datos de empresa.
     if (!sym || r?.applicable === false) {
@@ -3909,6 +3916,7 @@
     renderK23(v);
     renderLeague(v);
     renderGameBadge();
+    syncPanelKey(v);
   }
 
   /** La pestaña «Juego» cuenta lo que te falta: pronósticos abiertos, el gráfico de hoy y el número de la semana. */
@@ -4228,12 +4236,14 @@
     $('lg-teaser').hidden = !!v.liga.me?.connected || prefs.get('mercados.liga-aviso', null) === 'cerrado';
   }
 
-  // ---------- tutorial para entrar a la liga ----------
+  // ---------- tutorial para entrar a la liga (y conectar la clave) ----------
   // Una ventana aparte, paso a paso: tu nombre (si falta), crear la cuenta gratis, copiar la clave y pegarla. Se abre
-  // con «Entrar a la liga», con el aviso de «Mercados» o con el enlace /#liga que se manda al grupo.
-  const tut = { step: 0, steps: [] };
+  // con «Entrar a la liga», con el aviso de «Mercados», con el enlace /#liga que se manda al grupo o con «Conectar mi
+  // clave» de «Mercados» (`from: 'panel'`): es una sola clave para la liga y para los precios.
+  const tut = { step: 0, steps: [], from: 'liga' };
 
-  function openLeagueTutorial() {
+  function openLeagueTutorial(from = 'liga') {
+    tut.from = from;
     const g = state.games;
     tut.steps = [...(g && !g.alias ? ['nombre'] : []), 'cuenta', 'clave', 'pegar', 'listo'];
     tut.step = 0;
@@ -4282,7 +4292,7 @@
     } else if (id === 'cuenta') {
       body = [
         h('h3', { id: 'lt-h' }, 'Crea tu cuenta gratis en Twelve Data'),
-        h('p', {}, 'Es el proveedor de los precios de la liga. Su plan gratis alcanza de sobra.'),
+        h('p', {}, 'Es el proveedor de los precios de Rueda. Su plan gratis alcanza de sobra.'),
         link(TD_SIGNUP, 'Crear mi cuenta ↗'),
         h('p', { class: 'hint' }, 'Puedes entrar con Google o con Apple. Cuando termines, vuelve aquí.'),
       ];
@@ -4312,7 +4322,7 @@
       body = [
         h('h3', { id: 'lt-h' }, 'Pégala aquí'),
         row,
-        h('p', { class: 'hint' }, 'Se guarda cifrada y solo se usa para traer los precios de tu cartera. Puedes quitarla cuando quieras.'),
+        h('p', { class: 'hint' }, 'Se guarda cifrada y solo se usa para traer tus precios: tu lista, tus gráficos y tu cartera de la liga. Puedes quitarla cuando quieras.'),
       ];
       next = button(
         'Conectar',
@@ -4327,6 +4337,18 @@
         },
         'cta',
       );
+    } else if (tut.from === 'panel') {
+      const toPrices = () => {
+        d.close();
+        showSheet('mercados');
+        $('watchlist').scrollIntoView({ block: 'start' });
+      };
+      body = [
+        h('h3', { id: 'lt-h' }, '¡Listo! Ya ves tus precios'),
+        h('p', {}, 'En «Mercados» tienes tu lista de seguimiento con precios, los gráficos de 5 años, comparar y el termómetro del S&P 500. Con «Editar» eliges tus símbolos (hasta 8).'),
+        h('p', { class: 'hint' }, 'Con la misma clave ya estás en la liga de acciones: tienes US$ 10 000 para jugar cuando quieras, en la hoja «Juego».'),
+      ];
+      next = button('Ver mis precios', toPrices, 'cta');
     } else {
       const pick = (sym) => {
         d.close();
@@ -4350,7 +4372,7 @@
     const n = counted.indexOf(id);
     const back = tut.step > 0 && id !== 'listo' ? button('← Atrás', () => go(tut.step - 1)) : h('span');
     d.replaceChildren(
-      h('div', { class: 'tut-head' }, h('p', { class: 'tut-step' }, n >= 0 ? `Paso ${n + 1} de ${counted.length}` : 'Liga de acciones'), button('×', () => d.close(), 'tut-x')),
+      h('div', { class: 'tut-head' }, h('p', { class: 'tut-step' }, n >= 0 ? `Paso ${n + 1} de ${counted.length}` : tut.from === 'panel' ? 'Tu clave de Twelve Data' : 'Liga de acciones'), button('×', () => d.close(), 'tut-x')),
       ...body,
       err,
       h('div', { class: 'tut-nav' }, back, next),
@@ -4965,6 +4987,7 @@
         $('welcome').hidden = true;
       });
       $('fresh').textContent = 'Datos públicos';
+      $('kc-go').addEventListener('click', () => openLeagueTutorial('panel'));
       loadPeru();
       loadUsa();
       loadCurve();
@@ -4972,9 +4995,13 @@
       loadCalendar();
       loadForecasts();
       loadGames();
+      // Con su propia clave (la de la liga), su lista, sus precios y sus gráficos; sin ella, el aviso para conectarla.
+      unlockPanel();
       setInterval(renderClock, 30_000);
       // Sin precios no hay pedidos periódicos: la rueda abre y cierra según el estado del servidor.
-      setInterval(() => readStatus().catch(() => {}), QUOTE_POLL_MS);
+      setInterval(() => {
+        if (!state.keyed) readStatus().catch(() => {});
+      }, QUOTE_POLL_MS);
       return;
     }
 
@@ -4985,13 +5012,7 @@
     } catch (e) {
       setNote('watchlist', `Lista de seguimiento: ${e.message}`, 'crit');
     }
-    const savedInd = prefs.get('mercados.indicadores', {});
-    for (const k of Object.keys(state.ind)) state.ind[k] = savedInd?.[k] === true;
-    state.cmp = cmpPrefs();
-    renderTiles();
     loadEod();
-    loadThermometer();
-    renderCompare();
     loadPeru();
     loadUsa();
     loadCurve();
@@ -5001,19 +5022,87 @@
     loadGames();
     setupPeople();
     renderPortfolioForm();
+    await startPrices();
+  }
+
+  // ---------- precios: el dueño con la clave de Rueda, un amigo con la suya ----------
+  let pricesTimers = false;
+  const hasPrices = () => state.role === 'owner' || state.keyed;
+
+  /** Lista con precios, ficha, comparar y termómetro. Los pedidos periódicos se arman una sola vez. */
+  async function startPrices() {
+    const savedInd = prefs.get('mercados.indicadores', {});
+    for (const k of Object.keys(state.ind)) state.ind[k] = savedInd?.[k] === true;
+    state.cmp = cmpPrefs();
+    renderTiles();
+    loadThermometer();
+    renderCompare();
     await loadQuotes(false);
-    loadPortfolio();
+    if (state.role === 'owner') loadPortfolio();
     // La comparación espera a los historiales de las filas: así sale de la caché y no choca con el límite por minuto.
     loadHistories().then(loadCompare);
-
+    if (pricesTimers) return;
+    pricesTimers = true;
     setInterval(() => {
-      if (document.visibilityState === 'visible') loadQuotes(false);
+      if (document.visibilityState === 'visible' && hasPrices()) loadQuotes(false);
     }, QUOTE_POLL_MS);
     setInterval(renderFresh, 30_000);
     document.addEventListener('visibilitychange', () => {
       const q = state.quotes;
-      if (document.visibilityState === 'visible' && q && Date.now() - Date.parse(q.fetchedAt) > QUOTE_POLL_MS) loadQuotes(false);
+      if (document.visibilityState === 'visible' && hasPrices() && q && Date.now() - Date.parse(q.fetchedAt) > QUOTE_POLL_MS) loadQuotes(false);
     });
+  }
+
+  // Un amigo ve sus precios si conectó su propia clave de Twelve Data (la misma de la liga): el servidor se los trae
+  // con esa clave y los guarda aparte (game/panel.ts). Sin clave, /api/watchlist responde 403 y se muestra el aviso.
+  let panelOpening = null;
+
+  function unlockPanel() {
+    panelOpening ??= openPanel().finally(() => {
+      panelOpening = null;
+    });
+    return panelOpening;
+  }
+
+  async function openPanel() {
+    let w;
+    try {
+      w = await api('/api/watchlist');
+    } catch (e) {
+      if (e.status !== 403) setNote('watchlist', `Lista de seguimiento: ${e.message}`, 'crit');
+      $('keycard').hidden = false;
+      return;
+    }
+    state.keyed = true;
+    state.symbols = w.symbols;
+    state.max = w.max;
+    document.body.classList.add('con-clave');
+    $('keycard').hidden = true;
+    $('credits').title = 'Créditos de tu clave de Twelve Data que usó Rueda hoy (freno: 600 de 800)';
+    await startPrices();
+  }
+
+  /** Quitó su clave en la liga: se cierran sus precios y se olvida lo que se veía (el servidor ya borró su caché). */
+  function lockPanel() {
+    state.keyed = false;
+    document.body.classList.remove('con-clave');
+    state.symbols = [];
+    state.quotes = null;
+    state.selected = null;
+    for (const m of [state.hist, state.rangeData, state.cmpData, state.full, state.symbolNews]) m.clear();
+    renderTiles();
+    renderTape();
+    renderDetail();
+    $('fresh').textContent = 'Datos públicos';
+    $('keycard').hidden = false;
+  }
+
+  /** Un amigo que conecta (o quita) su clave en la liga: se abren (o se cierran) sus precios en «Mercados». */
+  function syncPanelKey(v) {
+    if (state.role !== 'friend') return;
+    const connected = !!v.liga?.me?.connected && !v.liga.me.appKey;
+    if (connected && !state.keyed) unlockPanel();
+    else if (!connected && state.keyed && !panelOpening) lockPanel();
   }
 
   init();

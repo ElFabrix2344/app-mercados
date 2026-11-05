@@ -35,6 +35,7 @@ import { companyCalendar } from './services/earnings';
 import { EOD_NEW_NOW, eodView, knownSymbols, refreshEod, validateEodList } from './services/eod';
 import { forecastView, playerId, readAlias, resolveForecasts, setAlias, submitForecast, type Store } from './services/forecasts';
 import type { Reply } from './game/juego';
+import type { PanelRequest } from './game/panel';
 import type { GamesView } from './game/minijuegos';
 import { gamesInput } from './game/series';
 
@@ -141,8 +142,13 @@ export default {
   },
 } satisfies ExportedHandler<Env>;
 
-/** Precios de Twelve Data: su licencia gratis no permite mostrarlos a otras personas. */
+/** Precios de Twelve Data: su licencia gratis no permite mostrar los de la clave de Rueda a otras personas. */
 const OWNER_ONLY = new Set(['/api/watchlist', '/api/eod', '/api/quotes', '/api/history', '/api/compare', '/api/portfolio', '/api/portfolio/xray', '/api/news/symbol', '/api/company', '/api/company/factors', '/api/thermometer']);
+/**
+ * Lo que un amigo sí ve con su propia clave de Twelve Data (la de la liga): su lista, sus precios, sus gráficos,
+ * comparar, el termómetro y los titulares por acción. Lo atiende el Durable Object del juego, con su caché aparte.
+ */
+const FRIEND_KEYED = new Set(['/api/watchlist', '/api/quotes', '/api/history', '/api/compare', '/api/thermometer', '/api/news/symbol']);
 
 async function route(req: Request, env: Env, url: URL, role: Role, email: string | null): Promise<Response | null> {
   const p = url.pathname;
@@ -155,6 +161,7 @@ async function route(req: Request, env: Env, url: URL, role: Role, email: string
   const deps: Deps = { kv: env.CACHE, now, twelveKey: env.TWELVE_DATA_API_KEY, fredKey: env.FRED_API_KEY, finnhubKey: env.FINNHUB_API_KEY };
 
   if (OWNER_ONLY.has(p) && role !== 'owner') {
+    if (FRIEND_KEYED.has(p) && env.JUEGO && email) return friendPanel(req, env.JUEGO, url, email, mock, now);
     throw new ApiError(
       'forbidden',
       403,
@@ -485,6 +492,30 @@ async function games(req: Request, env: Env, url: URL, role: Role, email: string
   }
   if ('error' in r) throw new ApiError(r.error.status === 403 ? 'forbidden' : 'bad_request', r.error.status, r.error.message);
   return json(r.view);
+}
+
+/**
+ * Un amigo con su propia clave de Twelve Data (game/panel.ts): las mismas rutas que el dueño, pero con su clave y su
+ * caché, en el Durable Object del juego. Sin clave, 403.
+ */
+async function friendPanel(req: Request, juego: NonNullable<Env['JUEGO']>, url: URL, email: string, mock: boolean, now: Date): Promise<Response> {
+  const p = url.pathname;
+  const q = url.searchParams;
+  let op: PanelRequest | null = null;
+  if (req.method === 'PUT' && p === '/api/watchlist') {
+    sameOrigin(req, url);
+    op = { op: 'save-watchlist', body: await req.json().catch(() => null) };
+  } else if (req.method === 'GET') {
+    if (p === '/api/watchlist') op = { op: 'watchlist' };
+    else if (p === '/api/quotes') op = { op: 'quotes', refresh: q.get('refresh') === '1' };
+    else if (p === '/api/history') op = { op: 'history', symbol: q.get('symbol') ?? '', range: q.get('range') ?? DEFAULT_RANGE, ind: q.get('ind') === '1' };
+    else if (p === '/api/compare') op = { op: 'compare', symbols: (q.get('symbols') ?? '').split(','), range: q.get('range') ?? DEFAULT_RANGE };
+    else if (p === '/api/thermometer') op = { op: 'thermometer' };
+    else if (p === '/api/news/symbol') op = { op: 'news', symbol: q.get('symbol') ?? '' };
+  }
+  if (!op) return json({ error: { code: 'not_found', message: 'Ruta desconocida', provider: null } }, { status: 404 });
+  const r = await juego.get(juego.idFromName('grupo')).panel(await playerId(email), now.toISOString(), op, mock);
+  return new Response(r.body, { status: r.status, headers: { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' } });
 }
 
 /** Dólar interbancario del BCRP (venta) ya guardado: público, para pasar la cuenta de Hapi a soles. */

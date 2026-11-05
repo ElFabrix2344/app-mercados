@@ -20,11 +20,25 @@ export const MACRO_TTL_MS = 6 * 3_600_000;
 /** Créditos diarios que la app se permite gastar; el resto (de 800) queda para el conector en los chats. */
 export const DAILY_CREDIT_CAP = 600;
 
-export interface Deps {
-  kv: KVNamespace;
+/**
+ * Dónde se guardan las cachés del panel: la KV de la app (el dueño, con la clave de Rueda) o, para un amigo con su
+ * propia clave, su parte del Durable Object del juego (game/panel.ts). Solo hace falta leer y escribir JSON.
+ */
+export interface CacheStore {
+  get<T>(key: string, type: 'json'): Promise<T | null>;
+  put(key: string, value: string): Promise<void>;
+}
+
+/** Lo que usan los precios de Twelve Data y sus cachés (lista, precios, historiales y créditos). */
+export interface CacheDeps {
+  kv: CacheStore;
   now: Date;
   fetch?: typeof fetch;
   twelveKey?: string;
+}
+
+export interface Deps extends CacheDeps {
+  kv: KVNamespace;
   fredKey?: string;
   finnhubKey?: string;
 }
@@ -60,12 +74,12 @@ export function validateWatchlist(input: unknown): string[] {
   return out;
 }
 
-export async function getWatchlist(kv: KVNamespace): Promise<string[]> {
+export async function getWatchlist(kv: CacheStore): Promise<string[]> {
   const saved = await kv.get<string[]>('watchlist', 'json');
   return Array.isArray(saved) && saved.length ? saved : DEFAULT_WATCHLIST;
 }
 
-export async function saveWatchlist(kv: KVNamespace, symbols: string[]): Promise<void> {
+export async function saveWatchlist(kv: CacheStore, symbols: string[]): Promise<void> {
   await kv.put('watchlist', JSON.stringify(symbols));
 }
 
@@ -76,12 +90,12 @@ interface BudgetRec {
   used: number;
 }
 
-export async function creditsUsed(kv: KVNamespace, now: Date): Promise<number> {
+export async function creditsUsed(kv: CacheStore, now: Date): Promise<number> {
   const b = await kv.get<BudgetRec>('budget', 'json');
   return b && b.day === isoDate(now) ? b.used : 0;
 }
 
-async function spendCredits(kv: KVNamespace, now: Date, n: number): Promise<void> {
+async function spendCredits(kv: CacheStore, now: Date, n: number): Promise<void> {
   const used = await creditsUsed(kv, now);
   await kv.put('budget', JSON.stringify({ day: isoDate(now), used: used + n } satisfies BudgetRec));
 }
@@ -94,7 +108,7 @@ function needKey(key: string | undefined, name: string, provider: 'twelvedata' |
 // ---------- caché genérica ----------
 
 export async function cached<T>(
-  d: Deps,
+  d: CacheDeps,
   key: string,
   ttlMs: number,
   load: () => Promise<T>,
@@ -201,7 +215,7 @@ function latestFetch(data: QuotesData, now: Date): string {
  * renovar (el conector de Claude pide algunos); el registro guardado sigue teniendo toda la lista.
  */
 export async function quotes(
-  d: Deps,
+  d: CacheDeps,
   symbols: string[],
   force: boolean,
   only: string[] = symbols,
@@ -320,7 +334,7 @@ export type HistoryResult = Fresh<HistoryData> & {
  * Los 5 años guardados de un símbolo (1 crédito cuando hay que pedirlos de nuevo). Con `through` (lista diaria), se
  * piden hasta ese día inclusive y lo guardado sirve mientras ya lo incluya, sin vencer por tiempo.
  */
-export function storedHistory(d: Deps, symbol: string, through?: string): Promise<Fresh<HistoryData>> {
+export function storedHistory(d: CacheDeps, symbol: string, through?: string): Promise<Fresh<HistoryData>> {
   const today = isoDate(d.now);
   const hasBars = (h: HistoryData) => Array.isArray(h.bars) && h.bars.length === h.points.length;
   return cached<HistoryData>(
@@ -369,7 +383,7 @@ export function shapeHistory(stored: Fresh<HistoryData>, range: Range, today: st
   };
 }
 
-export async function history(d: Deps, symbol: string, range: Range = DEFAULT_RANGE): Promise<HistoryResult> {
+export async function history(d: CacheDeps, symbol: string, range: Range = DEFAULT_RANGE): Promise<HistoryResult> {
   return shapeHistory(await storedHistory(d, symbol), range, isoDate(d.now));
 }
 
@@ -440,7 +454,7 @@ export function shapeCompare(stored: HistoryData[], range: Range, today: string)
   };
 }
 
-export async function compare(d: Deps, symbols: string[], range: Range): Promise<CompareResult> {
+export async function compare(d: CacheDeps, symbols: string[], range: Range): Promise<CompareResult> {
   const loaded: Fresh<HistoryData>[] = [];
   const errors: Record<string, string> = {};
   let firstError: ApiError | null = null;

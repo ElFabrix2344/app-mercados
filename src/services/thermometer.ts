@@ -5,7 +5,7 @@
 // al máximo y la racha.
 // Usa los 5 años guardados del SPY (`hist5:SPY`, 1 crédito cada 12 h): son precios de Twelve Data, solo para el dueño.
 
-import { storedHistory, type Deps, type Fresh } from './market';
+import { storedHistory, type CacheDeps, type Fresh } from './market';
 
 export const THERMO_SYMBOL = 'SPY';
 /** Sesiones con que se compara (la muestra que eligió el usuario). */
@@ -140,8 +140,8 @@ export function computeThermometer(points: [string, number][], symbol = THERMO_S
   };
 }
 
-/** Con los 5 años guardados del SPY (1 crédito si hay que renovarlos). */
-export async function thermometer(d: Deps): Promise<Fresh<Thermometer | null>> {
+/** Con los 5 años guardados del SPY (1 crédito si hay que renovarlos). Con la clave de Rueda o la de un amigo. */
+export async function thermometer(d: CacheDeps): Promise<Fresh<Thermometer | null>> {
   const h = await storedHistory(d, THERMO_SYMBOL);
   return { ...h, data: computeThermometer(h.data.points) };
 }

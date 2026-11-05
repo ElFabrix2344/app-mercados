@@ -113,7 +113,7 @@ describe('noticias por acción', () => {
         ? rss([{ title: 'Credicorp beats estimates', link: 'https://finance.yahoo.com/a', date: 'Wed, 21 Oct 2026 20:00:00 GMT' }])
         : rss([{ title: 'Credicorp sube en la BVL - Gestión', link: 'https://news.google.com/a', date: 'Thu, 22 Oct 2026 12:00:00 GMT', source: 'Gestión' }]),
     );
-    const items = await symbolNews({ kv: memoryKV().kv, now: new Date(), fetch: f }, 'BAP', 'Credicorp Ltd.');
+    const items = await symbolNews({ fetch: f }, 'BAP', 'Credicorp Ltd.');
     expect(calls.some((u) => u.includes('s=BAP'))).toBe(true);
     expect(calls.some((u) => u.includes('q=Credicorp&'))).toBe(true);
     expect(items.map((i) => [i.title, i.source])).toEqual([

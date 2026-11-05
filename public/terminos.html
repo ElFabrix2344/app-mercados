@@ -28,7 +28,8 @@
     <li><strong>Resultados de empresas:</strong> SEC EDGAR, de dominio público.</li>
     <li><strong>Noticias:</strong> solo el titular, el medio y el enlace a la nota, desde los RSS públicos de cada medio.</li>
     <li><strong>Resumen del día:</strong> lo escribe cada mañana Claude, la inteligencia artificial de Anthropic, desde la cuenta del dueño de la app, con esos titulares y los datos públicos del BCRP y de FRED. No usa ni envía datos de ninguna persona. Es automático y puede tener errores: revisa sus fuentes.</li>
-    <li><strong>Precios de mercado y datos de empresa</strong> (Twelve Data y Finnhub): sus licencias gratuitas no permiten mostrarlos a otras personas, así que solo los ve el dueño de la app.</li>
+    <li><strong>Precios de mercado</strong> (Twelve Data): su licencia gratuita no permite mostrar a otras personas los que trae la clave de Rueda. Si conectas tu propia clave gratis, ves los tuyos: tu lista, tus gráficos y el termómetro. Al usarla aceptas los términos de Twelve Data.</li>
+    <li><strong>Datos de empresa</strong> (Finnhub): su licencia gratuita no permite mostrarlos a otras personas, así que solo los ve el dueño de la app.</li>
   </ul>
   <p lang="en">This product uses the FRED® API but is not endorsed or certified by the Federal Reserve Bank of St. Louis.</p>
   <p>(Este producto usa la API de FRED® pero no está respaldado ni certificado por el Federal Reserve Bank of St. Louis.)</p>
@@ -43,7 +44,8 @@
     <li><strong>Tu correo.</strong> Está en la lista de quienes pueden entrar, que maneja el dueño de la app; Rueda la copia a Cloudflare Access (el servicio que protege la entrada), que lo usa para mandarte el código. Rueda también lo usa, convertido en un código que no se puede revertir, para separar tus pronósticos y tu cuenta Hapi de las de los demás.</li>
     <li><strong>Pronósticos del grupo:</strong> el nombre que elijas para el ranking y tus pronósticos. Los demás ven lo que pusiste recién cuando cierra cada pregunta, junto con tus puntos.</li>
     <li><strong>Gráfico del día y 2/3 del promedio:</strong> tus respuestas y rachas, y tu número de cada semana. Los demás ven tu racha y tu número cuando cierra cada semana.</li>
-    <li><strong>Liga de acciones:</strong> tu cartera de mentira (órdenes, posiciones y su valor al cierre de cada día) y, si la conectas, tu clave gratis de Twelve Data, guardada cifrada: Rueda la usa solo para traer los precios de tu cartera, y puedes quitarla cuando quieras. Al usarla aceptas los términos de Twelve Data. Los demás ven tu rendimiento y qué acciones tienes, pero no tus montos ni los precios. Al terminar cada temporada (cada quincena) queda guardado el rendimiento de cada uno en ella, en porcentaje, para el podio y los trofeos.</li>
+    <li><strong>Liga de acciones:</strong> tu cartera de mentira (órdenes, posiciones y su valor al cierre de cada día) y, si la conectas, tu clave gratis de Twelve Data, guardada cifrada: Rueda la usa solo para traer tus precios (los de tu cartera, tu lista y tus gráficos), y puedes quitarla cuando quieras. Al usarla aceptas los términos de Twelve Data. Los demás ven tu rendimiento y qué acciones tienes, pero no tus montos ni los precios. Al terminar cada temporada (cada quincena) queda guardado el rendimiento de cada uno en ella, en porcentaje, para el podio y los trofeos.</li>
+    <li><strong>Tu lista y tus precios:</strong> si conectas tu clave, Rueda guarda tu lista de seguimiento y lo que trae tu clave (precios, historiales y cuántos créditos usaste en el día), aparte de lo de los demás: nadie más lo ve. Si quitas la clave, se borra lo que trajo y queda solo tu lista.</li>
     <li><strong>Mi cuenta Hapi:</strong> se cifra en tu navegador con tu frase antes de guardarse. Nadie más puede leerla, tampoco el dueño de la app: solo se ve que existe, cuánto pesa y cuándo cambió. Si olvidas la frase, no hay forma de recuperarla. Si importas un estado de cuenta, el PDF se lee en tu navegador y no se sube.</li>
     <li><strong>Resultados de empresas:</strong> lo que se busca queda una semana como caché para todos, sin decir quién lo buscó.</li>
     <li><strong>En tu navegador</strong> quedan tus preferencias (por ejemplo, qué indicadores ver) y, si marcas «Recordar en este equipo», la clave de tu cuenta Hapi.</li>
@@ -51,7 +53,7 @@
   <p>Rueda no tiene publicidad ni analítica y no vende ni comparte datos con nadie. La app, sus datos y el acceso funcionan en Cloudflare.</p>
 
   <h2>Borrar tus datos</h2>
-  <p>Tu cuenta Hapi la borras tú: bloquéala y usa «Olvidé la frase: borrar la cuenta y empezar de nuevo». Para borrar tus pronósticos o tus datos de los juegos, o para salir del grupo, pídeselo al dueño de la app.</p>
+  <p>Tu cuenta Hapi la borras tú: bloquéala y usa «Olvidé la frase: borrar la cuenta y empezar de nuevo». Lo que trajo tu clave de Twelve Data se borra al quitarla («quitar mi clave», en tu cartera de la liga). Para borrar tus pronósticos o tus datos de los juegos, o para salir del grupo, pídeselo al dueño de la app.</p>
 
   <h2>El código</h2>
   <p>El código de Rueda es público en <a href="https://github.com/ElFabrix2344/app-mercados" target="_blank" rel="noopener noreferrer">GitHub</a>. Al pie de la app está la versión exacta que está corriendo, para que cualquiera pueda revisarla.</p>

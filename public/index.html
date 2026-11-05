@@ -35,8 +35,8 @@
     </div>
     <div class="hactions">
       <span class="status" id="fresh" aria-live="polite">Cargando…</span>
-      <span class="pill owner-only" id="credits" title="Créditos de Twelve Data que usó la app hoy (freno: 600 de 800)">— / 600 créditos</span>
-      <button type="button" id="refresh-btn" class="owner-only" aria-label="Actualizar precios"><span class="ico" aria-hidden="true">↻</span><span class="btn-text"> Actualizar</span></button>
+      <span class="pill keyed" id="credits" title="Créditos de Twelve Data que usó la app hoy (freno: 600 de 800)">— / 600 créditos</span>
+      <button type="button" id="refresh-btn" class="keyed" aria-label="Actualizar precios"><span class="ico" aria-hidden="true">↻</span><span class="btn-text"> Actualizar</span></button>
       <button type="button" id="install-btn" aria-controls="install-panel" aria-expanded="false" hidden><span class="ico" aria-hidden="true">↓</span> Instalar app</button>
     </div>
   </header>
@@ -83,7 +83,8 @@
           <button type="button" id="welcome-close">Entendido</button>
         </div>
         <ul class="welcome">
-          <li><strong>Liga de acciones:</strong> en la hoja «Juego», arriba, arma una cartera con acciones de verdad y compite con el grupo. Entrar toma 2 minutos.</li>
+          <li><strong>Precios y gráficos:</strong> con tu clave gratis de Twelve Data ves tu lista de seguimiento con precios, gráficos de 5 años, comparar y el termómetro del S&amp;P 500. Conectarla toma 2 minutos.</li>
+          <li><strong>Liga de acciones:</strong> en la hoja «Juego», arriba, arma una cartera con acciones de verdad y compite con el grupo. Es la misma clave.</li>
           <li><strong>Más juegos:</strong> el gráfico del día, 2/3 del promedio y los pronósticos de tasas, inflación y dólar.</li>
           <li><strong>Mi cuenta Hapi:</strong> importa tu estado de cuenta en PDF o anota tus operaciones. Se cifra con tu frase: nadie más la puede ver, tampoco el dueño de la app.</li>
           <li><strong>Resultados de empresas:</strong> ingresos y utilidades de los últimos años de cualquier acción que reporte a la SEC.</li>
@@ -91,10 +92,20 @@
           <li><strong>Perú y EE. UU.:</strong> dólar, tasas, inflación, BVL, bonos y la curva del Tesoro, con el calendario de anuncios y las noticias.</li>
           <li id="welcome-install"><strong>Como app:</strong> con «Instalar app», arriba, Rueda queda en tu celular o computadora con su ícono y se abre a pantalla completa.</li>
         </ul>
-        <p class="hint">Los precios de las acciones no se pueden compartir: la licencia gratis de su proveedor no lo permite. <a href="/terminos.html">Términos y privacidad</a>.</p>
+        <p class="hint">Rueda no puede compartirte sus precios (la licencia gratis de su proveedor no lo permite), pero sí traerte los de tu propia clave. <a href="/terminos.html">Términos y privacidad</a>.</p>
       </section>
 
-      <section class="screen owner-only" id="watchlist" aria-labelledby="wl-h">
+      <!-- Amigos sin clave: donde iría su lista. Con su clave gratis de Twelve Data (la misma de la liga) ven sus precios. -->
+      <section class="screen friend-only" id="keycard" aria-labelledby="kc-h" hidden>
+        <div class="screen-head">
+          <h2 id="kc-h">Precios con tu clave</h2>
+        </div>
+        <p class="kc-text">Tu propia lista de seguimiento con precios, los gráficos de 5 años con indicadores, comparar y el termómetro del S&amp;P 500. Rueda no puede mostrarte los de su clave, pero sí los de la tuya: crearla es gratis y toma 2 minutos.</p>
+        <button type="button" class="cta" id="kc-go">Conectar mi clave</button>
+        <p class="hint">Con la misma clave también entras a la liga de acciones. Se guarda cifrada, solo trae lo tuyo (nadie más lo ve) y la puedes quitar cuando quieras.</p>
+      </section>
+
+      <section class="screen keyed" id="watchlist" aria-labelledby="wl-h">
         <div class="screen-head">
           <h2 id="wl-h">Lista de seguimiento</h2>
           <button type="button" id="edit-btn">Editar</button>
@@ -213,7 +224,7 @@
         </div>
       </section>
 
-      <section class="screen detail owner-only" id="detail" aria-labelledby="d-title" hidden>
+      <section class="screen detail keyed" id="detail" aria-labelledby="d-title" hidden>
         <div class="screen-head">
           <div>
             <span class="eyebrow" id="d-sub"></span>
@@ -225,7 +236,7 @@
               <p>Arrastra sobre el gráfico para ver la variación entre dos días. En el celular, con dos dedos; con el teclado, Mayús + flechas.</p>
               <p>Las medias móviles, las bandas de Bollinger, el RSI y el MACD se calculan con 5 años de historia. Un RSI sobre 70 suele leerse como sobrecompra; bajo 30, como sobreventa. El MACD es la media exponencial de 12 días menos la de 26; cuando cruza su señal (la media de 9 días del MACD) suele leerse como cambio de impulso.</p>
               <p>Velas: cada una muestra la apertura, el máximo, el mínimo y el cierre del día. Hueca si cerró más arriba de lo que abrió; rellena si cerró más abajo. Se ven hasta 1 año.</p>
-              <p>Los datos de la empresa vienen de Finnhub, solo los ves tú y se guardan 24 horas. El PER y el BPA son de los últimos 12 meses; los montos van en la moneda en que reporta la empresa.</p>
+              <p class="owner-only">Los datos de la empresa vienen de Finnhub, solo los ves tú y se guardan 24 horas. El PER y el BPA son de los últimos 12 meses; los montos van en la moneda en que reporta la empresa.</p>
               <p>Los resultados anuales vienen de los informes que la empresa presenta a la SEC (10-K o 20-F): son públicos y se guardan una semana.</p>
             </div>
           </details>
@@ -297,7 +308,7 @@
         </details>
       </section>
 
-      <section class="screen owner-only" id="compare" aria-labelledby="cmp-h">
+      <section class="screen keyed" id="compare" aria-labelledby="cmp-h">
         <div class="screen-head">
           <h2 id="cmp-h">Comparar</h2>
           <span class="src">Base 100</span>
@@ -475,7 +486,7 @@
 
     <aside class="col col-right" id="col-right" aria-label="Termómetro, agenda y noticias">
       <!-- Termómetro del S&P 500 (solo el dueño: SPY de Twelve Data). Cuánto se mueve el mercado, no hacia dónde. -->
-      <section class="screen owner-only" id="thermo" aria-labelledby="th-h">
+      <section class="screen keyed" id="thermo" aria-labelledby="th-h">
         <div class="screen-head">
           <h2 id="th-h">Termómetro del S&amp;P 500</h2>
           <span class="src">SPY · 500 sesiones</span>
@@ -616,7 +627,7 @@
   <dialog class="tutorial" id="lg-tutorial" aria-labelledby="lt-h"></dialog>
 
   <footer class="foot">
-    <p>Datos informativos; no es asesoría de inversión. Fuentes: BCRP, FRED® (Junta de la Reserva Federal y BLS), SEC EDGAR<span class="owner-only"> y Twelve Data</span>. <a href="/terminos.html">Términos y privacidad</a>.</p>
+    <p>Datos informativos; no es asesoría de inversión. Fuentes: BCRP, FRED® (Junta de la Reserva Federal y BLS), SEC EDGAR<span class="keyed"> y Twelve Data</span>. <a href="/terminos.html">Términos y privacidad</a>.</p>
     <!-- Aviso exacto que piden los términos de la API de FRED, con el enlace a esos términos. -->
     <p><span lang="en">This product uses the FRED® API but is not endorsed or certified by the Federal Reserve Bank of St. Louis.</span> Al usar Rueda aceptas los <a href="https://fred.stlouisfed.org/docs/api/terms_of_use.html" target="_blank" rel="noopener noreferrer">términos de uso de la API de FRED®</a>.</p>
     <p id="version"></p>

@@ -22,9 +22,11 @@ body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--f-mono);fo
   font-variant-numeric:tabular-nums;-webkit-font-smoothing:antialiased;
   padding:env(safe-area-inset-top,0px) env(safe-area-inset-right,0px) env(safe-area-inset-bottom,0px) env(safe-area-inset-left,0px)}
 [hidden]{display:none!important}
-/* Roles: el dueño ve todo; los amigos («rol-amigo» en <body>) solo los datos públicos. */
+/* Roles: el dueño ve todo; los amigos («rol-amigo» en <body>) ven los datos públicos y, con su propia clave de Twelve
+   Data («con-clave»), también lo marcado «keyed»: su lista, sus precios, la ficha, comparar y el termómetro. */
 .friend-only{display:none}
 .rol-amigo .owner-only{display:none!important}
+.rol-amigo:not(.con-clave) .keyed{display:none!important}
 .rol-amigo .friend-only{display:block}
 .wrap{max-width:1180px;margin:0 auto;padding:16px 16px 40px;display:flex;flex-direction:column;gap:24px}
 /* Columnas (index.html), para no bajar tanto. En el celular, una sola. En tablet, lo principal y una columna al costado.
@@ -34,7 +36,7 @@ body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--f-mono);fo
   /* En una columna, el orden de siempre: en el HTML las secciones están repartidas por columna. */
   .bar,.sheets,.teaser,#install-panel,.tape,.banner{order:-2}
   #summary{order:-1}
-  #welcome{order:1} #watchlist{order:2} #eod{order:3} #thermo{order:4} #detail{order:5} #news{order:6} #compare{order:7}
+  #welcome{order:1} #keycard{order:2} #watchlist{order:2} #eod{order:3} #thermo{order:4} #detail{order:5} #news{order:6} #compare{order:7}
   #portfolio{order:8} #hapi{order:9} #cmd{order:10} #macro{order:11} #pm{order:12} #fin{order:13} #cal{order:14} #people{order:15}
   .foot{order:20}
 }
@@ -679,6 +681,9 @@ a.cta{display:inline-flex;align-items:center;gap:6px;border-radius:var(--r);text
 .lg-pitch-card{max-width:640px}
 .lg-pitch{margin:0 0 12px;font-family:var(--f-sans);font-size:1rem;line-height:1.5}
 .lg-go{padding:10px 18px;font-size:1rem}
+
+/* «Precios con tu clave»: para un amigo sin clave, donde iría su lista. */
+.kc-text{margin:0 0 12px;font-family:var(--f-sans);line-height:1.5}
 
 /* Aviso de la liga en «Mercados», para quien todavía no entró (en «Juego» no hace falta). */
 .teaser{display:flex;flex-wrap:wrap;align-items:center;gap:8px 12px;margin-top:-12px;padding:8px 12px;border:1px solid var(--accent);

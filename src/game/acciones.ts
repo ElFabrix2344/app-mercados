@@ -17,6 +17,7 @@ import { addDays, isoDate } from '../lib/num';
 import { seal, unseal, type Sealed } from '../lib/secretbox';
 import { getQuotes, getRecentCloses } from '../lib/twelvedata';
 import type { GameStorage } from './juego';
+import { forgetPanel } from './panel';
 
 export const START_USD = 10_000;
 /** Contra qué se compara cada uno (solo lo ve él, con su clave). */
@@ -204,6 +205,15 @@ export class Acciones {
     return m.key ? unseal(this.deps.secret, m.key) : null;
   }
 
+  /**
+   * La clave propia de un jugador, para sus precios en el panel (game/panel.ts): una clave para todo. Nunca la de Rueda,
+   * que no se puede usar para mostrarles datos a los amigos. null si no conectó una.
+   */
+  async ownKey(pid: string): Promise<string | null> {
+    const m = await this.member(pid);
+    return m?.key && !m.appKey ? unseal(this.deps.secret, m.key) : null;
+  }
+
   // ---------- entrar ----------
 
   /** Conecta la clave gratis del jugador (la prueba pidiendo el precio del SPY) y lo hace entrar con US$ 10 000. */
@@ -230,12 +240,16 @@ export class Acciones {
     await this.save(m);
   }
 
-  /** Quita la clave: la cartera queda, pero deja de valorizarse hasta que se conecte otra. */
+  /**
+   * Quita la clave: la cartera queda, pero deja de valorizarse hasta que se conecte otra. También se borra lo que esa
+   * clave trajo para su panel (precios e historiales); su lista de seguimiento queda.
+   */
   async disconnect(pid: string): Promise<void> {
     const m = await this.member(pid);
     if (!m) return;
     Object.assign(m, { key: null, appKey: false });
     await this.save(m);
+    await forgetPanel(this.store, pid);
   }
 
   // ---------- órdenes ----------
