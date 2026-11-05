@@ -8,7 +8,8 @@ import type { EarningsRelease } from './lib/finnhub';
 import { CHOICES, questionsAt, readyToResolve, resolve, type ForecastValue } from './lib/forecasts';
 import { usMarketOpen } from './lib/market-hours';
 import { addDays, isoDate } from './lib/num';
-import type { DailyPoint, Quote } from './lib/twelvedata';
+import type { SecMatch } from './lib/sec';
+import type { DailyPoint, Quote, QuoteBatch } from './lib/twelvedata';
 import type { CompanyResult } from './services/company';
 import { gradeFactors, type FactorsResult } from './services/factors';
 import { SEC_YEARS, type FinancialsData } from './services/financials';
@@ -51,6 +52,12 @@ const BASE: Record<string, { name: string; exchange: string; currency: string; s
   SPY: { name: 'SPDR S&P 500 ETF', exchange: 'NYSE', currency: 'USD', start: 560, vol: 0.01, beta: 0.95 },
   'USD/PEN': { name: 'Dólar / Sol', exchange: 'Forex', currency: 'PEN', start: 3.7, vol: 0.003, beta: -0.35 },
   'BTC/USD': { name: 'Bitcoin / Dólar', exchange: 'Binance', currency: 'USD', start: 65000, vol: 0.03, beta: 0.35, crypto: true },
+  // Para el buscador: las que más se buscan (precios inventados).
+  AAPL: { name: 'Apple Inc.', exchange: 'NASDAQ', currency: 'USD', start: 190, vol: 0.016, beta: 0.9 },
+  NVDA: { name: 'NVIDIA Corporation', exchange: 'NASDAQ', currency: 'USD', start: 110, vol: 0.03, beta: 1 },
+  MELI: { name: 'MercadoLibre, Inc.', exchange: 'NASDAQ', currency: 'USD', start: 1700, vol: 0.024, beta: 0.8 },
+  'BRK.B': { name: 'Berkshire Hathaway Inc. Class B', exchange: 'NYSE', currency: 'USD', start: 420, vol: 0.009, beta: 0.7 },
+  KO: { name: 'Coca-Cola Company (The)', exchange: 'NYSE', currency: 'USD', start: 62, vol: 0.009, beta: 0.4 },
   // Cripto de la sección «Cripto» (CoinGecko).
   'CG:bitcoin': { name: 'Bitcoin', exchange: 'CoinGecko', currency: 'USD', start: 60000, vol: 0.03, beta: 0.35, crypto: true },
   'CG:ethereum': { name: 'Ethereum', exchange: 'CoinGecko', currency: 'USD', start: 2600, vol: 0.038, beta: 0.4, crypto: true },
@@ -288,6 +295,40 @@ export function mockPeru(now: Date): Fresh<PeruData> {
   const policyRates = Array.from({ length: 40 }, (_, i) => ({ date: addDays(today, i - 40), value: 4.5 }));
   const expectations = inflation.map((p, i) => ({ date: p.date, inflation: Number((2.6 + Math.sin(i / 3) * 0.3).toFixed(2)), gdp: Number((3 + Math.cos(i / 4) * 0.2).toFixed(2)), fx: Number((3.45 + Math.sin(i / 5) * 0.05).toFixed(3)) }));
   return fresh({ fx, policyRate: { date: addDays(today, -1), value: 4.5 }, policyRates, inflation, expectations }, now);
+}
+
+/** Empresas del buscador de prueba (con sus tickers y CIK de la SEC). */
+const MOCK_SEARCH: SecMatch[] = [
+  { symbol: 'AAPL', name: 'Apple Inc.', cik: 320193 },
+  { symbol: 'APLE', name: 'Apple Hospitality REIT, Inc.', cik: 1418121 },
+  { symbol: 'NVDA', name: 'NVIDIA CORP', cik: 1045810 },
+  { symbol: 'MSFT', name: 'MICROSOFT CORP', cik: 789019 },
+  { symbol: 'AMZN', name: 'AMAZON COM INC', cik: 1018724 },
+  { symbol: 'TSLA', name: 'Tesla, Inc.', cik: 1318605 },
+  { symbol: 'KO', name: 'COCA COLA CO', cik: 21344 },
+  { symbol: 'BRK.B', name: 'BERKSHIRE HATHAWAY INC', cik: 1067983 },
+  { symbol: 'BRK.A', name: 'BERKSHIRE HATHAWAY INC', cik: 1067983 },
+  { symbol: 'BAP', name: 'CREDICORP LTD', cik: 1001290 },
+  { symbol: 'BVN', name: 'BUENAVENTURA MINING CO INC', cik: 1013131 },
+  { symbol: 'SCCO', name: 'SOUTHERN COPPER CORP', cik: 1001838 },
+  { symbol: 'SPY', name: 'SPDR S&P 500 ETF TRUST', cik: 884394 },
+  { symbol: 'MELI', name: 'MERCADOLIBRE INC', cik: 1099590 },
+  { symbol: 'JPM', name: 'JPMORGAN CHASE & CO', cik: 19617 },
+  { symbol: 'V', name: 'VISA INC.', cik: 1403161 },
+  { symbol: 'GOOG', name: 'Alphabet Inc.', cik: 1652044 },
+];
+
+/** Sugerencias de prueba: por el comienzo del símbolo o de alguna palabra del nombre. */
+export function mockSearch(q: string): SecMatch[] {
+  const t = q.trim().toLowerCase();
+  if (!t || t.includes('/')) return [];
+  return MOCK_SEARCH.filter((m) => m.symbol.toLowerCase().startsWith(t) || m.name.toLowerCase().startsWith(t) || m.name.toLowerCase().split(/[\s,.]+/).some((w) => w.startsWith(t))).slice(0, 8);
+}
+
+/** Precio de prueba de una acción buscada; las que empiezan con ZZ no existen (para ver el error). */
+export function mockLookupQuote(symbol: string, now: Date): QuoteBatch {
+  if (symbol.startsWith('ZZ')) return { quotes: [], errors: { [symbol]: `**symbol** not found: ${symbol}` } };
+  return { quotes: mockQuotes([symbol], now).data.quotes, errors: {} };
 }
 
 /** Titulares de prueba (no son noticias reales; los enlaces van a example.com). */

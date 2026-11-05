@@ -49,6 +49,9 @@
     games: null, // respuesta de /api/games (liga de acciones, gráfico del día y 2/3 del promedio)
     openTutorial: false, // al llegar con /#liga, abrir el tutorial de la liga cuando cargue
     k23Edit: false, // cambiando el número de esta semana
+    lookups: new Map(), // símbolo → acción abierta con el buscador: respuesta de /api/lookup | { pending, name } | { error, retry, name }
+    lookupStatus: null, // { used, max, today } de /api/lookup: acciones nuevas abiertas hoy (tope del día)
+    lookAdded: null, // { sym, where } la buscada que se acaba de agregar a una lista (la ficha lo confirma)
     people: null, // respuesta de /api/people (quién puede entrar; solo el dueño)
     peopleNew: null, // correo recién agregado (se marca en la lista)
     peopleBusy: false,
@@ -710,7 +713,21 @@
 
   // ---------- lista de seguimiento ----------
   function quoteFor(sym) {
-    return state.quotes?.data?.quotes?.find((q) => q.symbol === sym) ?? null;
+    return state.quotes?.data?.quotes?.find((q) => q.symbol === sym) ?? state.lookups.get(sym)?.quote ?? null;
+  }
+
+  /** En la lista de seguimiento o en la diaria (las que no, se abren con el buscador). */
+  const inLists = (sym) => state.symbols.includes(sym) || !!state.eod?.symbols?.includes(sym);
+
+  /**
+   * Una acción abierta con el buscador (fuera de tus listas): su historial, sus titulares y sus datos se piden recién
+   * cuando el servidor la anotó con su precio. 'cargando', { error } o null (ya se puede pedir).
+   */
+  function lookupGate(sym) {
+    if (inLists(sym)) return null;
+    const l = state.lookups.get(sym);
+    if (!l || l.pending) return 'cargando';
+    return l.quote ? null : { error: l.error ?? 'Sin precio.' };
   }
 
   const trend = (v) => (v > 0 ? 'up' : v < 0 ? 'down' : 'flat');
@@ -1039,9 +1056,15 @@
     const cached = state.rangeData.get(key);
     if (cached && cached !== 'cargando') return cached;
     if (!cached) {
+      const gate = lookupGate(sym);
+      if (gate) return gate === 'cargando' ? undefined : gate;
       state.rangeData.set(key, 'cargando');
       api(`/api/history?symbol=${encodeURIComponent(sym)}&range=${range}&ind=1`)
-        .then((r) => state.rangeData.set(key, { points: r.data.points, stats: r.stats, ind: r.indicators, bars: r.bars ?? null }))
+        .then((r) => {
+          state.rangeData.set(key, { points: r.data.points, stats: r.stats, ind: r.indicators, bars: r.bars ?? null });
+          // Una buscada no tiene fila en la lista: su año y su último cierre (resumen y señales) salen de aquí.
+          if (range === '1A' && !state.hist.has(sym)) state.hist.set(sym, { points: r.data.points, stats: r.stats, latest: r.latest });
+        })
         .catch((e) => state.rangeData.set(key, { error: e.message }))
         .finally(() => {
           if (state.selected === sym && state.range === range) renderDetail();
@@ -1139,12 +1162,13 @@
     renderDetailPs();
     renderDetailVal();
     renderQuick();
+    renderLook(sym);
     $('d-claude').href = detailClaudeHref(sym);
     const q = quoteFor(sym);
     const hist = detailHistory(sym, state.range);
     renderIndicatorToggles(hist);
     const eodRow = q ? null : eodRowFor(sym);
-    const name = q?.name ?? eodRow?.name;
+    const name = q?.name ?? eodRow?.name ?? state.lookups.get(sym)?.name;
     $('d-title').textContent = name ? `${sym} · ${name}` : sym;
     $('d-sub').textContent = q ? [q.exchange, q.currency].filter(Boolean).join(' · ') : eodRow ? `Lista diaria · cierre del ${fDayYear.format(day(eodRow.date))}` : '';
     const chart = $('d-chart');
@@ -1161,7 +1185,8 @@
     // Mientras llega otro rango queda el gráfico anterior, atenuado: sin saltos ni parpadeos.
     sec.classList.toggle('is-loading', !hist && chart.childElementCount > 0);
     if (!hist) {
-      if (!chart.childElementCount) chart.replaceChildren(h('p', { class: 'muted' }, 'Cargando historial…'));
+      const looking = state.lookups.get(sym)?.pending && !inLists(sym);
+      if (!chart.childElementCount) chart.replaceChildren(h('p', { class: 'muted' }, looking ? `Buscando el precio de ${sym}…` : 'Cargando historial…'));
       return;
     }
     stats.replaceChildren();
@@ -1353,6 +1378,8 @@
     const c = state.full.get(sym);
     if (c && c !== 'cargando') return c;
     if (!c) {
+      const gate = lookupGate(sym);
+      if (gate) return gate === 'cargando' ? undefined : gate;
       state.full.set(sym, 'cargando');
       api(`/api/history?symbol=${encodeURIComponent(sym)}&range=5A`)
         .then((r) => state.full.set(sym, { points: r.data.points }))
@@ -1965,6 +1992,7 @@
   function symbolNewsFor(sym) {
     const cached = state.symbolNews.get(sym);
     if (cached) return cached === 'cargando' ? undefined : cached;
+    if (lookupGate(sym)) return undefined;
     state.symbolNews.set(sym, 'cargando');
     api(`/api/news/symbol?symbol=${encodeURIComponent(sym)}`)
       .then((r) => state.symbolNews.set(sym, { items: r.items }))
@@ -1978,8 +2006,9 @@
   function renderSymbolNews() {
     const sym = state.selected;
     const wrap = $('d-news');
-    wrap.hidden = !sym;
-    if (!sym) return;
+    // Una buscada sin precio no abre nada más (tampoco se pueden pedir sus titulares).
+    wrap.hidden = !sym || !!lookupGate(sym)?.error;
+    if (wrap.hidden) return;
     $('d-news-sym').textContent = sym;
     const list = $('d-news-list');
     const r = symbolNewsFor(sym);
@@ -1993,6 +2022,7 @@
   function companyFor(sym) {
     const c = state.company.get(sym);
     if (c) return c === 'cargando' ? undefined : c;
+    if (lookupGate(sym)) return undefined;
     state.company.set(sym, 'cargando');
     api(`/api/company?symbol=${encodeURIComponent(sym)}`)
       .then((r) => state.company.set(sym, r))
@@ -2027,8 +2057,8 @@
       return;
     }
     const r = sym ? companyFor(sym) : null;
-    // Divisas y cripto no tienen datos de empresa.
-    if (!sym || r?.applicable === false) {
+    // Divisas y cripto no tienen datos de empresa; una buscada sin precio, tampoco.
+    if (!sym || r?.applicable === false || lookupGate(sym)?.error) {
       wrap.hidden = true;
       return;
     }
@@ -2141,6 +2171,7 @@
   function factorsFor(sym) {
     const c = state.factors.get(sym);
     if (c) return c === 'cargando' ? undefined : c;
+    if (lookupGate(sym)) return undefined;
     state.factors.set(sym, 'cargando');
     api(`/api/company/factors?symbol=${encodeURIComponent(sym)}`)
       .then((r) => state.factors.set(sym, r))
@@ -2478,7 +2509,7 @@
   function knownPrice(sym) {
     if (!hasPrices()) return null;
     const q = quoteFor(sym);
-    if (q?.price != null) return { price: q.price, src: 'de tu lista' };
+    if (q?.price != null) return { price: q.price, src: inLists(sym) ? 'de tu lista' : 'de hoy' };
     const e = eodRowFor(sym);
     return e?.close != null ? { price: e.close, src: `cierre del ${calDay(e.date)}` } : null;
   }
@@ -5446,7 +5477,7 @@
     try {
       state.eod = await api('/api/eod', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ symbols }) });
       openEodEditor(false);
-      if (state.selected && !state.symbols.includes(state.selected) && !state.eod.symbols.includes(state.selected)) {
+      if (state.selected && !inLists(state.selected) && !state.lookups.has(state.selected)) {
         state.selected = null;
         renderDetail();
       }
@@ -5475,29 +5506,412 @@
     e.preventDefault();
     const symbols = $('wl-input').value.split(/[\s,;]+/).filter(Boolean);
     try {
-      const r = await api('/api/watchlist', {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ symbols }),
-      });
-      state.symbols = r.symbols;
-      for (const k of [...state.hist.keys()]) if (!state.symbols.includes(k)) state.hist.delete(k);
-      if (state.selected && !state.symbols.includes(state.selected)) state.selected = null;
-      openEditor(false);
-      renderDetail();
-      state.cmp.picks = state.cmp.picks.filter((p) => state.symbols.includes(p.sym));
-      prefs.set('mercados.comparar', state.cmp);
-      renderCompare();
-      renderPortfolioForm();
-      await loadQuotes(false);
-      loadHistories().then(loadCompare);
-      // Los resultados de empresas dependen de la lista.
-      loadCalendar();
+      await applyWatchlist(symbols, () => openEditor(false));
     } catch (err) {
       const p = $('wl-err');
       p.textContent = err.message;
       p.hidden = false;
     }
+  }
+
+  /** Guarda la lista de seguimiento (el editor o «Agregar a mi lista» de una buscada) y recarga lo que depende de ella. */
+  async function applyWatchlist(symbols, onSaved) {
+    const r = await api('/api/watchlist', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ symbols }),
+    });
+    state.symbols = r.symbols;
+    // Lo de las buscadas queda: su ficha puede seguir abierta.
+    for (const k of [...state.hist.keys()]) if (!state.symbols.includes(k) && !state.lookups.has(k)) state.hist.delete(k);
+    if (state.selected && !inLists(state.selected) && !state.lookups.has(state.selected)) state.selected = null;
+    onSaved?.();
+    renderDetail();
+    state.cmp.picks = state.cmp.picks.filter((p) => state.symbols.includes(p.sym));
+    prefs.set('mercados.comparar', state.cmp);
+    renderCompare();
+    renderPortfolioForm();
+    await loadQuotes(false);
+    loadHistories().then(loadCompare);
+    // Los resultados de empresas dependen de la lista.
+    loadCalendar();
+  }
+
+  // ---------- buscador de acciones ----------
+  // Pedido del usuario el 5 nov («una sección para poder buscar acciones específicas»): en la barra de arriba, en las dos
+  // hojas. Las sugerencias son de la SEC (públicas, para todos). Abrir la ficha de una acción que no está en tus listas
+  // cuesta unos 2 créditos de Twelve Data (precio e historial), con un tope de 20 nuevas al día por persona: el dueño con
+  // la clave de Rueda y cada amigo con la suya (services/lookup.ts). Sin clave, un amigo ve sus resultados de la SEC.
+  const RECENT_KEY = 'mercados.buscadas';
+  const RECENT_MAX = 6;
+  const SEARCH_DELAY_MS = 220;
+  const search = {
+    open: false,
+    text: '', // lo escrito (sin espacios de más)
+    items: [], // opciones a la vista: { symbol, name, direct? }
+    active: -1, // la marcada con las flechas o el mouse
+    head: null, // título sobre la lista («Recientes»)
+    msg: null, // { text, err }
+    timer: 0,
+    seq: 0, // solo cuenta la respuesta del último pedido
+    results: new Map(), // texto en minúsculas → sugerencias de la SEC (en esta visita)
+    statusAsked: false,
+  };
+  const isPhone = () => matchMedia('(max-width:720px)').matches;
+
+  /** Lo escrito como símbolo (AAPL, BRK.B, USD/PEN), si lo parece: se puede abrir tal cual, aunque la SEC no lo tenga. */
+  function typedSymbol(text) {
+    const s = text.trim().toUpperCase();
+    if (!/^[A-Z0-9][A-Z0-9.-]{0,11}(\/[A-Z0-9]{2,10})?$/.test(s)) return null;
+    return s.includes('/') || s.includes('.') || s.length <= 5 ? s : null;
+  }
+
+  const recentSearches = () => {
+    const list = prefs.get(RECENT_KEY, []);
+    return (Array.isArray(list) ? list : []).filter((r) => typeof r?.symbol === 'string').slice(0, RECENT_MAX);
+  };
+  function rememberSearch(item) {
+    const list = recentSearches().filter((r) => r.symbol !== item.symbol);
+    list.unshift({ symbol: item.symbol, name: item.name ?? null });
+    prefs.set(RECENT_KEY, list.slice(0, RECENT_MAX));
+  }
+  /** Una que Twelve Data no tiene no queda entre las recientes. */
+  const forgetSearch = (sym) => prefs.set(RECENT_KEY, recentSearches().filter((r) => r.symbol !== sym));
+
+  function searchTag(sym) {
+    if (state.symbols.includes(sym)) return { text: 'En tu lista', on: true };
+    if (state.eod?.symbols?.includes(sym)) return { text: 'Lista diaria', on: true };
+    if (hasPrices() && state.lookupStatus?.today?.includes(sym)) return { text: 'Abierta hoy' };
+    return null;
+  }
+
+  function searchFoot() {
+    if (!state.role) return '';
+    if (!hasPrices()) return 'Sin tu clave de Twelve Data ves sus resultados de la SEC; con ella, su ficha completa.';
+    const st = state.lookupStatus;
+    const left = st ? ` · te quedan ${Math.max(0, st.max - st.used)} de ${st.max} hoy` : '';
+    return `Abrir una que no está en tus listas usa unos 2 créditos${left}.`;
+  }
+
+  function renderSearch() {
+    const input = $('search-input');
+    const list = $('search-list');
+    $('search-pop').hidden = !search.open;
+    input.setAttribute('aria-expanded', String(search.open && search.items.length > 0));
+    const head = $('search-head');
+    head.hidden = !search.head;
+    head.textContent = search.head ?? '';
+    list.setAttribute('aria-label', search.head ?? 'Sugerencias');
+    list.replaceChildren(
+      ...search.items.map((it, i) => {
+        const tag = it.direct ? { text: 'Abrir tal cual' } : searchTag(it.symbol);
+        const li = h(
+          'li',
+          { role: 'option', id: `so-${i}`, 'aria-selected': String(i === search.active) },
+          h('span', { class: 'so-sym' }, it.symbol),
+          h('span', { class: 'so-name' }, it.name ?? (it.symbol.includes('/') ? 'Divisa o cripto' : 'Símbolo escrito')),
+          tag ? h('span', { class: `so-tag${tag.on ? ' on' : ''}` }, tag.text) : null,
+        );
+        // Con el mouse, el foco queda en el campo (así no se cierra antes del clic).
+        li.addEventListener('mousedown', (e) => e.preventDefault());
+        li.addEventListener('click', () => pickSearch(it));
+        li.addEventListener('mousemove', () => {
+          if (search.active !== i) markSearch(i, false);
+        });
+        return li;
+      }),
+    );
+    markSearch(search.active, false);
+    const msg = $('search-msg');
+    msg.hidden = !search.msg;
+    msg.textContent = search.msg?.text ?? '';
+    msg.className = search.msg?.err ? 'search-msg err' : 'search-msg';
+    const foot = $('search-foot');
+    foot.textContent = search.open ? searchFoot() : '';
+    foot.hidden = !foot.textContent;
+  }
+
+  function markSearch(i, scroll = true) {
+    search.active = i;
+    const input = $('search-input');
+    for (const li of $('search-list').children) li.setAttribute('aria-selected', String(li.id === `so-${i}`));
+    if (i >= 0 && $(`so-${i}`)) {
+      input.setAttribute('aria-activedescendant', `so-${i}`);
+      if (scroll) $(`so-${i}`).scrollIntoView({ block: 'nearest' });
+    } else input.removeAttribute('aria-activedescendant');
+  }
+
+  /** Lo que se ve al escribir: sin texto, las recientes; con texto, las sugerencias (de esta visita o de la SEC). */
+  function updateSearch() {
+    const text = $('search-input').value.replace(/\s+/g, ' ').trim();
+    search.text = text;
+    clearTimeout(search.timer);
+    search.seq++;
+    if (!text) {
+      search.items = recentSearches();
+      search.head = search.items.length ? 'Recientes' : null;
+      search.msg = search.items.length ? null : { text: 'Escribe el nombre o el símbolo: Apple, NVDA, Credicorp. Divisas y cripto, como USD/PEN o BTC/USD.' };
+      search.active = -1;
+      renderSearch();
+      return;
+    }
+    const known = search.results.get(text.toLowerCase());
+    if (known) return showSuggestions(text, known);
+    // Mientras llegan, lo escrito como símbolo ya se puede abrir con Enter.
+    const direct = typedSymbol(text);
+    search.items = direct ? [{ symbol: direct, name: null, direct: true }] : [];
+    search.head = null;
+    search.active = -1;
+    if (!/^[\p{L}\p{N}][\p{L}\p{N} .,&'/-]{0,39}$/u.test(text)) {
+      search.msg = { text: 'Usa solo letras, números y . , & \' / -', err: true };
+      return renderSearch();
+    }
+    search.msg = { text: 'Buscando en la SEC…' };
+    renderSearch();
+    const seq = search.seq;
+    search.timer = setTimeout(() => {
+      api(`/api/search?q=${encodeURIComponent(text)}`)
+        .then((r) => {
+          search.results.set(text.toLowerCase(), r.results);
+          if (seq === search.seq) showSuggestions(text, r.results);
+        })
+        .catch((e) => {
+          if (seq !== search.seq) return;
+          search.msg = { text: e.message, err: true };
+          renderSearch();
+        });
+    }, SEARCH_DELAY_MS);
+  }
+
+  function showSuggestions(text, results) {
+    const items = results.map((m) => ({ symbol: m.symbol, name: m.name }));
+    const direct = typedSymbol(text);
+    // Lo escrito tal cual: primero si es un par (USD/PEN), al final si parece un ticker que la SEC no tiene (VOO).
+    if (direct && !items.some((it) => it.symbol === direct) && (direct.includes('/') || !items.length || text === text.toUpperCase())) {
+      const it = { symbol: direct, name: null, direct: true };
+      if (direct.includes('/')) items.unshift(it);
+      else items.push(it);
+    }
+    search.items = items;
+    search.head = null;
+    search.active = items.length ? 0 : -1;
+    search.msg = items.length ? null : { text: `La SEC no tiene «${text}». Prueba con el símbolo (como VOO) o con otro nombre.` };
+    $('search-live').textContent = items.length ? `${items.length} ${items.length === 1 ? 'sugerencia' : 'sugerencias'}` : 'Sin sugerencias';
+    renderSearch();
+  }
+
+  function openSearch() {
+    $('search').classList.add('open');
+    $('search-toggle').setAttribute('aria-expanded', 'true');
+    search.open = true;
+    // Cuántas acciones nuevas quedan hoy: una vez por visita (cada ficha que se abre lo actualiza).
+    if (hasPrices() && !search.statusAsked) {
+      search.statusAsked = true;
+      api('/api/lookup')
+        .then((st) => {
+          state.lookupStatus = st;
+          if (search.open) renderSearch();
+        })
+        .catch(() => {
+          search.statusAsked = false;
+        });
+    }
+    updateSearch();
+    $('search-input').focus();
+  }
+
+  /** Cierra las sugerencias (y, en el celular, el buscador). true si estaba abierto el del celular. */
+  function closeSearch() {
+    const wasPhone = $('search').classList.contains('open') && isPhone();
+    search.open = false;
+    search.active = -1;
+    $('search').classList.remove('open');
+    $('search-toggle').setAttribute('aria-expanded', 'false');
+    renderSearch();
+    return wasPhone;
+  }
+
+  function onSearchKey(e) {
+    const n = search.items.length;
+    if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+      e.preventDefault();
+      if (!search.open) return openSearch();
+      if (n) markSearch(e.key === 'ArrowDown' ? (search.active + 1) % n : (search.active - 1 + n) % n);
+    } else if (e.key === 'Enter') {
+      e.preventDefault();
+      const it = search.items[search.active] ?? search.items[0];
+      if (it) pickSearch(it);
+    } else if (e.key === 'Escape') {
+      e.preventDefault();
+      if (search.open) {
+        if (closeSearch()) $('search-toggle').focus();
+      } else e.target.value = '';
+    } else if (e.key === 'Tab') {
+      closeSearch();
+    }
+  }
+
+  function pickSearch(item) {
+    rememberSearch(item);
+    $('search-input').value = '';
+    closeSearch();
+    $('search-input').blur();
+    openSearched(item.symbol, item.name ?? null);
+  }
+
+  /** Abre lo elegido: su ficha (de tus listas, o una nueva con su precio) o, sin precios, sus resultados de la SEC. */
+  function openSearched(sym, name) {
+    showSheet('mercados');
+    if (!hasPrices()) {
+      // Divisas y cripto no están en la SEC: para sus precios hace falta la clave.
+      if (sym.includes('/')) return openLeagueTutorial('panel');
+      $('fin-sym').value = sym;
+      pickFin(sym);
+      $('fin').scrollIntoView({ behavior: 'smooth', block: 'start' });
+      return;
+    }
+    const l = state.lookups.get(sym);
+    if (!inLists(sym) && (!l || (!l.quote && !l.pending))) loadLookup(sym, name);
+    state.selected = sym;
+    renderTiles();
+    renderEod();
+    renderDetail();
+    $('detail').scrollIntoView({ behavior: 'smooth', block: 'start' });
+    // Para el teclado y los lectores de pantalla, el foco va al título de la ficha.
+    const title = $('d-title');
+    title.tabIndex = -1;
+    title.focus({ preventScroll: true });
+  }
+
+  /** Anota la acción en el servidor y trae su precio (1 crédito; con la bolsa cerrada, una vez por sesión). */
+  function loadLookup(sym, name = null, refresh = false) {
+    const prev = state.lookups.get(sym);
+    state.lookups.set(sym, { ...(prev?.quote ? prev : {}), pending: true, name: name ?? prev?.name ?? null });
+    if (state.selected === sym) renderDetail();
+    return api(`/api/lookup?symbol=${encodeURIComponent(sym)}${refresh ? '&refresh=1' : ''}`)
+      .then((r) => {
+        state.lookups.set(sym, { ...r, name: r.quote?.name ?? name ?? prev?.name ?? null });
+        state.lookupStatus = r.lookups;
+        if (!r.quote) forgetSearch(sym);
+        if (r.credits && state.quotes) {
+          state.quotes.credits = r.credits;
+          renderFresh();
+        }
+      })
+      .catch((e) => {
+        // Si ya tenía precio, queda ese; si no, el error (y «Reintentar», salvo con el tope del día).
+        if (prev?.quote) state.lookups.set(sym, { ...prev, pending: false, stale: true, note: e.message });
+        else state.lookups.set(sym, { error: e.message, retry: e.code !== 'daily_limit', name: name ?? prev?.name ?? null });
+      })
+      .finally(() => {
+        if (state.selected === sym) renderDetail();
+      });
+  }
+
+  /** Dónde se puede sumar una buscada: la lista de seguimiento o, si está llena, la diaria (solo el dueño). */
+  function addTarget() {
+    if (state.symbols.length < state.max) return 'watchlist';
+    if (state.role === 'owner' && state.eod && state.eod.symbols.length < state.eod.max) return 'eod';
+    return null;
+  }
+
+  /** Fila de la ficha de una buscada: de dónde salió y cómo sumarla a tus listas. */
+  function renderLook(sym) {
+    const row = $('d-look');
+    const l = state.lookups.get(sym);
+    const text = $('d-look-text');
+    const add = $('d-add');
+    const retry = $('d-retry');
+    text.className = 'd-look-text';
+    add.hidden = true;
+    retry.hidden = true;
+    if (inLists(sym)) {
+      const done = state.lookAdded?.sym === sym;
+      row.hidden = !done;
+      if (done) text.textContent = state.lookAdded.where === 'eod' ? '✓ Agregada a tu lista diaria.' : '✓ Agregada a tu lista de seguimiento.';
+      return;
+    }
+    row.hidden = !l;
+    if (!l) return;
+    if (l.pending && !l.quote) {
+      text.textContent = 'Buscando su precio…';
+      return;
+    }
+    if (!l.quote) {
+      // El error ya se ve en el gráfico: aquí solo «Reintentar», si sirve.
+      text.textContent = '';
+      retry.hidden = !l.retry;
+      row.hidden = !l.retry;
+      return;
+    }
+    text.textContent = l.stale && l.note ? `No está en tus listas · precio guardado (${l.note})` : 'No está en tus listas.';
+    const target = addTarget();
+    add.hidden = false;
+    add.disabled = !target;
+    add.textContent = target === 'eod' ? '+ Agregar a la lista diaria' : target ? '+ Agregar a mi lista' : `Tu lista está llena (${state.max} de ${state.max})`;
+    add.title =
+      target === 'eod'
+        ? `Tu lista de seguimiento está llena (${state.max}): en la diaria se actualiza una vez al día, con el cierre.`
+        : target
+          ? 'La suma a tu lista de seguimiento, con su precio cada 10 minutos.'
+          : 'Para sumarla, quita una con «Editar» en tu lista de seguimiento.';
+  }
+
+  async function addSearched(sym) {
+    const where = addTarget();
+    if (!sym || !where) return;
+    const btn = $('d-add');
+    btn.disabled = true;
+    try {
+      if (where === 'watchlist') await applyWatchlist([...state.symbols, sym]);
+      else {
+        state.eod = await api('/api/eod', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ symbols: [...state.eod.symbols, sym] }) });
+        renderEod();
+        loadCalendar();
+      }
+      state.lookAdded = { sym, where };
+      renderDetail();
+    } catch (e) {
+      const t = $('d-look-text');
+      t.textContent = e.message;
+      t.className = 'd-look-text err';
+    } finally {
+      btn.disabled = false;
+    }
+  }
+
+  function setupSearch() {
+    const box = $('search');
+    const input = $('search-input');
+    input.addEventListener('focus', () => {
+      if (!search.open) openSearch();
+    });
+    input.addEventListener('input', () => {
+      search.open = true;
+      updateSearch();
+    });
+    input.addEventListener('keydown', onSearchKey);
+    $('search-toggle').addEventListener('click', openSearch);
+    $('search-close').addEventListener('click', () => {
+      closeSearch();
+      $('search-toggle').focus();
+    });
+    // Se cierra al tocar fuera (en el celular, también el fondo oscurecido) o al pasar con Tab a otra cosa.
+    document.addEventListener('pointerdown', (e) => {
+      if (search.open && (!box.contains(e.target) || e.target === box)) closeSearch();
+    });
+    box.addEventListener('focusout', (e) => {
+      if (search.open && e.relatedTarget && !box.contains(e.relatedTarget)) closeSearch();
+    });
+    // «/» abre el buscador desde cualquier parte, salvo escribiendo en otro campo o con una ventana abierta.
+    document.addEventListener('keydown', (e) => {
+      if (e.key !== '/' || e.ctrlKey || e.metaKey || e.altKey || e.defaultPrevented) return;
+      const t = e.target;
+      if (t instanceof HTMLElement && (t.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName))) return;
+      if (document.querySelector('dialog[open]')) return;
+      e.preventDefault();
+      openSearch();
+    });
   }
 
   const REPO = 'https://github.com/ElFabrix2344/app-mercados';
@@ -5773,7 +6187,14 @@
     setupSheets();
     setupPeruFold();
     setupInstall();
-    $('refresh-btn').addEventListener('click', () => loadQuotes(true));
+    $('refresh-btn').addEventListener('click', () => {
+      loadQuotes(true);
+      const sym = state.selected;
+      if (sym && state.lookups.get(sym)?.quote && !inLists(sym)) loadLookup(sym, null, true);
+    });
+    $('d-add').addEventListener('click', () => addSearched(state.selected));
+    $('d-retry').addEventListener('click', () => state.selected && loadLookup(state.selected));
+    setupSearch();
     $('edit-btn').addEventListener('click', () => openEditor($('wl-form').hidden));
     $('wl-cancel').addEventListener('click', () => openEditor(false));
     $('wl-form').addEventListener('submit', saveList);
@@ -5953,7 +6374,8 @@
     state.symbols = [];
     state.quotes = null;
     state.selected = null;
-    for (const m of [state.hist, state.rangeData, state.cmpData, state.full, state.symbolNews]) m.clear();
+    for (const m of [state.hist, state.rangeData, state.cmpData, state.full, state.symbolNews, state.lookups]) m.clear();
+    state.lookupStatus = null;
     renderTiles();
     renderTape();
     renderDetail();

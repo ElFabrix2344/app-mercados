@@ -96,12 +96,12 @@ export async function creditsUsed(kv: CacheStore, now: Date): Promise<number> {
   return b && b.day === isoDate(now) ? b.used : 0;
 }
 
-async function spendCredits(kv: CacheStore, now: Date, n: number): Promise<void> {
+export async function spendCredits(kv: CacheStore, now: Date, n: number): Promise<void> {
   const used = await creditsUsed(kv, now);
   await kv.put('budget', JSON.stringify({ day: isoDate(now), used: used + n } satisfies BudgetRec));
 }
 
-function needKey(key: string | undefined, name: string, provider: 'twelvedata' | 'fred'): string {
+export function needKey(key: string | undefined, name: string, provider: 'twelvedata' | 'fred'): string {
   if (!key) throw new ApiError('not_configured', 503, `Falta ${name}.`, provider);
   return key;
 }
@@ -159,18 +159,18 @@ export const isUsEquity = (symbol: string) => !symbol.includes('/');
  * cierre para tomar el precio final (si el último pedido fue en plena sesión).
  */
 export function symbolsToRefresh(prev: QuotesData | null, symbols: string[], now: Date, force: boolean): string[] {
-  const open = usMarketOpen(now);
-  const minAge = force ? FORCE_MIN_MS : QUOTE_TTL_MS;
-  return symbols.filter((s) => {
-    const at = prev?.fetched[s];
-    if (!at) return true;
-    const last = new Date(at);
-    const age = now.getTime() - last.getTime();
-    if (isUsEquity(s) && !open) {
-      return lastSessionDate(last) !== lastSessionDate(now) || (usMarketOpen(last) && age >= QUOTE_TTL_MS);
-    }
-    return age >= minAge;
-  });
+  return symbols.filter((s) => quoteDue(prev?.fetched[s], s, now, force));
+}
+
+/** La misma regla para un símbolo pedido por última vez en `at` (ISO; sin pedir nunca, sí). */
+export function quoteDue(at: string | undefined, symbol: string, now: Date, force: boolean): boolean {
+  if (!at) return true;
+  const last = new Date(at);
+  const age = now.getTime() - last.getTime();
+  if (isUsEquity(symbol) && !usMarketOpen(now)) {
+    return lastSessionDate(last) !== lastSessionDate(now) || (usMarketOpen(last) && age >= QUOTE_TTL_MS);
+  }
+  return age >= (force ? FORCE_MIN_MS : QUOTE_TTL_MS);
 }
 
 /** Lo guardado antes de este cambio no tenía `fetched`: se asume la hora del registro para todos. */

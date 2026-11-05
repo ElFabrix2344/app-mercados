@@ -85,6 +85,12 @@ Las tres preguntas pendientes las respondió Claude con la opción más simple, 
   - **Resumen rápido** arriba de la ficha.
   - **Ratios y DCF desde la SEC.**
   - **«Analizar con Claude ↗»** en la ficha y en Comparar.
+- [x] **Buscador de acciones** (5 nov). El usuario pidió «una sección para poder buscar acciones específicas». Eligió:
+  - **Ficha completa** de cualquier acción, aunque no esté en sus listas, con «Agregar a mi lista». Cada una nueva usa unos 2 créditos (precio e historial), con un tope de 20 nuevas al día por persona; los chicos usan su clave.
+  - **En la barra de arriba**, en las dos hojas. Quedó a la derecha de las pestañas «Mercados» y «Juego», porque en la fila del logo no entraba. En el celular es una lupa.
+  - **Sugerencias de la SEC** (gratis y públicas) por nombre o símbolo. Las divisas y la cripto (USD/PEN, BTC/USD) y lo que la SEC no tiene (VOO) se abren escribiendo el símbolo.
+  - **Sin clave**, un amigo ve los resultados de la SEC de lo que busca.
+  - **No se eligió:** solo datos públicos (sin precio) ni buscar solo para agregar a la lista.
 - [ ] **Otras opciones de análisis de la misma lista** (sin elegir):
   - un filtro de acciones con los datos de todas las empresas de la SEC (`frames`);
   - el análisis de la cuenta Hapi (frente al SPY, Sharpe y beta; en el navegador, porque está cifrada);

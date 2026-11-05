@@ -18,6 +18,7 @@ import {
   mockForecastExtras,
   mockFundamentals,
   mockHistory,
+  mockLookupQuote,
   mockNews,
   mockPeru,
   mockPeruMarkets,
@@ -25,12 +26,14 @@ import {
   mockPriceSource,
   mockPolymarket,
   mockQuotes,
+  mockSearch,
   mockSmv,
   mockSummary,
   mockSymbolNews,
   mockUsa,
 } from './mock';
 import { crypto } from './services/crypto';
+import { lookedUp, lookup, lookupStatus, searchQuery, suggest } from './services/lookup';
 import { refreshSmv, smvView } from './services/smv';
 import { pinEvent, polymarket, readPins, unpinEvent } from './services/polymarket';
 import { slugFromUrl } from './lib/polymarket';
@@ -156,12 +159,12 @@ export default {
 } satisfies ExportedHandler<Env>;
 
 /** Precios de Twelve Data: su licencia gratis no permite mostrar los de la clave de Rueda a otras personas. */
-const OWNER_ONLY = new Set(['/api/watchlist', '/api/eod', '/api/quotes', '/api/history', '/api/compare', '/api/portfolio', '/api/portfolio/xray', '/api/news/symbol', '/api/company', '/api/company/factors', '/api/thermometer']);
+const OWNER_ONLY = new Set(['/api/watchlist', '/api/eod', '/api/quotes', '/api/history', '/api/compare', '/api/portfolio', '/api/portfolio/xray', '/api/news/symbol', '/api/company', '/api/company/factors', '/api/thermometer', '/api/lookup']);
 /**
  * Lo que un amigo sí ve con su propia clave de Twelve Data (la de la liga): su lista, sus precios, sus gráficos,
  * comparar, el termómetro y los titulares por acción. Lo atiende el Durable Object del juego, con su caché aparte.
  */
-const FRIEND_KEYED = new Set(['/api/watchlist', '/api/quotes', '/api/history', '/api/compare', '/api/thermometer', '/api/news/symbol']);
+const FRIEND_KEYED = new Set(['/api/watchlist', '/api/quotes', '/api/history', '/api/compare', '/api/thermometer', '/api/news/symbol', '/api/lookup']);
 
 async function route(req: Request, env: Env, url: URL, role: Role, email: string | null): Promise<Response | null> {
   const p = url.pathname;
@@ -228,11 +231,23 @@ async function route(req: Request, env: Env, url: URL, role: Role, email: string
         return json({ ...res, credits: { used: await creditsUsed(env.CACHE, now), cap: DAILY_CREDIT_CAP } });
       }
 
+      // Buscador: abre la ficha de un símbolo que no está en las listas (su precio, 1 crédito, con un tope de 20 nuevos al
+      // día). Sin símbolo, cuántos se abrieron hoy.
+      case '/api/lookup': {
+        const raw = url.searchParams.get('symbol');
+        if (raw == null) return json(await lookupStatus(env.CACHE, now));
+        const getQuote = mock ? async (s: string) => mockLookupQuote(s, now) : undefined;
+        return json(await lookup(deps, raw, { force: url.searchParams.get('refresh') === '1', getQuote }));
+      }
+
+      // Sugerencias del buscador (SEC, públicas): para todos.
+      case '/api/search': {
+        const q = searchQuery(url.searchParams.get('q') ?? '');
+        return json({ q, results: mock ? mockSearch(q) : await suggest(q) });
+      }
+
       case '/api/history': {
-        const symbol = (url.searchParams.get('symbol') ?? '').trim().toUpperCase();
-        if (!(await knownSymbols(env.CACHE)).includes(symbol)) {
-          throw new ApiError('bad_request', 400, 'Solo se piden historiales de tus listas (la de seguimiento y la diaria).');
-        }
+        const symbol = await listedOrLooked(env.CACHE, url, now, 'historiales');
         const range = rangeParam(url);
         const r = mock ? mockHistory(symbol, now, range) : await history(deps, symbol, range);
         // Indicadores, velas y volumen pesan más que los cierres: van solo si se piden (la ficha sí, los minigráficos no).
@@ -275,31 +290,23 @@ async function route(req: Request, env: Env, url: URL, role: Role, email: string
       case '/api/resumen':
         return json(mock ? mockSummary(now) : await readSummaries(env.CACHE));
 
-      // Titulares de un símbolo de la lista (la lista es del dueño).
+      // Titulares de un símbolo de la lista (la lista es del dueño) o abierto con el buscador.
       case '/api/news/symbol': {
-        const symbol = (url.searchParams.get('symbol') ?? '').trim().toUpperCase();
-        if (!(await knownSymbols(env.CACHE)).includes(symbol)) {
-          throw new ApiError('bad_request', 400, 'Solo hay noticias por acción para los símbolos de tus listas.');
-        }
-        const items = mock ? mockSymbolNews(symbol, now) : await symbolNews(deps, symbol, await quoteName(env.CACHE, symbol));
+        const symbol = await listedOrLooked(env.CACHE, url, now, 'titulares por acción');
+        const name = (await quoteName(env.CACHE, symbol)) ?? (await lookedUp(env.CACHE, symbol, now))?.quote?.name ?? null;
+        const items = mock ? mockSymbolNews(symbol, now) : await symbolNews(deps, symbol, name);
         return json({ symbol, items, fetchedAt: now.toISOString() });
       }
 
       // Datos de la empresa (Finnhub: solo el dueño, por sus términos). Sin clave responde `enabled: false`.
       case '/api/company': {
-        const symbol = (url.searchParams.get('symbol') ?? '').trim().toUpperCase();
-        if (!(await knownSymbols(env.CACHE)).includes(symbol)) {
-          throw new ApiError('bad_request', 400, 'Solo hay datos de empresa para los símbolos de tus listas.');
-        }
+        const symbol = await listedOrLooked(env.CACHE, url, now, 'datos de empresa');
         return json(mock ? mockCompany(symbol, now) : await companyData(deps, symbol));
       }
 
       // Notas por factores (A–F) frente a las comparables de Finnhub: solo el dueño.
       case '/api/company/factors': {
-        const symbol = (url.searchParams.get('symbol') ?? '').trim().toUpperCase();
-        if (!(await knownSymbols(env.CACHE)).includes(symbol)) {
-          throw new ApiError('bad_request', 400, 'Solo hay notas por factores para los símbolos de tus listas.');
-        }
+        const symbol = await listedOrLooked(env.CACHE, url, now, 'notas por factores');
         return json(mock ? mockFactors(symbol, now) : await factorGrades(deps, symbol));
       }
 
@@ -573,6 +580,7 @@ async function friendPanel(req: Request, juego: NonNullable<Env['JUEGO']>, url: 
     else if (p === '/api/compare') op = { op: 'compare', symbols: (q.get('symbols') ?? '').split(','), range: q.get('range') ?? DEFAULT_RANGE };
     else if (p === '/api/thermometer') op = { op: 'thermometer' };
     else if (p === '/api/news/symbol') op = { op: 'news', symbol: q.get('symbol') ?? '' };
+    else if (p === '/api/lookup') op = { op: 'lookup', symbol: q.get('symbol'), refresh: q.get('refresh') === '1' };
   }
   if (!op) return json({ error: { code: 'not_found', message: 'Ruta desconocida', provider: null } }, { status: 404 });
   const r = await juego.get(juego.idFromName('grupo')).panel(await playerId(email), now.toISOString(), op, mock);
@@ -583,6 +591,16 @@ async function friendPanel(req: Request, juego: NonNullable<Env['JUEGO']>, url: 
 async function usdPenOf(env: Env, mock: boolean, now: Date): Promise<{ rate: number; date: string } | null> {
   const fx = mock ? mockPeru(now).data.fx.at(-1) : (await env.CACHE.get<Stored<PeruData>>('peru', 'json'))?.data.fx.at(-1);
   return fx ? { rate: fx.sell, date: fx.date } : null;
+}
+
+/**
+ * El símbolo de `?symbol=` si está en las listas del dueño o lo abrió con el buscador (con precio, en las últimas 36 h):
+ * de los demás no se piden historiales ni datos que gasten créditos o escrituras.
+ */
+async function listedOrLooked(kv: KVNamespace, url: URL, now: Date, what: string): Promise<string> {
+  const symbol = (url.searchParams.get('symbol') ?? '').trim().toUpperCase();
+  if ((await knownSymbols(kv)).includes(symbol) || (await lookedUp(kv, symbol, now))) return symbol;
+  throw new ApiError('bad_request', 400, `Solo hay ${what} de los símbolos de tus listas y de los que abres con el buscador.`);
 }
 
 /** El correo de Access (en local, dev@localhost): identifica al jugador de los pronósticos. */

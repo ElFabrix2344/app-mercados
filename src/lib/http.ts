@@ -1,6 +1,7 @@
 export type ApiErrorCode =
   | 'not_configured' // falta la clave de ese proveedor
   | 'rate_limited' // el proveedor (o nuestro freno de créditos) pidió esperar
+  | 'daily_limit' // se llegó a un tope del día de la app (acciones nuevas del buscador): se libera al otro día
   | 'upstream_error' // el proveedor falló o no respondió
   | 'bad_response' // respuesta con forma inesperada
   | 'bad_request'

@@ -68,6 +68,12 @@ App de mercados (Cloudflare Worker + panel web + conector MCP para Claude). El R
   - Los fundamentales de la SEC (`services/fundamentals.ts`, `secx:`) van aparte de `sec:` a propósito: el P/S y `valorar_ps` cargan varias empresas por pedido, y juntos pasarían de las 50 consultas del plan gratis.
   - Algunas empresas informan su deuda con etiquetas propias (Buenaventura desde 2019): por eso la deuda neta del DCF se puede escribir a mano.
   - «Analizar con Claude» es un enlace con la pregunta escrita, igual que «Profundiza en Claude». **El Worker no llama a Claude.** La pregunta siempre termina pidiendo que no recomiende comprar o vender.
+- **Buscador de acciones** (`services/lookup.ts`, 5 nov; el usuario pidió «una sección para poder buscar acciones específicas» y eligió la ficha completa, «en la barra de arriba»). Va a la derecha de las pestañas, porque en la fila del logo no entraba. Reglas:
+  - **Las sugerencias son de la SEC** (públicas, para todos) y no se guardan en KV: cada búsqueda sería una escritura. Solo la memoria de cada instancia, 10 minutos.
+  - **Abrir una acción fuera de las listas gasta créditos** (precio e historial, unos 2): solo con la clave de Rueda para el dueño, o con la del amigo en su parte del Durable Object. Nunca con la de Rueda para un amigo.
+  - **Tope de 20 nuevas al día por persona** (`LOOKUP_DAILY_MAX`) y registro `buscadas`. Fuera de las listas, historial, titulares y Finnhub solo se piden de las anotadas con precio (`lookedUp`). No saques ese control: es lo que impide gastar créditos y escrituras con cualquier símbolo.
+  - **Si Twelve Data no tiene el símbolo**, se anota sin precio y no se pide su historial. Si el pedido falla (límite por minuto, freno del día), no se anota.
+  - **Comparar sigue siendo con las listas.**
 - **Lo que espera el mercado** (`lib/polymarket.ts`, `services/polymarket.ts`, 4 nov; el usuario preguntó por «Polymarket o Kalshi»). Eligió tarjetas con el diseño de Rueda más el widget oficial, y los temas «Bolsa y empresas» y «Política y mundo». El dueño fija eventos pegando su enlace. Reglas:
   - **Kalshi, no:** sus términos de datos solo permiten uso personal y no comercial, y prohíben guardar en caché y usar con IA (también lo que genere).
   - **Polymarket:** sus términos dan una licencia personal y prohíben revender los datos a empresas financieras o distribuidores de datos. El usuario aceptó la zona gris de mostrarlos con diseño propio a los chicos.

@@ -8,6 +8,9 @@
 // y no en la KV porque el plan gratis le da 100.000 escrituras al día, contra 1.000 de la KV para toda la cuenta.
 //
 // No llega a los amigos lo que es solo del dueño: Finnhub (sus términos), la lista diaria y su cartera.
+//
+// El buscador (services/lookup.ts) también abre la ficha de acciones que no están en su lista, con su clave, su tope del
+// día y su registro de buscadas, todo en esta misma caché.
 
 import { ApiError } from '../lib/http';
 import { mockSymbolNews } from '../mock';
@@ -27,6 +30,7 @@ import {
   type CacheStore,
   type Range,
 } from '../services/market';
+import { lookedUp, lookup, lookupStatus } from '../services/lookup';
 import { quoteName, symbolNews } from '../services/news';
 import { thermometer } from '../services/thermometer';
 import type { GameStorage } from './juego';
@@ -43,7 +47,9 @@ export type PanelRequest =
   | { op: 'history'; symbol: string; range: string; ind: boolean }
   | { op: 'compare'; symbols: string[]; range: string }
   | { op: 'thermometer' }
-  | { op: 'news'; symbol: string };
+  | { op: 'news'; symbol: string }
+  /** Sin símbolo: cuántas acciones nuevas abrió hoy. Con símbolo: abre su ficha (buscador). */
+  | { op: 'lookup'; symbol: string | null; refresh: boolean };
 
 /** La respuesta ya en JSON y con su código: así cruza el RPC tal cual y el Worker la devuelve sin tocarla. */
 export interface PanelReply {
@@ -93,10 +99,12 @@ export class PanelAmigo {
     const kv = panelStore(this.store, pid);
     const d = { kv, now, twelveKey: key, fetch: this.opts.fetch };
     const list = () => getWatchlist(kv);
-    /** Historiales, comparaciones y noticias: solo de los símbolos de su lista. */
+    /** Historiales y noticias: de los símbolos de su lista y de los que abrió con el buscador. */
     const inList = async (raw: string): Promise<string> => {
       const symbol = raw.trim().toUpperCase();
-      if (!(await list()).includes(symbol)) throw new ApiError('bad_request', 400, 'Eso solo se puede ver de los símbolos de tu lista de seguimiento.');
+      if (!(await list()).includes(symbol) && !(await lookedUp(kv, symbol, now))) {
+        throw new ApiError('bad_request', 400, 'Eso solo se puede ver de los símbolos de tu lista de seguimiento y de los que abres con el buscador.');
+      }
       return symbol;
     };
     switch (req.op) {
@@ -129,9 +137,12 @@ export class PanelAmigo {
       case 'news': {
         // Titulares públicos (RSS), sin guardar nada: el nombre de la empresa sale de sus propios precios.
         const symbol = await inList(req.symbol);
-        const items = this.opts.mock ? mockSymbolNews(symbol, now) : await symbolNews(d, symbol, await quoteName(kv, symbol));
+        const name = (await quoteName(kv, symbol)) ?? (await lookedUp(kv, symbol, now))?.quote?.name ?? null;
+        const items = this.opts.mock ? mockSymbolNews(symbol, now) : await symbolNews(d, symbol, name);
         return { symbol, items, fetchedAt: now.toISOString() };
       }
+      case 'lookup':
+        return req.symbol == null ? lookupStatus(kv, now) : lookup(d, req.symbol, { force: req.refresh });
     }
   }
 }

@@ -41,11 +41,33 @@
     </div>
   </header>
 
-  <!-- Hojas: el panel de mercados y el juego del grupo. La hoja va en la dirección (#juego) y se recuerda en el equipo. -->
-  <nav class="sheets" id="sheets" role="tablist" aria-label="Hojas de Rueda">
-    <button type="button" role="tab" id="tab-mercados" aria-controls="cols" aria-selected="true">Mercados</button>
-    <button type="button" role="tab" id="tab-juego" aria-controls="game" aria-selected="false" tabindex="-1">Juego<span class="sheet-badge" id="game-badge" hidden></span></button>
-  </nav>
+  <!-- Hojas (el panel de mercados y el juego del grupo) y el buscador. La hoja va en la dirección (#juego) y se recuerda en el equipo. -->
+  <div class="sheetbar">
+    <nav class="sheets" id="sheets" role="tablist" aria-label="Hojas de Rueda">
+      <button type="button" role="tab" id="tab-mercados" aria-controls="cols" aria-selected="true">Mercados</button>
+      <button type="button" role="tab" id="tab-juego" aria-controls="game" aria-selected="false" tabindex="-1">Juego<span class="sheet-badge" id="game-badge" hidden></span></button>
+    </nav>
+    <!-- Buscador de acciones (5 nov), a la derecha de las hojas: sugerencias de la SEC por nombre o símbolo; abre la ficha
+         de cualquiera, también fuera de tus listas. En el celular es una lupa que abre el buscador arriba, a todo el ancho. -->
+    <div class="search" id="search">
+      <button type="button" class="search-toggle" id="search-toggle" aria-label="Buscar acciones" aria-expanded="false" aria-controls="search-box">
+        <svg class="search-ico" viewBox="0 0 24 24" aria-hidden="true"><circle cx="10.5" cy="10.5" r="6.5"/><path d="m15.5 15.5 5 5"/></svg>
+      </button>
+      <div class="search-box" id="search-box" role="search">
+        <svg class="search-ico" viewBox="0 0 24 24" aria-hidden="true"><circle cx="10.5" cy="10.5" r="6.5"/><path d="m15.5 15.5 5 5"/></svg>
+        <input id="search-input" type="text" role="combobox" aria-label="Buscar acciones por nombre o símbolo" aria-autocomplete="list" aria-expanded="false" aria-controls="search-list" autocomplete="off" autocapitalize="off" spellcheck="false" enterkeyhint="search" maxlength="40" placeholder="Buscar: Apple, NVDA, BTC/USD…">
+        <kbd class="search-kbd" title="Atajo: tecla /" aria-hidden="true">/</kbd>
+        <button type="button" class="search-close" id="search-close" aria-label="Cerrar el buscador">×</button>
+        <div class="search-pop" id="search-pop" hidden>
+          <p class="search-head" id="search-head" hidden></p>
+          <ul class="search-list" id="search-list" role="listbox" aria-label="Acciones"></ul>
+          <p class="search-msg" id="search-msg" hidden></p>
+          <p class="search-foot" id="search-foot" hidden></p>
+        </div>
+        <span class="vh" id="search-live" aria-live="polite"></span>
+      </div>
+    </div>
+  </div>
 
   <!-- Aviso de la liga de acciones en «Mercados», para quien todavía no entró (se cierra con × y no vuelve). -->
   <div class="teaser" id="lg-teaser" hidden>
@@ -87,6 +109,7 @@
           <li><strong>Liga de acciones:</strong> en la hoja «Juego», arriba, arma una cartera con acciones de verdad y compite con el grupo. Es la misma clave.</li>
           <li><strong>Más juegos:</strong> el gráfico del día, 2/3 del promedio y los pronósticos de tasas, inflación y dólar.</li>
           <li><strong>Mi cuenta Hapi:</strong> importa tu estado de cuenta en PDF o anota tus operaciones. Se cifra con tu frase: nadie más la puede ver, tampoco el dueño de la app.</li>
+          <li><strong>Buscador:</strong> arriba, cualquier acción por nombre o símbolo. Sin clave ves sus resultados de la SEC; con ella, su ficha completa.</li>
           <li><strong>Resultados de empresas y P/S:</strong> ingresos y utilidades de los últimos años de cualquier acción que reporte a la SEC, y un comparador por P/S (precio / ventas) con empresas parecidas.</li>
           <li><strong>Materias primas:</strong> cobre, oro, plata, zinc y petróleo.</li>
           <li><strong>Lo que espera el mercado:</strong> las probabilidades de Polymarket sobre empresas, la Fed y eventos del mundo.</li>
@@ -255,12 +278,19 @@
               <p>Arrastra sobre el gráfico para ver la variación entre dos días. En el celular, con dos dedos; con el teclado, Mayús + flechas.</p>
               <p>Las medias móviles, las bandas de Bollinger, el RSI y el MACD se calculan con 5 años de historia. Un RSI sobre 70 suele leerse como sobrecompra; bajo 30, como sobreventa. El MACD es la media exponencial de 12 días menos la de 26; cuando cruza su señal (la media de 9 días del MACD) suele leerse como cambio de impulso.</p>
               <p>Velas: cada una muestra la apertura, el máximo, el mínimo y el cierre del día. Hueca si cerró más arriba de lo que abrió; rellena si cerró más abajo. Se ven hasta 1 año.</p>
+              <p>Con el buscador de arriba abres la ficha de cualquier acción, aunque no esté en tus listas: cada una nueva usa unos 2 créditos (su precio y 5 años de historia) y se pueden abrir 20 nuevas al día. Con «Agregar a mi lista» queda en tu lista de seguimiento.</p>
               <p class="owner-only">Los datos de la empresa vienen de Finnhub, solo los ves tú y se guardan 24 horas. El PER y el BPA son de los últimos 12 meses; los montos van en la moneda en que reporta la empresa.</p>
               <p>Los resultados anuales vienen de los informes que la empresa presenta a la SEC (10-K o 20-F): son públicos y se guardan una semana.</p>
               <p>El resumen de arriba describe lo que ya está en la ficha (tendencia, riesgo, valoración y fundamentales): no predice. «Ratios y DCF» usa los informes de la SEC y tu precio; el DCF es simple y sus supuestos se cambian a mano. Nada de esto es una recomendación de inversión.</p>
             </div>
           </details>
           <button type="button" id="d-close">Cerrar</button>
+        </div>
+        <!-- Acción abierta con el buscador (no está en tus listas): de dónde salió y cómo sumarla. -->
+        <div class="d-look" id="d-look" hidden>
+          <span class="d-look-text" id="d-look-text"></span>
+          <button type="button" id="d-add" hidden>+ Agregar a mi lista</button>
+          <button type="button" id="d-retry" hidden>Reintentar</button>
         </div>
         <!-- Resumen rápido (4 nov): tendencia, riesgo, valoración y fundamentales en una mirada, con lo que ya trae la ficha. -->
         <div class="d-quick" id="d-quick" hidden></div>

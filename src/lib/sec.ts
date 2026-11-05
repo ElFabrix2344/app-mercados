@@ -25,22 +25,84 @@ async function secJson(url: string, f: typeof fetch): Promise<unknown | null> {
 /** La SEC escribe las clases de acciones con guion (BRK-B); Twelve Data, con punto (BRK.B). */
 export const secTicker = (symbol: string) => symbol.trim().toUpperCase().replace(/\./g, '-');
 
+/** Twelve Data escribe las clases con punto: BRK-B de la SEC es BRK.B. */
+export const fromSecTicker = (ticker: string) => ticker.trim().toUpperCase().replace(/-/g, '.');
+
+/** «SOUTHERN COPPER CORP/ (SCCO)» → «SOUTHERN COPPER CORP»; también sin el estado o el «ADR» del final («CORP /DE/»). */
+export const entityName = (entity: string, fallback: string) =>
+  entity
+    .replace(/\s*\([^)]*\)\s*$/, '')
+    .replace(/\s*\/(?:[A-Z]{2,4}\/?)?$/, '')
+    .trim() || fallback;
+
+interface SearchBody {
+  hits?: { hits?: { _id?: string; _source?: { tickers?: string | null; entity?: string | null } }[] };
+}
+
+const searchIndex = (q: string, f: typeof fetch) =>
+  secJson(`https://efts.sec.gov/LATEST/search-index?keysTyped=${encodeURIComponent(q)}`, f) as Promise<SearchBody | null>;
+
 /** Código CIK y nombre de la empresa con ese ticker exacto; null si no reporta a la SEC (ETF, fondos, cripto…). */
 export async function findCik(symbol: string, f: typeof fetch = fetch): Promise<{ cik: number; name: string } | null> {
   const ticker = secTicker(symbol);
-  const body = (await secJson(`https://efts.sec.gov/LATEST/search-index?keysTyped=${encodeURIComponent(ticker)}`, f)) as {
-    hits?: { hits?: { _id?: string; _source?: { tickers?: string; entity?: string } }[] };
-  } | null;
+  const body = await searchIndex(ticker, f);
   for (const hit of body?.hits?.hits ?? []) {
     const tickers = (hit._source?.tickers ?? '').toUpperCase().split(/[\s,]+/);
     const cik = Number(hit._id);
-    if (tickers.includes(ticker) && Number.isInteger(cik) && cik > 0) {
-      // «SOUTHERN COPPER CORP/ (SCCO)» → «SOUTHERN COPPER CORP»
-      const name = (hit._source?.entity ?? ticker).replace(/\s*\([^)]*\)\s*$/, '').replace(/\/$/, '').trim();
-      return { cik, name };
-    }
+    if (tickers.includes(ticker) && Number.isInteger(cik) && cik > 0) return { cik, name: entityName(hit._source?.entity ?? '', ticker) };
   }
   return null;
+}
+
+export interface SecMatch {
+  /** Como lo escribe Twelve Data (BRK.B). */
+  symbol: string;
+  name: string;
+  cik: number;
+}
+
+/** Lo que se puede escribir en el buscador: nombres y símbolos (Coca Cola, BRK.B, AT&T). */
+export const SEARCH_RE = /^[\p{L}\p{N}][\p{L}\p{N} .,&'/-]{0,39}$/u;
+const TICKER_RE = /^[A-Z0-9]{1,6}(-[A-Z]{1,2})?$/;
+/** Preferentes, warrants, unidades y derechos (BAC-PL, VAL-WT, SCE-PN): el plan gratis de Twelve Data no los trae. */
+const NOT_COMMON = /-(P[A-Z]?|W[ST]?|U|R)$/;
+
+/**
+ * Empresas del buscador de EDGAR que cotizan (las que traen ticker), en su orden, hasta `max`. De cada una va su ticker
+ * principal (el primero que lista la SEC, o el que se escribió si es otro de los suyos, como GOOGL) y sus otras clases
+ * de acciones (BRK.A). Las preferentes, warrants y unidades no van, salvo que se escriban tal cual: llenarían la lista.
+ */
+export function parseSearch(body: SearchBody | null, typed: string, max = 8): SecMatch[] {
+  const exact = secTicker(typed);
+  const out: SecMatch[] = [];
+  for (const hit of body?.hits?.hits ?? []) {
+    const cik = Number(hit._id);
+    const tickers = (hit._source?.tickers ?? '').toUpperCase().split(/[\s,]+/).filter((t) => TICKER_RE.test(t));
+    if (!Number.isInteger(cik) || cik <= 0 || !tickers.length) continue;
+    const main = tickers.includes(exact) ? exact : tickers[0]!;
+    if (main !== exact && NOT_COMMON.test(main)) continue;
+    const base = main.replace(/-[A-Z]$/, '');
+    const classes = tickers.filter((t) => t !== main && t.startsWith(`${base}-`) && /^-[A-OQSTV-Z]$/.test(t.slice(base.length)));
+    const name = entityName(hit._source?.entity ?? '', main);
+    for (const t of [main, ...classes]) {
+      const symbol = fromSecTicker(t);
+      if (out.length < max && !out.some((m) => m.symbol === symbol)) out.push({ symbol, name, cik });
+    }
+  }
+  return out;
+}
+
+/**
+ * Buscador de EDGAR por nombre o ticker: «southern» encuentra SCCO y «credicorp», BAP. Dos arreglos para que encuentre
+ * más: los tickers con punto se buscan con guion (BRK.B → BRK-B) y, si un nombre con espacios no encuentra nada, se
+ * prueba junto («mercado libre» → MERCADOLIBRE).
+ */
+export async function searchCompanies(q: string, f: typeof fetch = fetch, max = 8): Promise<SecMatch[]> {
+  const typed = q.trim().replace(/\s+/g, ' ');
+  const query = /^[A-Za-z0-9]{1,6}\.[A-Za-z]{1,2}$/.test(typed) ? secTicker(typed) : typed;
+  const found = parseSearch(await searchIndex(query, f), typed, max);
+  if (found.length || !query.includes(' ')) return found;
+  return parseSearch(await searchIndex(query.replace(/ /g, ''), f), typed, max);
 }
 
 export interface AnnualValue {
