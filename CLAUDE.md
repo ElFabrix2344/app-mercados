@@ -42,14 +42,12 @@ App de mercados (Cloudflare Worker + panel web + conector MCP para Claude). El R
   - **Liga:** cada orden se cumple con el cierre del primer día hábil después de darla, para que no se pueda comprar a precio de ayer sabiendo lo de hoy.
   - **2/3 del promedio:** no muestra lo de los demás antes del cierre.
   - **Gráfico del día:** no manda la respuesta antes de que contesten. La serie del día se guarda la primera vez y no cambia aunque cambien los datos.
-- **Mercado de predicciones** (`game/juego.ts`, `game/juego-do.ts`, `lib/lmsr.ts`): preguntas de Sí o No con fichas, en un Durable Object con SQLite (gratis). Es una sola instancia («grupo»), que atiende los pedidos de a uno. Reglas:
-  - **Sin plata real ni premios**: con plata sería una apuesta, que en el Perú necesita licencia. Las fichas no se compran ni se cambian por nada.
-  - **Solo hechos públicos**, nada sobre la vida privada de nadie. Las preguntas de los amigos las aprueba el dueño, y no se muestra lo que compró cada uno (solo el total en el ranking).
-  - **El ranking valora las acciones a lo que daría venderlas hoy, no al último precio**: con el precio, comprar mucho de un lado inflaría el total.
-  - **El jugador y el nombre son los del juego de pronósticos** (`playerId`, `readAlias`).
-  - **Las preguntas ligadas a un dato** se resuelven con `pron-results` en el siguiente pedido; no hay tarea programada.
-  - **Lo que cruza el RPC** son objetos (no tuplas, que pierden el tipo) y los errores vuelven como datos (`reply`).
-  - **Las pruebas** usan un almacenamiento en memoria (`memoryStorage` en `test/helpers.ts`), y el stub de `cloudflare:workers` trae `DurableObject`.
+- **Liga de acciones, lo principal de «Juego»** (2 nov, pedido del usuario: «tiene que ser la atracción principal» y «el tutorial aparte para que se pueda meter la gente»):
+  - Va arriba y a todo el ancho (`.hero`). El tutorial es un `<dialog>` paso a paso (`openLeagueTutorial`), y el enlace `/#liga` lo abre. No vuelvas a meter los pasos dentro de la tarjeta.
+  - **Diseño «Carrera»** (4 nov; el usuario: «puede ser más llamativo» y «que la UI sea más intuitiva»; se le mostraron tres maquetas y pidió publicar la recomendada): titular con quién lidera y tu puesto, barra de cierres de la temporada, gráfico de la carrera (tú en cian, quien lidera en blanco, los demás en gris), ranking, campeones, y abajo tu cartera y «Comprar» en dos pasos. La carrera se dibuja al ancho de su sección (`drawRace`) y se rehace al cambiar el tamaño de la ventana.
+  - **Temporadas de quincena** (4 nov, idea del usuario): del 1 al 15 y del 16 a fin de mes, en fechas de sesión de NY (`seasonOf`). La cartera no se reinicia. El resultado de cada temporada lo guarda la tarea programada (`closeSeasons`, claves `ls:`) y no se recalcula después: si cambias cómo se calcula el rendimiento, las temporadas ya guardadas quedan como estaban.
+  - **El mercado de predicciones se quitó** el mismo 2 nov («puede ser droppeado»). No lo vuelvas a agregar sin que lo pida.
+  - Sin plata real ni premios en ningún juego: con plata sería una apuesta, que en el Perú necesita licencia.
 - El calendario económico (`lib/calendar.ts`) se carga a mano, como los feriados de la NYSE: cada fecha se verifica en su fuente oficial. Sin fechas, el panel oculta la sección y el conector no ofrece `calendario`.
 - **Resumen del día** (`services/summary.ts`): lo publica una tarea programada del dueño, en la nube de Anthropic y con su plan Max, por la herramienta `publicar_resumen` del conector. **El Worker no llama a ninguna IA ni guarda claves de Anthropic:** los términos de Claude no permiten usar la cuenta de Max desde un programa propio, y la API se cobra aparte.
   - Lo ven los amigos, así que la tarea solo usa titulares y datos públicos, nunca precios de Twelve Data ni datos de Finnhub. Por eso pide `calendario` con `publico: true`: sin ese parámetro el calendario del dueño trae los resultados de empresas de Finnhub, y en la primera prueba se coló uno.

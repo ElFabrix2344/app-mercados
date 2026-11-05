@@ -45,6 +45,13 @@
     <button type="button" role="tab" id="tab-juego" aria-controls="game" aria-selected="false" tabindex="-1">Juego<span class="sheet-badge" id="game-badge" hidden></span></button>
   </nav>
 
+  <!-- Aviso de la liga de acciones en «Mercados», para quien todavía no entró (se cierra con × y no vuelve). -->
+  <div class="teaser" id="lg-teaser" hidden>
+    <p><strong>Nuevo: Liga de acciones.</strong> Compite con el grupo con una cartera de acciones de verdad: cada quincena, una temporada.</p>
+    <button type="button" class="cta" id="lg-teaser-go">Entrar</button>
+    <button type="button" class="teaser-x" id="lg-teaser-x" aria-label="Cerrar el aviso">×</button>
+  </div>
+
   <!-- Instalar Rueda como app, sin tienda de apps: los pasos según el equipo los pone app.js. -->
   <section class="screen install" id="install-panel" aria-labelledby="install-h" tabindex="-1" hidden>
     <div class="screen-head">
@@ -74,7 +81,8 @@
           <button type="button" id="welcome-close">Entendido</button>
         </div>
         <ul class="welcome">
-          <li><strong>Juego:</strong> en la hoja «Juego», arriba, elige tu nombre y pronostica las tasas, la inflación y el dólar. Los puntos y el ranking salen solos cuando se publica cada dato.</li>
+          <li><strong>Liga de acciones:</strong> en la hoja «Juego», arriba, arma una cartera con acciones de verdad y compite con el grupo. Entrar toma 2 minutos.</li>
+          <li><strong>Más juegos:</strong> el gráfico del día, 2/3 del promedio y los pronósticos de tasas, inflación y dólar.</li>
           <li><strong>Mi cuenta Hapi:</strong> importa tu estado de cuenta en PDF o anota tus operaciones. Se cifra con tu frase: nadie más la puede ver, tampoco el dueño de la app.</li>
           <li><strong>Resultados de empresas:</strong> ingresos y utilidades de los últimos años de cualquier acción que reporte a la SEC.</li>
           <li><strong>Perú y EE. UU.:</strong> dólar, tasas, inflación, cobre, oro, BVL, bonos y la curva del Tesoro, con el calendario de anuncios y las noticias.</li>
@@ -475,14 +483,32 @@
     </aside>
   </div>
 
-  <!-- Hoja «Juego»: lo que se juega en grupo, sin plata y con datos públicos (juegan el dueño y los amigos).
-       Los pronósticos a lo ancho y, al costado, el ranking y lo ya resuelto; en el celular, uno debajo del otro. -->
+  <!-- Hoja «Juego»: lo que se juega en grupo, sin plata (juegan el dueño y los amigos). Arriba y a todo el ancho, la
+       liga de acciones, que es lo principal; después, los demás juegos y, al costado, el ranking de pronósticos. -->
   <div class="game" id="game" role="tabpanel" aria-labelledby="tab-juego">
+    <!-- Liga de acciones (src/game/acciones.ts): carteras de verdad con la clave gratis de Twelve Data de cada uno. -->
+    <section class="screen hero" id="league" aria-labelledby="lg-h">
+      <div class="screen-head">
+        <h2 id="lg-h">Liga de acciones</h2>
+        <span class="src" id="lg-month"></span>
+        <details class="help">
+          <summary aria-label="Cómo se juega la liga de acciones">?</summary>
+          <div class="help-body">
+            <p>Simula una cartera con acciones y ETF de verdad de EE. UU. (las mismas que hay en Hapi) y compite con el grupo. Empiezas con US$ 10 000 de mentira.</p>
+            <p>Las órdenes se cumplen al cierre de Nueva York (las 16:00 allá; en Lima, las 16:00 de noviembre a marzo y las 15:00 el resto del año): si la das antes, con el de hoy; si no, con el siguiente. Así es el mismo precio para todos.</p>
+            <p>Cada quincena es una temporada (del 1 al 15 y del 16 a fin de mes) y gana quien más rinda en esos días. Tu cartera sigue igual de una temporada a otra. Al cerrar, el podio queda en «Campeones» y el ganador suma un trofeo.</p>
+            <p>Los precios salen de tu propia clave gratis de Twelve Data, porque la licencia no permite compartir los de Rueda: por eso entre ustedes solo se ven porcentajes y qué acciones tiene cada uno.</p>
+          </div>
+        </details>
+      </div>
+      <div id="lg-body"><p class="muted">Cargando…</p></div>
+    </section>
+
     <div class="game-main">
     <!-- El nombre con que juegas: el mismo en todos los juegos de la hoja. -->
     <div class="game-me" id="fc-me"></div>
 
-    <!-- Los juegos que no son de pronosticar (src/game/minijuegos.ts): uno diario y uno semanal, lado a lado. -->
+    <!-- Los otros juegos (src/game/minijuegos.ts): uno diario y uno semanal, lado a lado. -->
     <div class="game-row">
       <section class="screen" id="chart-day" aria-labelledby="gd-h">
         <div class="screen-head">
@@ -516,76 +542,6 @@
       </section>
     </div>
 
-    <section class="screen" id="league" aria-labelledby="lg-h">
-      <div class="screen-head">
-        <h2 id="lg-h">Liga de acciones</h2>
-        <span class="src">Mensual</span>
-        <details class="help">
-          <summary aria-label="Cómo se juega la liga de acciones">?</summary>
-          <div class="help-body">
-            <p>Simula una cartera con acciones y ETF de verdad de EE. UU. (las mismas que hay en Hapi) y compite con el grupo. Empiezas con US$ 10 000 de mentira.</p>
-            <p>Las órdenes se cumplen al cierre de Nueva York (las 16:00 allá; en Lima, las 16:00 de noviembre a marzo y las 15:00 el resto del año): si la das antes, con el de hoy; si no, con el siguiente. Así es el mismo precio para todos.</p>
-            <p>Gana el mes quien más rinda en el mes. Los precios salen de tu propia clave gratis de Twelve Data, porque la licencia no permite compartir los de Rueda: por eso entre ustedes solo se ven porcentajes y qué acciones tiene cada uno.</p>
-          </div>
-        </details>
-      </div>
-      <div id="lg-body"><p class="muted">Cargando…</p></div>
-    </section>
-
-    <!-- Mercado de predicciones: preguntas de Sí o No con fichas (game/juego.ts, en un Durable Object). -->
-    <section class="screen" id="predict" aria-labelledby="pr-h">
-      <div class="screen-head">
-        <h2 id="pr-h">Mercado de predicciones</h2>
-        <span class="src">Fichas, sin plata</span>
-        <details class="help">
-          <summary aria-label="Cómo se juega en el mercado">?</summary>
-          <div class="help-body">
-            <p>Cada pregunta es de Sí o No. Su precio, de 1 a 99 fichas, es la probabilidad que le da el grupo: si compras Sí a 62 y gana el Sí, cada acción te paga 100.</p>
-            <p>El precio se mueve con cada compra y puedes vender antes del cierre. Tus fichas totales son las que tienes más lo que recibirías si vendieras hoy.</p>
-            <p>Empiezas con 1.000 fichas y recibes 100 más cada lunes. No son plata ni se cambian por nada.</p>
-            <p>Cualquiera propone preguntas y el dueño de la app las aprueba. Solo hechos públicos: nada sobre la vida privada de nadie. Las ligadas a un dato del juego de pronósticos se resuelven solas; las demás, el dueño, con el enlace a la fuente.</p>
-          </div>
-        </details>
-      </div>
-      <div class="pr-me">
-        <p class="hint" id="pr-chips"></p>
-        <button type="button" id="pr-new" aria-controls="pr-form" aria-expanded="false">Proponer pregunta</button>
-      </div>
-      <form id="pr-form" class="wl-form pr-form" hidden>
-        <label for="pr-q">Pregunta de Sí o No</label>
-        <input id="pr-q" maxlength="140" autocomplete="off" placeholder="¿Gana la lista A el centro de estudiantes?" required>
-        <div class="pr-row">
-          <label>Categoría
-            <select id="pr-cat">
-              <option value="universidad">Universidad</option>
-              <option value="peru">Perú</option>
-              <option value="mundo">Mundo</option>
-              <option value="economia">Economía</option>
-            </select>
-          </label>
-          <label class="pr-manual">Cierra el <input id="pr-close" type="date"></label>
-        </div>
-        <div class="owner-only pr-auto">
-          <label for="pr-auto">Que se resuelva sola con un dato del juego de pronósticos</label>
-          <div class="pr-row"><select id="pr-auto"></select><span id="pr-cond"></span></div>
-        </div>
-        <label class="pr-manual" for="pr-how">Cómo se resuelve: qué tiene que pasar para que sea Sí, y dónde se verá</label>
-        <textarea class="pr-manual" id="pr-how" maxlength="300" rows="2" placeholder="Sí si el comité electoral la proclama ganadora."></textarea>
-        <p class="hint friend-only">Solo hechos públicos: nada sobre la vida privada de nadie. El dueño de la app la revisa antes de abrirla.</p>
-        <div class="wl-row">
-          <button type="submit" id="pr-send">Proponer</button>
-          <button type="button" id="pr-cancel">Cancelar</button>
-        </div>
-        <p class="err" id="pr-err" hidden></p>
-      </form>
-      <div id="pr-proposals"></div>
-      <div class="fc-grid" id="pr-open"><p class="muted">Cargando…</p></div>
-      <details class="pr-done" id="pr-done" hidden>
-        <summary id="pr-done-sum">Resueltas</summary>
-        <div id="pr-done-list"></div>
-      </details>
-    </section>
-
     <section class="screen" id="forecasts" aria-labelledby="fc-h">
       <div class="screen-head">
         <h2 id="fc-h">Pronósticos</h2>
@@ -605,15 +561,8 @@
 
     <div class="game-side">
       <section class="screen" id="ranking" aria-labelledby="rk-h">
-        <div class="screen-head">
-          <h2 id="rk-h">Ranking</h2>
-          <div class="ranges" role="group" aria-label="Qué ranking ver">
-            <button type="button" id="rk-fichas" aria-pressed="true">Fichas</button>
-            <button type="button" id="rk-pron" aria-pressed="false">Pronósticos</button>
-          </div>
-        </div>
-        <div id="pr-rank"><p class="muted">Cargando…</p></div>
-        <div id="fc-rank" hidden><p class="muted">Cargando…</p></div>
+        <div class="screen-head"><h2 id="rk-h">Ranking de pronósticos</h2></div>
+        <div id="fc-rank"><p class="muted">Cargando…</p></div>
       </section>
 
       <section class="screen" id="fc-history" aria-labelledby="fh-h">
@@ -622,6 +571,9 @@
       </section>
     </div>
   </div>
+
+  <!-- Tutorial para entrar a la liga, paso a paso (lo arma app.js). Se abre con «Entrar a la liga» o con /#liga. -->
+  <dialog class="tutorial" id="lg-tutorial" aria-labelledby="lt-h"></dialog>
 
   <footer class="foot">
     <p>Datos informativos; no es asesoría de inversión. Fuentes: BCRP, FRED® (Junta de la Reserva Federal y BLS), SEC EDGAR<span class="owner-only"> y Twelve Data</span>. <a href="/terminos.html">Términos y privacidad</a>.</p>

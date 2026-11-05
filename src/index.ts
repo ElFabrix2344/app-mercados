@@ -31,12 +31,12 @@ import { factorGrades } from './services/factors';
 import { financials } from './services/financials';
 import { companyCalendar } from './services/earnings';
 import { EOD_NEW_NOW, eodView, knownSymbols, refreshEod, validateEodList } from './services/eod';
-import { forecastView, playerId, readAlias, resolveForecasts, RESULTS_KEY, setAlias, submitForecast, type Results, type Store } from './services/forecasts';
+import { forecastView, playerId, readAlias, resolveForecasts, setAlias, submitForecast, type Store } from './services/forecasts';
 import type { Reply } from './game/juego';
 import type { GamesView } from './game/minijuegos';
 import { gamesInput } from './game/series';
 
-// Mercado de predicciones de la hoja «Juego»: Durable Object (wrangler.jsonc → durable_objects).
+// Los juegos de la hoja «Juego»: Durable Object (wrangler.jsonc → durable_objects).
 export { JuegoDO } from './game/juego-do';
 import { deleteStore, hapiMarket, readStore, saveStore } from './services/hapi';
 import { marketNews, quoteName, symbolNews } from './services/news';
@@ -161,8 +161,6 @@ async function route(req: Request, env: Env, url: URL, role: Role, email: string
   if ((p === '/api/people' || p.startsWith('/api/people/')) && role !== 'owner') {
     throw new ApiError('forbidden', 403, 'Solo el dueño de la app decide quién entra.');
   }
-  // Mercado de predicciones: juegan el dueño y los amigos (aprobar y resolver, solo el dueño: lo revisa el juego).
-  if (p === '/api/predictions' || p.startsWith('/api/predictions/')) return predictions(req, env, url, role, email, now, mock);
   if (p === '/api/games' || p.startsWith('/api/games/')) return games(req, env, url, role, email, deps, mock);
 
   if (req.method === 'GET') {
@@ -432,38 +430,6 @@ async function connectorIdentity(url: URL, env: Env, role: Role, email: string |
   target.searchParams.set('state', state);
   target.searchParams.set('identidad', await signPayload({ state, email, exp: Date.now() + 2 * 60_000 }, env.LOGIN_LINK_SECRET));
   return new Response(null, { status: 302, headers: { Location: target.toString(), 'Cache-Control': 'no-store' } });
-}
-
-/**
- * Mercado de predicciones (hoja «Juego»). GET: lo que ve quien pide. POST /api/predictions propone una pregunta;
- * /trade compra o vende; /review aprueba o rechaza y /resolve da el resultado (estas dos, solo el dueño). Todo lo
- * atiende el Durable Object, de a un pedido; cada respuesta trae el mercado actualizado. El jugador y su nombre son
- * los del juego de pronósticos, y sus resultados resuelven solas las preguntas ligadas a un dato.
- */
-async function predictions(req: Request, env: Env, url: URL, role: Role, email: string | null, now: Date, mock: boolean): Promise<Response> {
-  if (!env.JUEGO) throw new ApiError('not_configured', 503, 'El mercado de predicciones no está configurado.');
-  const p = url.pathname;
-  const pid = await playerId(needEmail(email));
-  const who = { pid, alias: await readAlias(env.CACHE, pid), owner: role === 'owner' };
-  const results: Results = { ...((await env.CACHE.get<Results>(RESULTS_KEY, 'json')) ?? {}), ...(mock ? mockForecastExtras(now).results : {}) };
-  const game = env.JUEGO.get(env.JUEGO.idFromName('grupo'));
-  const at = now.toISOString();
-  let r: Reply;
-  if (req.method === 'GET' && p === '/api/predictions') {
-    if (mock) await game.seedDemo(at);
-    r = await game.view(who, at, results);
-  } else if (req.method === 'POST' && ['/api/predictions', '/api/predictions/trade', '/api/predictions/review', '/api/predictions/resolve'].includes(p)) {
-    sameOrigin(req, url);
-    const body = await req.json().catch(() => null);
-    if (p === '/api/predictions') r = await game.propose(who, body, at, results);
-    else if (p === '/api/predictions/trade') r = await game.trade(who, body, at, results);
-    else if (p === '/api/predictions/review') r = await game.review(who, body, at, results);
-    else r = await game.resolve(who, body, at, results);
-  } else {
-    return json({ error: { code: 'not_found', message: 'Ruta desconocida', provider: null } }, { status: 404 });
-  }
-  if ('error' in r) throw new ApiError(r.error.status === 403 ? 'forbidden' : 'bad_request', r.error.status, r.error.message);
-  return json(r.view);
 }
 
 /**

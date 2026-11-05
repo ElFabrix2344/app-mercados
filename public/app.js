@@ -43,10 +43,9 @@
     fcEditName: false, // cambiando el nombre del ranking
     marketOpen: null, // ¿la bolsa de Nueva York está en sesión? (de /api/status y de cada pedido de precios)
     calendar: null, // respuesta de /api/calendar
-    predict: null, // respuesta de /api/predictions (mercado de predicciones de la hoja «Juego»)
-    games: null, // respuesta de /api/games (gráfico del día, 2/3 del promedio y liga de carteras)
+    games: null, // respuesta de /api/games (liga de acciones, gráfico del día y 2/3 del promedio)
+    openTutorial: false, // al llegar con /#liga, abrir el tutorial de la liga cuando cargue
     k23Edit: false, // cambiando el número de esta semana
-    prSuggested: null, // pregunta que sugirió el formulario (se reemplaza mientras no escribas otra)
     people: null, // respuesta de /api/people (quién puede entrar; solo el dueño)
     peopleNew: null, // correo recién agregado (se marca en la lista)
     peopleBusy: false,
@@ -699,7 +698,11 @@
   let resizeTimer = 0;
   window.addEventListener('resize', () => {
     clearTimeout(resizeTimer);
-    resizeTimer = setTimeout(redrawCharts, 150);
+    resizeTimer = setTimeout(() => {
+      redrawCharts();
+      // La carrera de la liga se dibuja al ancho de su sección (solo si se está viendo la hoja «Juego»).
+      if (raceHost?.isConnected && state.games && currentSheet() === 'juego') drawRace(raceHost, state.games.liga);
+    }, 150);
   });
 
   // ---------- lista de seguimiento ----------
@@ -3517,10 +3520,7 @@
       state.fcEditName = false;
       renderForecasts();
       // El nombre es el mismo en todos los juegos de la hoja: con él ya se puede jugar en los demás.
-      if (path === '/api/forecasts/name') {
-        loadPredict();
-        loadGames();
-      }
+      if (path === '/api/forecasts/name') loadGames();
     } catch (e) {
       errEl.textContent = e.message;
       errEl.hidden = false;
@@ -3676,341 +3676,6 @@
     );
   }
 
-  // ---------- mercado de predicciones ----------
-  // Preguntas de Sí o No con fichas (servidor: src/game/juego.ts). El precio es la probabilidad que le da el grupo. La
-  // compra se calcula aquí antes de mandarla, con el mismo creador de mercado del servidor (src/lib/lmsr.ts).
-  const PR_CATEGORY = { universidad: 'Universidad', peru: 'Perú', mundo: 'Mundo', economia: 'Economía' };
-  const prSide = new Map(); // pregunta → lado elegido para comprar ('si' | 'no')
-  const pct = (p) => Math.min(99, Math.max(1, Math.round(p * 100)));
-  const chipsFmt = (v) => nf(0).format(Math.round(v));
-
-  /** Acciones que se compran con `spend` (en acciones: 1 = lo que paga una ganadora) y el precio de Sí después. */
-  function lmsrBuy(m, side, spend) {
-    const [qs, qo] = side === 'si' ? [m.qYes, m.qNo] : [m.qNo, m.qYes];
-    const top = Math.max(qs, qo);
-    const es = Math.exp((qs - top) / m.b);
-    const eo = Math.exp((qo - top) / m.b);
-    const shares = top + m.b * Math.log(Math.exp(spend / m.b) * (es + eo) - eo) - qs;
-    const qYes = m.qYes + (side === 'si' ? shares : 0);
-    const qNo = m.qNo + (side === 'no' ? shares : 0);
-    const mx = Math.max(qYes, qNo);
-    const ey = Math.exp((qYes - mx) / m.b);
-    const en = Math.exp((qNo - mx) / m.b);
-    return { shares, price: ey / (ey + en) };
-  }
-
-  async function loadPredict() {
-    try {
-      state.predict = await api('/api/predictions');
-      renderPredict();
-    } catch (e) {
-      $('pr-open').replaceChildren(h('p', { class: 'err' }, e.message));
-    }
-  }
-
-  /** Propone, compra, vende, aprueba o resuelve; el servidor responde el mercado actualizado. */
-  async function sendPredict(path, body, errEl) {
-    errEl.hidden = true;
-    try {
-      state.predict = await api(path, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
-      renderPredict();
-      return true;
-    } catch (e) {
-      errEl.textContent = e.message;
-      errEl.hidden = false;
-      return false;
-    }
-  }
-
-  function renderPredict() {
-    const v = state.predict;
-    if (!v) return;
-    const me = v.me;
-    $('pr-chips').textContent =
-      me.chips == null
-        ? 'Para jugar, elige tu nombre arriba.'
-        : `Tienes ${chipsFmt(me.chips)} fichas${me.value - me.chips >= 1 ? ` (${chipsFmt(me.value)} con tus acciones)` : ''} · +${v.rules.weekly} cada lunes`;
-    $('pr-new').hidden = me.chips == null;
-    $('pr-send').textContent = state.role === 'owner' ? 'Abrir pregunta' : 'Proponer';
-    renderPrProposals(v);
-    const open = v.markets.filter((m) => m.state === 'abierta' || m.state === 'cerrada');
-    $('pr-open').replaceChildren(...(open.length ? open.map((m) => prCard(m, v)) : [h('p', { class: 'muted' }, 'Todavía no hay preguntas abiertas: propón la primera.')]));
-    const done = v.markets.filter((m) => m.state === 'resuelta' || m.state === 'anulada');
-    $('pr-done').hidden = !done.length;
-    $('pr-done-sum').textContent = `Resueltas (${done.length})`;
-    $('pr-done-list').replaceChildren(...done.map((m) => prDone(m, v)));
-    renderPrRanking(v);
-  }
-
-  function prCard(m, v) {
-    const err = h('p', { class: 'err', hidden: true });
-    const p = pct(m.price);
-    const spark = h('div', { class: 'pr-spark chart c-spark', 'aria-hidden': 'true' });
-    const card = h(
-      'article',
-      { class: `fc-card pr-card${m.state === 'cerrada' ? ' pr-closed' : ''}` },
-      h(
-        'div',
-        { class: 'fc-head' },
-        h('span', { class: 'cal-src' }, PR_CATEGORY[m.category] ?? m.category),
-        h('span', { class: 'fc-when', title: `Cierra el ${fcClose.format(new Date(m.closesAt))}` }, m.state === 'cerrada' ? 'cerrada' : fcCloses(m.closesAt).text),
-      ),
-      h('h3', {}, m.question),
-      h('div', { class: 'pr-odds' }, h('span', { class: 'pr-pct' }, `${p}%`), h('span', { class: 'muted' }, 'Sí'), spark),
-    );
-    const rerender = () => card.replaceWith(prCard(m, v));
-    if (m.state === 'abierta') {
-      const picked = prSide.get(m.id) ?? null;
-      const can = v.me.chips != null;
-      card.append(
-        h(
-          'div',
-          { class: 'fc-choices', role: 'group', 'aria-label': 'Comprar' },
-          ...['si', 'no'].map((side) => {
-            const b = h('button', { type: 'button', 'aria-pressed': String(picked === side), disabled: !can }, side === 'si' ? `Sí · ${p}` : `No · ${100 - p}`);
-            b.addEventListener('click', () => {
-              if (picked === side) prSide.delete(m.id);
-              else prSide.set(m.id, side);
-              rerender();
-            });
-            return b;
-          }),
-        ),
-      );
-      if (picked && can) card.append(prTradeForm(m, picked, v, err));
-    } else card.append(h('p', { class: 'hint' }, 'Cerrada: esperando el resultado.'));
-
-    const mine = m.mine;
-    if (mine && (mine.yes > 1e-6 || mine.no > 1e-6)) {
-      const parts = [mine.yes > 1e-6 ? `${nf(1).format(mine.yes)} Sí` : null, mine.no > 1e-6 ? `${nf(1).format(mine.no)} No` : null].filter(Boolean);
-      const line = h('p', { class: 'hint' }, `Tienes ${parts.join(' y ')} · si vendes ahora: ${chipsFmt(mine.value)} fichas`);
-      if (m.state === 'abierta') {
-        for (const side of ['si', 'no']) {
-          if (mine[side === 'si' ? 'yes' : 'no'] <= 1e-6) continue;
-          const sell = h('button', { type: 'button', class: 'linkish' }, `vender ${side === 'si' ? 'Sí' : 'No'}`);
-          sell.addEventListener('click', () => sendPredict('/api/predictions/trade', { id: m.id, side, action: 'vender' }, err));
-          line.append(' · ', sell);
-        }
-      }
-      card.append(line);
-    }
-    card.append(
-      h('details', { class: 'pr-how' }, h('summary', {}, 'Cómo se resuelve'), h('p', { class: 'hint' }, m.details)),
-      h('p', { class: 'hint' }, m.traders ? `${m.traders} ${m.traders === 1 ? 'jugó' : 'jugaron'} · ${chipsFmt(m.volume)} fichas movidas` : 'Nadie compró todavía'),
-    );
-    if (state.role === 'owner') card.append(prResolve(m, err));
-    card.append(err);
-    // El minigráfico necesita el ancho de la tarjeta: se dibuja cuando ya está en la página. La escala abarca al menos
-    // 20 puntos de probabilidad, así un cambio chico no parece enorme y uno de 10 puntos se nota.
-    requestAnimationFrame(() => {
-      const pts = m.history.map((x) => ({ date: x.at.slice(0, 10), v: x.p * 100 }));
-      if (!spark.isConnected || pts.length < 2) return;
-      const vs = pts.map((x) => x.v);
-      const mid = (Math.min(...vs) + Math.max(...vs)) / 2;
-      const half = Math.max(10, (Math.max(...vs) - Math.min(...vs)) / 2 + 2);
-      const lo = Math.max(0, Math.min(mid - half, 100 - 2 * half));
-      drawLine(spark, pts, { domain: [lo, Math.min(100, lo + 2 * half)], height: 28 });
-    });
-    return card;
-  }
-
-  /** Cuántas fichas poner, con lo que recibirías y cómo queda el precio, antes de comprar. */
-  function prTradeForm(m, side, v, err) {
-    const max = Math.floor(v.me.chips);
-    const input = h('input', { type: 'number', inputmode: 'numeric', min: 1, max, step: 1, value: Math.min(50, max), 'aria-label': 'Fichas que pones' });
-    const est = h('p', { class: 'hint' });
-    const update = () => {
-      const n = Math.floor(Number(input.value));
-      if (!(n >= 1)) {
-        est.textContent = '';
-        return;
-      }
-      const r = lmsrBuy(m, side, n / v.rules.payout);
-      est.textContent = `≈ ${nf(1).format(r.shares)} acciones · si gana: ${chipsFmt(r.shares * v.rules.payout)} fichas · el Sí queda en ${pct(r.price)}%`;
-    };
-    input.addEventListener('input', update);
-    update();
-    const form = h('form', { class: 'pr-trade' }, input, h('span', { class: 'muted' }, 'fichas'), h('button', { type: 'submit' }, `Comprar ${side === 'si' ? 'Sí' : 'No'}`));
-    form.addEventListener('submit', async (e) => {
-      e.preventDefault();
-      prSide.delete(m.id);
-      if (!(await sendPredict('/api/predictions/trade', { id: m.id, side, action: 'comprar', chips: Number(input.value) }, err))) prSide.set(m.id, side);
-    });
-    return h('div', {}, form, est);
-  }
-
-  /** Solo el dueño: da el resultado (con el enlace a la fuente) o anula la pregunta. */
-  function prResolve(m, err) {
-    const src = h('input', { type: 'url', placeholder: 'Enlace de la fuente (https://…)', 'aria-label': 'Enlace de la fuente' });
-    const act = (label, outcome) => {
-      const b = h('button', { type: 'button' }, label);
-      b.addEventListener('click', () => {
-        const what = outcome === 'anular' ? 'anular' : `resolver como ${label}`;
-        if (window.confirm(`¿${what[0].toUpperCase()}${what.slice(1)} «${m.question}»? Se reparten las fichas y no se puede deshacer.`)) {
-          sendPredict('/api/predictions/resolve', { id: m.id, outcome, source: src.value }, err);
-        }
-      });
-      return b;
-    };
-    return h('details', { class: 'pr-how' }, h('summary', {}, m.auto ? 'Resolver a mano' : 'Resolver'), h('div', { class: 'pr-resolve' }, src, act('Sí', 'si'), act('No', 'no'), act('Anular', 'anular')));
-  }
-
-  /** Para el dueño, las propuestas por aprobar; para los demás, las suyas. */
-  function renderPrProposals(v) {
-    const host = $('pr-proposals');
-    if (!v.proposals.length) return host.replaceChildren();
-    const owner = state.role === 'owner';
-    host.replaceChildren(
-      h('p', { class: 'co-h' }, owner ? `Por aprobar (${v.proposals.length})` : 'Tus propuestas'),
-      h(
-        'ul',
-        { class: 'pr-list' },
-        ...v.proposals.map((m) => {
-          const err = h('p', { class: 'err', hidden: true });
-          const info = [m.details, `cierra el ${fcClose.format(new Date(m.closesAt)).replace(/[.,]/g, '')}`, owner && m.proposer ? `propuso ${m.proposer}` : null];
-          const li = h('li', {}, h('p', {}, h('span', { class: 'cal-src' }, PR_CATEGORY[m.category] ?? m.category), ' ', h('span', { class: 'fc-title' }, m.question)), h('p', { class: 'hint' }, info.filter(Boolean).join(' · ')));
-          if (owner) {
-            const review = (label, approve) => {
-              const b = h('button', { type: 'button' }, label);
-              b.addEventListener('click', () => sendPredict('/api/predictions/review', { id: m.id, approve }, err));
-              return b;
-            };
-            li.append(h('div', { class: 'wl-row' }, review('Aprobar', true), review('Rechazar', false)));
-          } else li.append(h('p', { class: 'hint' }, m.state === 'rechazada' ? 'Rechazada' : 'Esperando aprobación'));
-          li.append(err);
-          return li;
-        }),
-      ),
-    );
-  }
-
-  function prDone(m, v) {
-    const res = m.state === 'anulada' ? 'Anulada' : `Ganó el ${m.outcome === 'si' ? 'Sí' : 'No'}`;
-    let mine = null;
-    if (m.mine && m.state === 'anulada') mine = 'te devolvieron lo puesto';
-    else if (m.mine) {
-      const net = Math.round((m.outcome === 'si' ? m.mine.yes : m.mine.no) * v.rules.payout - m.mine.spent);
-      mine = `tú: ${net >= 0 ? '+' : '−'}${nf(0).format(Math.abs(net))}`;
-    }
-    const status = h('span', { class: 'fc-res' }, [res, mine].filter(Boolean).join(' · '));
-    if (m.source) status.append(' · ', h('a', { href: m.source, target: '_blank', rel: 'noopener noreferrer' }, 'fuente ↗'));
-    return h('div', { class: 'pr-past' }, h('span', { class: 'cal-src' }, PR_CATEGORY[m.category] ?? m.category), h('span', { class: 'fc-title' }, m.question), status);
-  }
-
-  function renderPrRanking(v) {
-    const host = $('pr-rank');
-    if (!v.ranking.length) return host.replaceChildren(h('p', { class: 'hint' }, 'Cada uno entra al ranking al elegir su nombre.'));
-    host.replaceChildren(
-      h(
-        'table',
-        { class: 'co-table fc-rank' },
-        h('thead', {}, h('tr', {}, ...['#', 'Nombre', 'Fichas'].map((t) => h('th', { scope: 'col' }, t)))),
-        h(
-          'tbody',
-          {},
-          ...v.ranking.map((r, i) => h('tr', { class: r.mine ? 'mine' : null }, h('td', {}, String(i + 1)), h('td', {}, r.mine ? `${r.alias} (tú)` : r.alias), h('td', {}, chipsFmt(r.value)))),
-        ),
-      ),
-      h('p', { class: 'hint' }, 'Las fichas que tiene cada uno más lo que recibiría si vendiera hoy sus acciones.'),
-    );
-  }
-
-  /** «Fichas» (mercado) o «Pronósticos» (puntos): se recuerda en este equipo. */
-  function showRanking(tab) {
-    prefs.set('mercados.ranking', tab);
-    $('rk-fichas').setAttribute('aria-pressed', String(tab === 'fichas'));
-    $('rk-pron').setAttribute('aria-pressed', String(tab === 'pron'));
-    $('pr-rank').hidden = tab !== 'fichas';
-    $('fc-rank').hidden = tab !== 'pron';
-  }
-
-  // Formulario para proponer (o, el dueño, abrir) una pregunta.
-  function openPrForm(open) {
-    $('pr-form').hidden = !open;
-    $('pr-new').setAttribute('aria-expanded', String(open));
-    $('pr-err').hidden = true;
-    if (!open) return;
-    $('pr-q').value = '';
-    $('pr-how').value = '';
-    const days = (n) => limaDate(new Date(Date.now() + n * 86_400_000));
-    $('pr-close').min = days(1);
-    $('pr-close').max = days(366);
-    $('pr-close').value = days(14);
-    if (state.role === 'owner') fillPrAuto();
-    $('pr-q').focus();
-  }
-
-  /** Las preguntas abiertas del juego de pronósticos a las que el dueño puede ligar una pregunta del mercado. */
-  function fillPrAuto() {
-    const qs = (state.forecasts?.questions ?? []).filter((q) => q.status === 'open');
-    $('pr-auto').replaceChildren(h('option', { value: '' }, 'No: la resuelvo yo, con la fuente'), ...qs.map((q) => h('option', { value: q.id }, `${FC_KIND[q.kind]} · ${calDay(q.date)} · ${q.title}`)));
-    state.prSuggested = null;
-    renderPrCond();
-  }
-
-  /** La condición del Sí según el dato elegido, y una pregunta sugerida mientras no escribas otra. */
-  function renderPrCond() {
-    const q = (state.forecasts?.questions ?? []).find((x) => x.id === $('pr-auto').value);
-    $('pr-form').classList.toggle('pr-auto-on', !!q);
-    const host = $('pr-cond');
-    if (!q) return host.replaceChildren();
-    if (q.type === 'choice') {
-      const sel = h('select', { id: 'pr-cond-v', 'aria-label': 'Resultado que da Sí' }, ...FC_CHOICES.map((c) => h('option', { value: c, selected: c === 'baja' }, CHOICE_LABEL[c])));
-      sel.addEventListener('change', suggestPr);
-      host.replaceChildren(h('span', { class: 'muted' }, 'Sí si'), sel);
-    } else {
-      const op = h('select', { id: 'pr-cond-op', 'aria-label': 'Mayor o menor' }, h('option', { value: 'min' }, 'al menos'), h('option', { value: 'max' }, 'a lo más'));
-      const val = h('input', { id: 'pr-cond-v', type: 'number', inputmode: 'decimal', step: q.step, min: q.min, max: q.max, required: true, 'aria-label': `Valor (${q.unit})` });
-      op.addEventListener('change', suggestPr);
-      val.addEventListener('input', suggestPr);
-      host.replaceChildren(h('span', { class: 'muted' }, 'Sí si es'), op, val, h('span', { class: 'muted' }, q.unit === 'S/' ? 'soles' : '%'));
-    }
-    suggestPr();
-  }
-
-  function suggestPr() {
-    const q = (state.forecasts?.questions ?? []).find((x) => x.id === $('pr-auto').value);
-    const input = $('pr-q');
-    if (!q || (input.value && input.value !== state.prSuggested)) return;
-    const when = calDay(q.date);
-    let text;
-    if (q.type === 'choice') {
-      text = `¿${q.kind === 'bcrp' ? 'El BCRP' : 'La Fed'} ${$('pr-cond-v').value} su tasa el ${when}?`;
-    } else {
-      const month = q.ref ? fMonthYear.format(day(`${q.ref}-01`)).replace('.', '') : when;
-      const what = { inei: `la inflación de Lima de ${month}`, bls: `la inflación de EE. UU. de ${month}`, dolar: `el dólar al cierre de ${month}` }[q.kind];
-      const v = $('pr-cond-v').value;
-      const amount = v ? (q.unit === 'S/' ? `S/ ${v}` : `${v}%`) : '…';
-      text = `¿Será ${what} ${$('pr-cond-op').value === 'min' ? 'al menos' : 'a lo más'} ${amount}?`;
-    }
-    input.value = text;
-    state.prSuggested = text;
-  }
-
-  function prAuto() {
-    const qid = state.role === 'owner' ? $('pr-auto').value : '';
-    if (!qid) return null;
-    return { qid, op: $('pr-cond-op')?.value ?? 'es', value: $('pr-cond-v')?.value ?? '' };
-  }
-
-  function setupPredict() {
-    $('pr-new').addEventListener('click', () => openPrForm($('pr-form').hidden));
-    $('pr-cancel').addEventListener('click', () => openPrForm(false));
-    $('pr-auto').addEventListener('change', renderPrCond);
-    $('pr-form').addEventListener('submit', async (e) => {
-      e.preventDefault();
-      const auto = prAuto();
-      const body = { question: $('pr-q').value, category: $('pr-cat').value };
-      if (auto) body.auto = auto;
-      else Object.assign(body, { closesOn: $('pr-close').value, details: $('pr-how').value });
-      if (await sendPredict('/api/predictions', body, $('pr-err'))) openPrForm(false);
-    });
-    $('rk-fichas').addEventListener('click', () => showRanking('fichas'));
-    $('rk-pron').addEventListener('click', () => showRanking('pron'));
-    showRanking(prefs.get('mercados.ranking', 'fichas') === 'pron' ? 'pron' : 'fichas');
-    loadPredict();
-  }
-
   // ---------- gráfico del día, 2/3 del promedio y liga de acciones ----------
   // Servidor: src/game/minijuegos.ts y src/game/acciones.ts, en el mismo Durable Object del mercado. El gráfico usa
   // datos públicos (BCRP y FRED); la liga, la clave gratis de Twelve Data de cada jugador.
@@ -4141,135 +3806,422 @@
     $('k23-body').replaceChildren(...parts);
   }
 
+  /* Liga de acciones: lo principal de la hoja «Juego» (opción A, «Carrera», 4 nov). Arriba, quién lidera la temporada,
+     tu puesto y la carrera de la quincena; abajo, tu cartera y para comprar (o cómo entrar). Las temporadas van del 1 al
+     15 y del 16 a fin de mes; al cerrar cada una, el servidor guarda el resultado y aparece en «Campeones». Entre todos
+     solo se ven porcentajes y símbolos. */
+  const LG_NAMES = { SPY: 'S&P 500', QQQ: 'Nasdaq 100', NVDA: 'Nvidia', AAPL: 'Apple', MSFT: 'Microsoft', GLD: 'Oro', EPU: 'Perú', BAP: 'Credicorp', SCCO: 'Southern Copper', BVN: 'Buenaventura' };
+  /** «1–15 nov» (con el día, es-PE escribe el mes en minúscula; solo, «Nov.»). */
+  const seasonRange = (se) => `${Number(se.from.slice(8))}–${fDay.format(day(se.to)).replace('.', '')}`;
+  const dayGap = (a, b) => Math.round((Date.parse(`${b}T12:00:00Z`) - Date.parse(`${a}T12:00:00Z`)) / 86_400_000);
+  const addDay = (iso, n) => new Date(Date.parse(`${iso}T12:00:00Z`) + n * 86_400_000).toISOString().slice(0, 10);
+  /** Diferencia de rendimientos en puntos porcentuales: «5.0». */
+  const ptsGap = (a, b) => nf(1).format(Math.abs((a - b) * 100));
+  const foldTxt = (t) => t.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().trim();
+  const shortName = (t, n) => (t.length > n ? `${t.slice(0, n - 1)}…` : t);
+  /** Lo que está en cola para comprar (ya no se puede usar para otra compra). */
+  const committedOf = (m) => m.orders.filter((o) => o.kind === 'comprar').reduce((t, o) => t + (o.usd ?? 0), 0);
+  /** Donde se dibuja la carrera: se rehace al cambiar el ancho de la ventana. */
+  let raceHost = null;
+
   function renderLeague(v) {
     const l = v.liga;
     const err = h('p', { class: 'err', hidden: true });
     const m = l.me;
-    let mine;
-    if (!v.alias) mine = [h('p', { class: 'hint' }, 'Para jugar, elige tu nombre arriba.')];
-    else if (!m || !m.connected) mine = leagueJoin(v, err);
-    else mine = leaguePortfolio(l, m, err);
-    mine.push(err);
-
-    const month = fMonthLong.format(day(`${l.month}-01`));
-    const board = [h('p', { class: 'co-h' }, `${month[0].toUpperCase()}${month.slice(1)}`)];
-    if (l.standings.length) {
-      board.push(
-        h(
-          'table',
-          { class: 'co-table fc-rank lg-table' },
-          h('thead', {}, h('tr', {}, ...['#', 'Nombre', 'Mes', 'Total', 'Tiene'].map((t) => h('th', { scope: 'col' }, t)))),
-          h(
-            'tbody',
-            {},
-            ...l.standings.map((s, i) =>
-              h(
-                'tr',
-                { class: s.mine ? 'mine' : null },
-                h('td', {}, String(i + 1)),
-                h('td', {}, s.mine ? `${s.alias} (tú)` : s.alias),
-                h('td', {}, s.retMonth == null ? '—' : retSpan(s.retMonth)),
-                h('td', {}, retSpan(s.retTotal)),
-                h('td', { class: 'lg-syms', title: s.symbols.join(' ') }, s.symbols.length ? s.symbols.slice(0, 3).join(' ') + (s.symbols.length > 3 ? ' …' : '') : '—'),
-              ),
-            ),
-          ),
-        ),
-      );
-    } else board.push(h('p', { class: 'muted' }, 'Todavía no entró nadie: sé el primero.'));
-    if (l.last) board.push(h('p', { class: 'hint' }, `Campeón de ${fMonthLong.format(day(`${l.last.month}-01`)).toLowerCase()}: ${l.last.champion} (${retFmt(l.last.ret)})`));
-    $('lg-body').replaceChildren(h('div', { class: 'lg-grid' }, h('div', {}, ...mine), h('div', {}, ...board)));
+    const member = !!m?.connected;
+    $('lg-month').textContent = `Temporada ${seasonRange(l.season)}`;
+    raceHost = h('div', { class: 'lg-race' });
+    const mine = member ? [leaguePortfolio(l, m, err), leagueTicket(l, m, err)] : [leaguePitch(v, err)];
+    $('lg-body').replaceChildren(leagueHeadline(l), raceHost, leagueRank(l), ...leagueChamps(l, err), h('div', { class: member ? 'lg-duo' : 'lg-solo' }, ...mine), err);
+    drawRace(raceHost, l);
+    renderLeagueTeaser(v);
+    if (state.openTutorial) {
+      state.openTutorial = false;
+      if (member || v.owner) $('league').scrollIntoView({ block: 'start' });
+      else openLeagueTutorial();
+    }
   }
 
-  /** Cómo entrar: el dueño, con un botón (usa la clave de Rueda); los demás, en tres pasos con su clave gratis. */
-  function leagueJoin(v, err) {
-    if (v.owner) {
-      const b = h('button', { type: 'button' }, 'Entrar a la liga');
-      b.addEventListener('click', () => sendGames('/api/games/liga', { action: 'entrar' }, err));
-      return [h('p', { class: 'lg-me' }, 'Simula una cartera con acciones de verdad y compite con el grupo. Tú juegas con la clave de Rueda: no tienes que pegar nada.'), b];
+  /** «Caro lidera con ▲ +5.5%», tu puesto y cuánto te falta, y la barra de la temporada (cuántos cierres quedan). */
+  function leagueHeadline(l) {
+    const st = l.standings;
+    const se = l.season;
+    const lead = st[0];
+    const meIx = st.findIndex((x) => x.mine);
+    const me = st[meIx];
+    const started = st.some((x) => x.retSeason);
+    let big;
+    if (!st.length) big = ['Todavía no juega nadie: abre tú la temporada.'];
+    else if (!started) big = ['Nueva temporada: todos salen de 0.'];
+    else if (meIx === 0) big = ['Lideras con ', retSpan(lead.retSeason)];
+    else big = [h('strong', {}, lead.alias), ' lidera con ', retSpan(lead.retSeason)];
+    const text = h('div', {}, h('p', { class: 'lg-big' }, ...big));
+    if (me && started && st.length > 1) {
+      const other = meIx === 0 ? st[1] : lead;
+      const gap = other.retSeason == null ? '' : meIx === 0 ? ` · ${ptsGap(me.retSeason, other.retSeason)} puntos sobre ${other.alias}` : ` · a ${ptsGap(lead.retSeason, me.retSeason)} puntos de ${lead.alias}`;
+      text.append(h('p', { class: 'lg-me' }, 'Vas en el puesto ', h('strong', {}, String(meIx + 1)), ` de ${st.length} con `, retSpan(me.retSeason), gap));
     }
-    const link = (href, text) => h('a', { href, target: '_blank', rel: 'noopener noreferrer' }, text);
-    const input = h('input', { type: 'text', autocomplete: 'off', autocapitalize: 'off', spellcheck: 'false', placeholder: 'Pega tu clave aquí', required: true, 'aria-label': 'Tu clave de Twelve Data' });
-    const form = h('form', { class: 'pr-trade' }, input, h('button', { type: 'submit' }, 'Conectar'));
-    form.addEventListener('submit', (e) => {
-      e.preventDefault();
-      sendGames('/api/games/liga', { action: 'conectar', key: input.value }, err);
-    });
-    return [
-      h('p', { class: 'lg-me' }, 'Simula una cartera con acciones de verdad y compite con el grupo. Para entrar, conecta tu clave gratis de Twelve Data (2 minutos):'),
+    const done = se.total - se.left;
+    const fill = h('i');
+    fill.style.width = `${se.total ? (100 * done) / se.total : 0}%`;
+    const bar = h('span', { class: 'bar', role: 'progressbar', 'aria-label': 'Cierres jugados de la temporada', 'aria-valuemin': 0, 'aria-valuemax': se.total, 'aria-valuenow': done }, fill);
+    const left = se.left === 0 ? 'terminó' : se.left === 1 ? 'queda 1 cierre' : `quedan ${se.left} cierres`;
+    const prog = h('div', { class: 'lg-season', title: `La temporada termina con el cierre del ${calDay(se.last)}` }, h('span', { class: 'k' }, 'Temporada'), bar, h('span', { class: 'left' }, left));
+    return h('div', { class: 'lg-head' }, text, prog);
+  }
+
+  /**
+   * La carrera de la quincena: una línea por persona con su rendimiento al cierre de cada sesión (la tuya en cian; la de
+   * quien lidera, resaltada; las demás en gris), desde la salida hasta la meta. Se dibuja al ancho de la sección.
+   */
+  function drawRace(host, l) {
+    const lines = l.race.filter((r) => r.points.length);
+    host.hidden = !lines.length;
+    if (!lines.length) return host.replaceChildren();
+    const se = l.season;
+    const W = Math.max(300, Math.round(host.clientWidth || $('lg-body').clientWidth || 700));
+    const narrow = W < 520;
+    const H = narrow ? 210 : 240;
+    const L = 44;
+    const R = narrow ? 104 : 136;
+    const T = 12;
+    const B = 26;
+    const start = addDay(se.from, -1);
+    const span = Math.max(1, dayGap(start, se.to));
+    const X = (d) => L + (Math.min(span, Math.max(0, dayGap(start, d))) / span) * (W - L - R);
+    const vals = lines.flatMap((r) => r.points.map((p) => p.r));
+    const pad = Math.max(0.005, (Math.max(0, ...vals) - Math.min(0, ...vals)) * 0.12);
+    const lo = Math.min(0, ...vals) - pad;
+    const hi = Math.max(0, ...vals) + pad;
+    const Y = (r) => T + ((hi - r) / (hi - lo)) * (H - T - B);
+    const svg = s('svg', { viewBox: `0 0 ${W} ${H}`, width: W, height: H, role: 'img', 'aria-label': raceAria(l) });
+    const text = (x, y, t, cls, anchor = 'start') => {
+      const el = s('text', { x, y, class: cls, 'text-anchor': anchor });
+      el.textContent = t;
+      svg.append(el);
+    };
+    // Guías cada 0,5, 1, 2, 5 o 10 puntos, con el 0 marcado.
+    const step = [0.005, 0.01, 0.02, 0.05, 0.1, 0.2].find((x) => (hi - lo) / x <= 5) ?? 0.5;
+    for (let g = Math.ceil(lo / step) * step; g <= hi + 1e-9; g += step) {
+      const zero = Math.abs(g) < 1e-9;
+      svg.append(s('line', { x1: L, x2: W - R, y1: Y(g), y2: Y(g), class: zero ? 'zero' : 'grid' }));
+      text(L - 6, Y(g) + 4, zero ? '0%' : `${g > 0 ? '+' : '−'}${nf(step < 0.01 ? 1 : 0).format(Math.abs(g * 100))}%`, 'ax', 'end');
+    }
+    // El último cierre y la meta.
+    const lastD = lines.flatMap((r) => r.points.map((p) => p.d)).sort().at(-1);
+    const xl = X(lastD);
+    const xf = X(se.to);
+    svg.append(s('line', { x1: xl, x2: xl, y1: T, y2: H - B, class: 'today' }), s('line', { x1: xf, x2: xf, y1: T, y2: H - B, class: 'finish' }));
+    text(L, H - 6, 'salida', 'ax');
+    if (xf - xl > 70 && xl - L > 60) text(xl, H - 6, fDay.format(day(lastD)).replace('.', ''), 'ax', 'middle');
+    text(xf, H - 6, `🏁 ${fDay.format(day(se.to)).replace('.', '')}`, 'ax fin', 'middle');
+    // Los demás abajo, quien lidera encima y la tuya arriba de todo.
+    const leader = l.standings[0]?.alias;
+    const kind = (r) => (r.mine ? 'me' : r.alias === leader ? 'lead' : 'other');
+    // El puesto va delante del nombre, como en el ranking de abajo.
+    const place = (r) => 1 + l.standings.findIndex((x) => (r.mine ? x.mine : !x.mine && x.alias === r.alias));
+    const rank = { other: 0, lead: 1, me: 2 };
+    const ends = [];
+    for (const r of [...lines].sort((a, b) => rank[kind(a)] - rank[kind(b)])) {
+      const k = kind(r);
+      if (r.points.length > 1) svg.append(s('polyline', { points: r.points.map((q) => `${X(q.d).toFixed(1)},${Y(q.r).toFixed(1)}`).join(' '), class: `ln ${k}` }));
+      const end = r.points.at(-1);
+      svg.append(s('circle', { cx: X(end.d), cy: Y(end.r), r: k === 'other' ? 3 : 4.5, class: `dot ${k}` }));
+      const who = r.mine ? 'Tú' : shortName(r.alias, narrow ? 7 : 12);
+      const n = place(r);
+      ends.push({ x: X(end.d), y: Y(end.r), k, label: `${n > 0 ? `${n} ` : ''}${who} ${retFmt(end.r)}` });
+    }
+    // Etiquetas al final de las líneas, sin pisarse.
+    ends.sort((a, b) => a.y - b.y);
+    for (let i = 1; i < ends.length; i++) ends[i].y = Math.max(ends[i].y, ends[i - 1].y + 16);
+    const over = ends.length ? ends.at(-1).y - (H - B - 2) : 0;
+    if (over > 0) for (const e of ends) e.y = Math.max(T + 8, e.y - over);
+    const lx = Math.max(...ends.map((e) => e.x)) + 10;
+    for (const e of ends) text(lx, e.y + 4, e.label, `lbl ${e.k}`);
+    host.replaceChildren(svg);
+  }
+
+  function raceAria(l) {
+    const who = l.standings.map((x) => `${x.mine ? 'tú' : x.alias} ${retFmt(x.retSeason)}`).join(', ');
+    return `Carrera de la temporada ${seasonRange(l.season)}${who ? `: ${who}` : ''}. El detalle está en el ranking de abajo.`;
+  }
+
+  /** El ranking de la temporada en una línea por persona: puesto, rendimiento y qué tiene (lo que ven todos). */
+  function leagueRank(l) {
+    if (!l.standings.length) return null;
+    return h(
+      'ol',
+      { class: 'lg-rank', 'aria-label': 'Ranking de la temporada' },
+      ...l.standings.map((x, i) =>
+        h(
+          'li',
+          { class: x.mine ? 'mine' : null, title: `Desde que entró: ${retFmt(x.retTotal)}` },
+          h('span', { class: 'n' }, String(i + 1)),
+          h('span', { class: 'who' }, x.mine ? 'Tú' : x.alias),
+          retSpan(x.retSeason),
+          x.symbols.length ? h('span', { class: 'syms' }, x.symbols.slice(0, 3).join(' ') + (x.symbols.length > 3 ? ' …' : '')) : null,
+        ),
+      ),
+    );
+  }
+
+  /** Campeones de las temporadas cerradas (los guarda el servidor al terminar cada quincena), los trofeos y para invitar. */
+  function leagueChamps(l, err) {
+    const invite = h('button', { type: 'button', class: 'linkish' }, 'invitar al grupo');
+    invite.addEventListener('click', () => shareLeague(invite, err));
+    const row = h('div', { class: 'lg-champs' }, h('span', { class: 'k' }, 'Campeones'));
+    if (!l.seasons.length) row.append(h('span', { class: 'muted' }, `El primero se corona al terminar esta temporada, el ${calDay(l.season.to)}.`));
+    for (const se of l.seasons.slice(0, 2)) {
+      const c = se.podium[0];
+      row.append(h('span', { class: 'c' }, h('span', { class: 'd' }, seasonRange(se)), `🏆 ${c.mine ? 'Tú' : c.alias} `, retSpan(c.ret)));
+    }
+    const trophies = l.titles.map((t) => `${t.mine ? 'Tú' : t.alias} ${t.titles}`).join(' · ');
+    row.append(h('span', { class: 'end' }, trophies ? `Trofeos: ${trophies} · ` : '', invite));
+    if (!l.seasons.length) return [row];
+    const medal = ['🥇', '🥈', '🥉'];
+    const all = h(
+      'details',
+      { class: 'lg-all' },
+      h('summary', {}, 'Todas las temporadas'),
       h(
         'ol',
-        { class: 'lg-steps' },
-        h('li', {}, 'Crea tu cuenta gratis; puedes entrar con Google: ', link(TD_SIGNUP, 'crear cuenta ↗')),
-        h('li', {}, 'Copia tu clave de «API keys»: ', link(TD_KEYS, 'ver mi clave ↗')),
-        h('li', {}, 'Pégala aquí:'),
+        {},
+        ...l.seasons.map((se) =>
+          h(
+            'li',
+            {},
+            h('span', { class: 'd' }, seasonRange(se)),
+            ...se.podium.map((p, i) => h('span', {}, `${medal[i]} ${p.mine ? 'Tú' : p.alias} `, retSpan(p.ret))),
+            h('span', { class: 'muted' }, `${se.players} ${se.players === 1 ? 'jugó' : 'jugaron'}`),
+          ),
+        ),
       ),
-      form,
-      h('p', { class: 'hint' }, 'Se guarda cifrada y solo se usa para tu cartera. Puedes quitarla cuando quieras.'),
-    ];
+    );
+    return [row, all];
   }
 
-  /** Tu cartera: valor, posiciones (con sus precios, que solo ves tú), órdenes esperando el cierre y para comprar. */
-  function leaguePortfolio(l, m, err) {
-    const out = [];
-    const line = h('p', { class: 'lg-me' }, 'Tienes ', h('strong', {}, usdFmt(m.value)));
-    if (m.retMonth != null) line.append(' · ', retSpan(m.retMonth), ' en el mes');
-    if (m.spyMonth != null) line.append(' · el SPY, ', retSpan(m.spyMonth));
-    const when = m.lastValued ? ` · al cierre del ${fDayYear.format(day(m.lastValued)).replace(/\./g, '')}` : '';
-    out.push(line, h('p', { class: 'hint' }, `${usdFmt(m.cash)} sin invertir${when}`));
-    if (m.error) out.push(h('p', { class: 'err' }, m.error));
-    if (m.holdings.length) {
-      out.push(
-        h(
-          'ul',
-          { class: 'lg-pos' },
-          ...m.holdings.map((p) => {
-            const sell = h('button', { type: 'button', class: 'linkish' }, 'vender');
-            sell.addEventListener('click', () => {
-              if (window.confirm(`¿Vender todo tu ${p.symbol}? Se vende al próximo cierre de Nueva York.`)) sendGames('/api/games/liga', { action: 'vender', symbol: p.symbol }, err);
-            });
-            return h('li', {}, h('span', { title: p.name }, h('strong', {}, p.symbol)), h('span', {}, p.value == null ? '—' : usdFmt(p.value)), retSpan(p.ret), sell);
-          }),
-        ),
-      );
-    }
-    if (m.orders.length) {
-      const today = nyDate(new Date());
-      out.push(
-        h(
-          'ul',
-          { class: 'lg-orders' },
-          ...m.orders.map((o) => {
-            const cancel = h('button', { type: 'button', class: 'linkish' }, 'cancelar');
-            cancel.addEventListener('click', () => sendGames('/api/games/liga', { action: 'cancelar', cancel: o.id }, err));
-            const close = o.session === today ? 'al cierre de hoy' : `al cierre del ${calDay(o.session)}`;
-            const what = `${o.kind === 'comprar' ? 'Comprar' : 'Vender'} ${o.symbol} ${o.usd != null ? `por ${usdFmt(o.usd)}` : '(todo)'}`;
-            return h('li', { class: 'hint' }, `${what}, ${close} · `, cancel);
-          }),
-        ),
-      );
-    }
-    const symbol = h('input', { type: 'text', autocomplete: 'off', autocapitalize: 'characters', spellcheck: 'false', placeholder: 'Símbolo', required: true, maxlength: 10, 'aria-label': 'Símbolo de la acción o ETF', class: 'lg-sym' });
-    const usd = h('input', { type: 'number', inputmode: 'numeric', min: 1, step: 1, placeholder: 'US$', required: true, 'aria-label': 'Cuántos dólares' });
-    const form = h('form', { class: 'pr-trade' }, symbol, usd, h('button', { type: 'submit' }, 'Comprar'));
-    form.addEventListener('submit', (e) => {
-      e.preventDefault();
-      sendGames('/api/games/liga', { action: 'comprar', symbol: symbol.value, usd: Number(usd.value) }, err);
-    });
-    // Accesos rápidos: tocar uno lo pone en el símbolo.
-    const chips = h(
+  /** Para quien todavía no entró: de qué se trata y un botón grande (el dueño entra con la clave de Rueda). */
+  function leaguePitch(v, err) {
+    const m = v.liga.me;
+    const go = h('button', { type: 'button', class: 'cta lg-go' }, m ? 'Conectar mi clave' : 'Entrar a la liga');
+    go.addEventListener('click', () => (v.owner ? sendGames('/api/games/liga', { action: 'entrar' }, err) : openLeagueTutorial()));
+    return h(
       'div',
-      { class: 'ranges lg-chips', role: 'group', 'aria-label': 'Acciones y ETF conocidos' },
-      ...l.popular.map((s) => {
-        const b = h('button', { type: 'button' }, s);
-        b.addEventListener('click', () => {
-          symbol.value = s;
-          usd.focus();
-        });
-        return b;
-      }),
+      { class: 'lg-card lg-pitch-card' },
+      h('p', { class: 'lg-pitch' }, 'Arma una cartera con acciones y ETF de verdad de EE. UU. (las mismas de Hapi) con US$ 10 000 de mentira y compite con el grupo. Cada quincena es una temporada: gana quien más rinde.'),
+      m ? h('p', { class: 'hint' }, 'Tu cartera quedó guardada: conecta tu clave para que siga al día.') : null,
+      go,
+      h('p', { class: 'hint' }, v.owner ? 'Tú juegas con la clave de Rueda: no tienes que pegar nada.' : 'Entrar toma 2 minutos: te guiamos paso a paso.'),
     );
-    out.push(form, chips);
+  }
+
+  /** El enlace /#liga abre la hoja «Juego» con el tutorial: en el celular, «Compartir»; en la computadora, se copia. */
+  async function shareLeague(btn, err) {
+    const text = `Únete a la liga de acciones de Rueda: arma tu cartera con acciones de verdad y compite con el grupo. ${location.origin}/#liga`;
+    if (navigator.share && matchMedia('(pointer: coarse)').matches) {
+      try {
+        await navigator.share({ text });
+        return;
+      } catch (e) {
+        if (e.name === 'AbortError') return;
+      }
+    }
+    try {
+      await navigator.clipboard.writeText(text);
+      btn.textContent = 'enlace copiado';
+      setTimeout(() => (btn.textContent = 'invitar al grupo'), 2000);
+    } catch {
+      err.textContent = text;
+      err.hidden = false;
+    }
+  }
+
+  /** Aviso en «Mercados» para quien todavía no entró a la liga (se cierra con × y no vuelve en este equipo). */
+  function renderLeagueTeaser(v) {
+    $('lg-teaser').hidden = !!v.liga.me?.connected || prefs.get('mercados.liga-aviso', null) === 'cerrado';
+  }
+
+  // ---------- tutorial para entrar a la liga ----------
+  // Una ventana aparte, paso a paso: tu nombre (si falta), crear la cuenta gratis, copiar la clave y pegarla. Se abre
+  // con «Entrar a la liga», con el aviso de «Mercados» o con el enlace /#liga que se manda al grupo.
+  const tut = { step: 0, steps: [] };
+
+  function openLeagueTutorial() {
+    const g = state.games;
+    tut.steps = [...(g && !g.alias ? ['nombre'] : []), 'cuenta', 'clave', 'pegar', 'listo'];
+    tut.step = 0;
+    renderTutorial();
+    const d = $('lg-tutorial');
+    if (!d.open) d.showModal();
+  }
+
+  function renderTutorial() {
+    const d = $('lg-tutorial');
+    const id = tut.steps[tut.step];
+    const err = h('p', { class: 'err', hidden: true });
+    const go = (n) => {
+      tut.step = n;
+      renderTutorial();
+    };
+    const button = (label, onClick, cls = null) => {
+      const b = h('button', { type: 'button', class: cls }, label);
+      b.addEventListener('click', onClick);
+      return b;
+    };
+    const link = (href, label) => h('a', { href, target: '_blank', rel: 'noopener noreferrer', class: 'cta' }, label);
+    const fail = (e) => {
+      err.textContent = e.message;
+      err.hidden = false;
+    };
+    let body;
+    let next;
+    if (id === 'nombre') {
+      const input = h('input', { type: 'text', maxlength: 20, autocomplete: 'nickname', placeholder: 'Tu nombre o apodo', 'aria-label': 'Tu nombre en el juego' });
+      body = [h('h3', { id: 'lt-h' }, '¿Cómo te llamas en el juego?'), h('p', {}, 'Es el nombre que verán los demás en el ranking.'), input];
+      next = button(
+        'Seguir →',
+        async () => {
+          try {
+            state.forecasts = await api('/api/forecasts/name', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ alias: input.value }) });
+            renderForecasts();
+            await loadGames();
+            go(tut.step + 1);
+          } catch (e) {
+            fail(e);
+          }
+        },
+        'cta',
+      );
+    } else if (id === 'cuenta') {
+      body = [
+        h('h3', { id: 'lt-h' }, 'Crea tu cuenta gratis en Twelve Data'),
+        h('p', {}, 'Es el proveedor de los precios de la liga. Su plan gratis alcanza de sobra.'),
+        link(TD_SIGNUP, 'Crear mi cuenta ↗'),
+        h('p', { class: 'hint' }, 'Puedes entrar con Google o con Apple. Cuando termines, vuelve aquí.'),
+      ];
+      next = button('Ya la tengo →', () => go(tut.step + 1));
+    } else if (id === 'clave') {
+      body = [
+        h('h3', { id: 'lt-h' }, 'Copia tu clave'),
+        h('p', {}, 'En Twelve Data, abre «API keys» y copia tu clave: un código largo de letras y números.'),
+        link(TD_KEYS, 'Abrir mis claves ↗'),
+        h('p', { class: 'hint' }, 'Si te pide entrar, usa la misma cuenta.'),
+      ];
+      next = button('Ya la copié →', () => go(tut.step + 1));
+    } else if (id === 'pegar') {
+      const input = h('input', { type: 'text', autocomplete: 'off', autocapitalize: 'off', spellcheck: 'false', placeholder: 'Pega tu clave aquí', 'aria-label': 'Tu clave de Twelve Data' });
+      const row = h('div', { class: 'tut-paste' }, input);
+      if (navigator.clipboard?.readText) {
+        row.append(
+          button('Pegar', async () => {
+            try {
+              input.value = (await navigator.clipboard.readText()).trim();
+            } catch {
+              input.focus();
+            }
+          }),
+        );
+      }
+      body = [
+        h('h3', { id: 'lt-h' }, 'Pégala aquí'),
+        row,
+        h('p', { class: 'hint' }, 'Se guarda cifrada y solo se usa para traer los precios de tu cartera. Puedes quitarla cuando quieras.'),
+      ];
+      next = button(
+        'Conectar',
+        async () => {
+          try {
+            state.games = await api('/api/games/liga', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'conectar', key: input.value }) });
+            renderGames();
+            go(tut.step + 1);
+          } catch (e) {
+            fail(e);
+          }
+        },
+        'cta',
+      );
+    } else {
+      const pick = (sym) => {
+        d.close();
+        $('league').scrollIntoView({ block: 'start' });
+        const field = document.querySelector('#league .lg-sym');
+        if (field && sym) {
+          field.value = sym;
+          field.dispatchEvent(new Event('input'));
+          document.querySelector('#league input[aria-label="Cuántos dólares"]')?.focus();
+        }
+      };
+      body = [
+        h('h3', { id: 'lt-h' }, '¡Listo! Ya estás en la liga'),
+        h('p', {}, 'Tienes US$ 10 000 para invertir. Las compras se cumplen al cierre de Nueva York, y cada quincena es una temporada: gana quien más rinde.'),
+        h('p', { class: 'hint' }, 'Elige tu primera compra:'),
+        h('div', { class: 'ranges lg-chips' }, ...(state.games?.liga.popular ?? []).map((s) => button(s, () => pick(s)))),
+      ];
+      next = button('Ir a mi cartera', () => pick(''), 'cta');
+    }
+    const counted = tut.steps.filter((s) => s !== 'listo');
+    const n = counted.indexOf(id);
+    const back = tut.step > 0 && id !== 'listo' ? button('← Atrás', () => go(tut.step - 1)) : h('span');
+    d.replaceChildren(
+      h('div', { class: 'tut-head' }, h('p', { class: 'tut-step' }, n >= 0 ? `Paso ${n + 1} de ${counted.length}` : 'Liga de acciones'), button('×', () => d.close(), 'tut-x')),
+      ...body,
+      err,
+      h('div', { class: 'tut-nav' }, back, next),
+    );
+    d.querySelector('input')?.focus();
+  }
+
+  /** Tu cartera: cuánto vale, en qué está (barra), tus posiciones (con precios que solo ves tú) y lo que está en cola. */
+  function leaguePortfolio(l, m, err) {
+    const committed = committedOf(m);
+    const free = Math.max(0, m.cash - committed);
+    const out = h('div', { class: 'lg-card' }, h('p', { class: 'lg-k' }, 'Tu cartera'));
+    out.append(h('p', { class: 'lg-worth' }, usdFmt(m.value), ' ', retSpan(m.retSeason), h('span', { class: 'muted' }, ' en la temporada')));
+    if (m.lastValued) out.append(h('p', { class: 'hint lg-when' }, `Al cierre del ${calDay(m.lastValued)}`));
+    if (m.error) out.append(h('p', { class: 'err' }, m.error));
+
+    // Barra: las posiciones más grandes, lo que está en cola para comprar y lo que queda sin invertir.
+    const held = m.holdings.filter((p) => p.value != null).sort((a, b) => b.value - a.value);
+    const segs = held.slice(0, 4).map((p, i) => ({ label: p.symbol, v: p.value, cls: `c${i + 1}` }));
+    const rest = held.slice(4).reduce((t, p) => t + p.value, 0);
+    if (rest > 0) segs.push({ label: 'Otras', v: rest, cls: 'c0' });
+    const queued = m.orders.filter((o) => o.kind === 'comprar' && o.usd);
+    if (committed > 0) segs.push({ label: queued.length === 1 ? `${queued[0].symbol} en cola` : 'En cola', v: committed, cls: 'q' });
+    if (free >= 1) segs.push({ label: 'Sin invertir', v: free, cls: 'cash' });
+    const total = segs.reduce((t, x) => t + x.v, 0);
+    if (total > 0 && segs.length > 1) {
+      const bar = h('div', { class: 'lg-alloc', 'aria-hidden': 'true' });
+      for (const x of segs) {
+        const seg = h('i', { class: x.cls });
+        seg.style.width = `${(100 * x.v) / total}%`;
+        bar.append(seg);
+      }
+      out.append(bar, h('p', { class: 'lg-legend' }, ...segs.map((x) => h('span', {}, h('b', { class: x.cls }), `${x.label} ${nf(0).format((100 * x.v) / total)}%`))));
+    }
+
+    const list = h('ul', { class: 'lg-pos' });
+    for (const p of m.holdings) {
+      const sell = h('button', { type: 'button', class: 'linkish' }, 'Vender');
+      sell.addEventListener('click', () => {
+        if (window.confirm(`¿Vender todo tu ${p.symbol}? Se vende al próximo cierre de Nueva York.`)) sendGames('/api/games/liga', { action: 'vender', symbol: p.symbol }, err);
+      });
+      const nm = LG_NAMES[p.symbol] ?? (p.name && p.name !== p.symbol ? shortName(p.name, 28) : '');
+      const sub = [nm, `${nf(p.shares < 100 ? 2 : 0).format(p.shares)} acciones`].filter(Boolean).join(' · ');
+      list.append(h('li', {}, h('span', { class: 'nm' }, h('strong', { title: p.name }, p.symbol), h('small', {}, sub)), h('span', {}, p.value == null ? '—' : usdFmt(p.value)), retSpan(p.ret), sell));
+    }
+    const today = nyDate(new Date());
+    for (const o of m.orders) {
+      const cancel = h('button', { type: 'button', class: 'linkish' }, 'Cancelar');
+      cancel.addEventListener('click', () => sendGames('/api/games/liga', { action: 'cancelar', cancel: o.id }, err));
+      const when = o.session === today ? 'al cierre de hoy' : `al cierre del ${calDay(o.session)}`;
+      const what = o.kind === 'comprar' ? `Compra de ${usdFmt(o.usd)}` : o.usd != null ? `Venta de ${usdFmt(o.usd)}` : 'Venta de todo';
+      list.append(h('li', { class: 'queued' }, h('span', { class: 'nm' }, h('strong', {}, o.symbol), h('small', {}, what)), h('span', { class: 'lg-due' }, `⏱ ${when}`), h('span'), cancel));
+    }
+    out.append(list.childElementCount ? list : h('p', { class: 'hint' }, 'Todavía no compraste nada: elige tu primera acción en «Comprar».'));
+    const foot = h('p', { class: 'hint' });
+    if (m.spySeason != null) foot.append('El SPY en la temporada: ', retSpan(m.spySeason), '. ');
+    foot.append('Solo tú ves tus montos y precios; el grupo ve porcentajes y símbolos.');
+    out.append(foot);
     if (!m.appKey) {
       const off = h('button', { type: 'button', class: 'linkish' }, 'quitar mi clave');
       off.addEventListener('click', () => {
@@ -4277,9 +4229,82 @@
           sendGames('/api/games/liga', { action: 'desconectar' }, err);
         }
       });
-      out.push(h('p', { class: 'hint' }, 'Tu clave está guardada cifrada · ', off));
+      out.append(h('p', { class: 'hint' }, 'Tu clave está guardada cifrada · ', off));
     }
     return out;
+  }
+
+  /** Comprar en dos pasos: qué (con nombres, no solo símbolos) y cuánto (con lo que te queda), y cuándo se cumple. */
+  function leagueTicket(l, m, err) {
+    const committed = committedOf(m);
+    const free = Math.max(0, Math.floor(m.cash - committed));
+    const symbol = h('input', {
+      type: 'text', class: 'lg-sym', autocomplete: 'off', autocapitalize: 'characters', spellcheck: 'false', maxlength: 24, required: true,
+      placeholder: 'Símbolo o nombre: AAPL, oro, Perú…', 'aria-label': 'Símbolo de la acción o ETF',
+    });
+    const usd = h('input', { type: 'number', inputmode: 'numeric', min: 1, step: 1, max: free >= 1 ? free : null, required: true, placeholder: '0', 'aria-label': 'Cuántos dólares' });
+    const go = h('button', { type: 'submit', class: 'cta lg-buy' }, 'Comprar');
+    // Un nombre conocido («oro», «apple») se cambia por su símbolo; si no, lo escrito es el símbolo.
+    const resolve = () => {
+      const t = foldTxt(symbol.value);
+      const hit = Object.entries(LG_NAMES).find(([, n]) => foldTxt(n) === t || (t.length >= 3 && foldTxt(n).startsWith(t)));
+      return (hit ? hit[0] : symbol.value.trim()).toUpperCase();
+    };
+    const chips = l.popular.map((sym) => {
+      const b = h('button', { type: 'button', class: 'lg-chip', 'aria-pressed': 'false', 'data-sym': sym }, sym, LG_NAMES[sym] ? h('small', {}, LG_NAMES[sym]) : null);
+      b.addEventListener('click', () => {
+        symbol.value = sym;
+        sync();
+        usd.focus();
+      });
+      return b;
+    });
+    const quick = [...new Set([0.25, 0.5].map((f) => Math.floor((free * f) / 10) * 10))].filter((x) => x >= 10 && x < free);
+    const amounts = quick.map((x) => {
+      const b = h('button', { type: 'button', class: 'lg-chip' }, usdFmt(x));
+      b.addEventListener('click', () => {
+        usd.value = String(x);
+        sync();
+      });
+      return b;
+    });
+    if (free >= 1) {
+      const all = h('button', { type: 'button', class: 'lg-chip' }, 'Todo');
+      all.addEventListener('click', () => {
+        usd.value = String(free);
+        sync();
+      });
+      amounts.push(all);
+    }
+    function sync() {
+      const sym = resolve();
+      for (const c of chips) c.setAttribute('aria-pressed', String(c.dataset.sym === sym));
+      const n = Number(usd.value);
+      go.textContent = sym && n >= 1 ? `Comprar ${sym} por ${usdFmt(n)}` : 'Comprar';
+    }
+    symbol.addEventListener('input', sync);
+    usd.addEventListener('input', sync);
+    const left = h('p', { class: 'hint' });
+    if (free >= 1) left.append('Te quedan ', h('strong', {}, usdFmt(free)), ' para invertir', committed > 0 ? ' (ya descontadas tus compras en cola).' : '.');
+    else left.append('No te queda efectivo: vende algo o cancela una compra en cola.');
+    const form = h(
+      'form',
+      { class: 'lg-card lg-ticket' },
+      h('p', { class: 'lg-k' }, 'Comprar'),
+      h('p', { class: 'lg-step' }, h('span', { class: 'n' }, '1'), '¿Qué compras?'),
+      symbol,
+      h('div', { class: 'lg-chips', role: 'group', 'aria-label': 'Acciones y ETF conocidos' }, ...chips),
+      h('p', { class: 'lg-step' }, h('span', { class: 'n' }, '2'), '¿Cuánto?'),
+      h('div', { class: 'lg-amount' }, h('label', { class: 'lg-usd' }, h('span', {}, 'US$'), usd), ...amounts),
+      left,
+      go,
+      h('p', { class: 'hint' }, 'Se compra con el cierre de Nueva York (16:00 allá): hoy, si das la orden antes; si no, el siguiente día hábil. Todos pagan el mismo precio de cierre.'),
+    );
+    form.addEventListener('submit', (e) => {
+      e.preventDefault();
+      sendGames('/api/games/liga', { action: 'comprar', symbol: resolve(), usd: Number(usd.value) }, err);
+    });
+    return form;
   }
 
   // ---------- lista diaria ----------
@@ -4441,7 +4466,6 @@
     // Los gráficos que se dibujaron con la hoja oculta quedan con el ancho de reserva: se rehacen al volver.
     if (changed && sheet === 'mercados') redrawCharts();
     // Al entrar a «Juego», lo último que jugaron los demás.
-    if (changed && sheet === 'juego' && state.predict) loadPredict();
     if (changed && sheet === 'juego' && state.games) loadGames();
   }
 
@@ -4459,8 +4483,21 @@
       showSheet(SHEETS[(i + (e.key === 'ArrowRight' ? 1 : SHEETS.length - 1)) % SHEETS.length], true);
       e.preventDefault();
     });
-    window.addEventListener('hashchange', () => showSheet(location.hash === '#juego' ? 'juego' : 'mercados'));
-    showSheet(location.hash === '#juego' ? 'juego' : prefs.get('mercados.hoja', 'mercados'));
+    // /#liga (el enlace que se manda al grupo): la hoja «Juego» con el tutorial de la liga, si todavía no entraste.
+    const toLeague = () => {
+      state.openTutorial = true;
+      showSheet('juego');
+      if (state.games) renderGames();
+    };
+    window.addEventListener('hashchange', () => (location.hash === '#liga' ? toLeague() : showSheet(location.hash === '#juego' ? 'juego' : 'mercados')));
+    if (location.hash === '#liga') toLeague();
+    else showSheet(location.hash === '#juego' ? 'juego' : prefs.get('mercados.hoja', 'mercados'));
+    // El aviso de la liga en «Mercados»: entrar abre el tutorial; la × lo cierra para siempre en este equipo.
+    $('lg-teaser-go').addEventListener('click', toLeague);
+    $('lg-teaser-x').addEventListener('click', () => {
+      prefs.set('mercados.liga-aviso', 'cerrado');
+      $('lg-teaser').hidden = true;
+    });
   }
 
   // ---------- personas (solo el dueño) ----------
@@ -4742,7 +4779,6 @@
       loadPeruMarkets();
       loadCalendar();
       loadForecasts();
-      setupPredict();
       loadGames();
       setInterval(renderClock, 30_000);
       // Sin precios no hay pedidos periódicos: la rueda abre y cierra según el estado del servidor.
@@ -4769,7 +4805,6 @@
     loadPeruMarkets();
     loadCalendar();
     loadForecasts();
-    setupPredict();
     loadGames();
     setupPeople();
     renderPortfolioForm();

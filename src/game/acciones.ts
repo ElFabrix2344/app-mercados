@@ -2,14 +2,18 @@
 // y compite con el grupo. Empieza con US$ 10 000 de mentira y las órdenes se cumplen al cierre de Nueva York, así es el
 // mismo precio para todos y nadie compra con ventaja.
 //
+// Se compite por temporadas de quincena (del 1 al 15 y del 16 a fin de mes, pedido del usuario el 4 nov): la cartera
+// sigue igual de una a otra y gana quien más rinde en esos días. Al cerrar cada una queda guardado el resultado de todos
+// (`SEASON` + id) y el campeón suma un trofeo.
+//
 // Los precios salen de Twelve Data con la clave gratis de cada jugador: la licencia gratis no permite mostrarles a
 // otras personas los datos de la clave de Rueda. Cada uno ve sus precios con la suya; entre todos solo se comparan
 // porcentajes y qué acciones tiene cada uno. El dueño juega con la clave de Rueda. Las claves se guardan cifradas
 // (lib/secretbox.ts), y la tarea programada valoriza las carteras después de cada cierre, de a pocos símbolos.
 
 import { ApiError } from '../lib/http';
-import { lastClosedSession, nextCloseSession } from '../lib/market-hours';
-import { isoDate } from '../lib/num';
+import { isTradingDay, lastClosedSession, nextCloseSession } from '../lib/market-hours';
+import { addDays, isoDate } from '../lib/num';
 import { seal, unseal, type Sealed } from '../lib/secretbox';
 import { getQuotes, getRecentCloses } from '../lib/twelvedata';
 import type { GameStorage } from './juego';
@@ -30,6 +34,12 @@ const MAX_VALUES = 400;
 const SYMBOL_RE = /^[A-Z][A-Z0-9.-]{0,9}$/;
 const KEY_RE = /^[A-Za-z0-9]{16,64}$/;
 const MEMBER = 'sm:';
+/** Resultado guardado de cada temporada ya cerrada. */
+const SEASON = 'ls:';
+/** Si alguien no se valoriza (p. ej. su clave falla), la temporada se cierra igual a los 3 días. */
+const SEASON_WAIT_DAYS = 3;
+/** Temporadas que se mandan al panel (la lista completa de campeones crece de a 2 por mes). */
+const SEASONS_SHOWN = 24;
 const NY = 'America/New_York';
 
 export interface Holding {
@@ -78,7 +88,8 @@ export interface StockDeps {
 }
 
 export interface StockView {
-  month: string;
+  /** La temporada en curso. `last`: su última sesión; `total` y `left`: sesiones en total y cierres que faltan. */
+  season: Season & { last: string; total: number; left: number };
   popular: string[];
   me: {
     connected: boolean;
@@ -86,18 +97,34 @@ export interface StockView {
     error: string | null;
     value: number;
     cash: number;
-    retMonth: number | null;
+    retSeason: number | null;
     retTotal: number;
-    /** El SPY en el mes, con su clave: solo lo ve él. */
-    spyMonth: number | null;
+    /** El SPY en la temporada, con su clave: solo lo ve él. */
+    spySeason: number | null;
     holdings: { symbol: string; name: string; shares: number; value: number | null; ret: number | null }[];
     orders: StockOrder[];
     lastValued: string | null;
   } | null;
   /** Lo que ven todos: porcentajes y qué acciones tiene cada uno (nunca precios). */
-  standings: { alias: string; retMonth: number | null; retTotal: number; symbols: string[]; mine: boolean }[];
-  last: { month: string; champion: string; ret: number } | null;
+  standings: { alias: string; retSeason: number | null; retTotal: number; symbols: string[]; mine: boolean }[];
+  /** La carrera de la temporada: el rendimiento de cada uno al cierre de cada sesión (solo porcentajes). */
+  race: { alias: string; mine: boolean; points: { d: string; r: number }[] }[];
+  /** Temporadas cerradas, de la más nueva a la más vieja, con su podio. */
+  seasons: { id: string; from: string; to: string; podium: { alias: string; ret: number; mine: boolean }[]; players: number }[];
   titles: { alias: string; titles: number; mine: boolean }[];
+}
+
+/** Una temporada: "2026-11-1" va del 1 al 15 de noviembre y "2026-11-2", del 16 al 30 (fechas de sesión de NY). */
+export interface Season {
+  id: string;
+  from: string;
+  to: string;
+}
+
+interface SeasonRecord extends Season {
+  /** Del primero al último; vacío si nadie jugó esa temporada. */
+  rows: { pid: string; ret: number }[];
+  closedAt: string;
 }
 
 const bad = (message: string) => new ApiError('bad_request', 400, message);
@@ -119,6 +146,32 @@ const lastDayOf = (month: string) => {
   const [y, mm] = month.split('-').map(Number) as [number, number];
   return new Date(Date.UTC(y, mm, 0)).toISOString().slice(0, 10);
 };
+
+export function seasonOf(date: string): Season {
+  const month = date.slice(0, 7);
+  return Number(date.slice(8, 10)) <= 15
+    ? { id: `${month}-1`, from: `${month}-01`, to: `${month}-15` }
+    : { id: `${month}-2`, from: `${month}-16`, to: lastDayOf(month) };
+}
+
+const prevSeason = (s: Season) => seasonOf(addDays(s.from, -1));
+
+/** Sesiones de la temporada (días hábiles de la NYSE). */
+export function seasonSessions(s: Season): string[] {
+  const out: string[] = [];
+  for (let d = s.from; d <= s.to; d = addDays(d, 1)) if (isTradingDay(d)) out.push(d);
+  return out;
+}
+
+/**
+ * Lo que rindió en una temporada cerrada: del último valor antes de que empiece (o los US$ 10 000, si entró después) al
+ * último dentro de ella. Sin ningún valor dentro de la temporada, no jugó esa temporada.
+ */
+function seasonReturn(m: Member, s: Season): number | null {
+  const end = [...m.values].reverse().find((x) => x.d <= s.to);
+  if (!end || end.d < s.from) return null;
+  return end.v / (valueBefore(m, s.from)?.v ?? START_USD) - 1;
+}
 
 export class Acciones {
   constructor(
@@ -284,48 +337,82 @@ export class Acciones {
       m.lastValued = session;
       await this.save(m);
     }
+    await this.closeSeasons(now);
+  }
+
+  /**
+   * Guarda el resultado de las temporadas que ya terminaron y todavía no tienen registro. Espera a que estén
+   * valorizados todos los que juegan; si alguno no se valoriza (clave rota), cierra igual a los 3 días.
+   */
+  private async closeSeasons(now: Date): Promise<void> {
+    const today = isoDate(now, NY);
+    const prev = prevSeason(seasonOf(today));
+    if (await this.store.get(`${SEASON}${prev.id}`)) return;
+    const members = await this.members();
+    const first = members.flatMap((m) => m.values.map((x) => x.d)).sort()[0];
+    if (!first) return;
+    for (let s = prev; s.to >= first; s = prevSeason(s)) {
+      if (s !== prev && (await this.store.get(`${SEASON}${s.id}`))) break; // las anteriores ya están guardadas
+      const sessions = seasonSessions(s);
+      const last = sessions.at(-1) ?? s.to;
+      const waiting = members.some((m) => (m.key || m.appKey) && !m.error && m.lastValued != null && m.lastValued < last);
+      if (waiting && today <= addDays(s.to, SEASON_WAIT_DAYS)) return;
+      const rows = members
+        .map((m) => ({ pid: m.pid, ret: seasonReturn(m, s) }))
+        .filter((r): r is { pid: string; ret: number } => r.ret != null)
+        .sort((a, b) => b.ret - a.ret)
+        .map((r) => ({ pid: r.pid, ret: Math.round(r.ret * 1e6) / 1e6 }));
+      const record: SeasonRecord = { ...s, rows, closedAt: now.toISOString() };
+      await this.store.put(`${SEASON}${s.id}`, record);
+    }
   }
 
   // ---------- lo que se ve ----------
 
   async view(pid: string, now: Date, aliases: Map<string, string>): Promise<StockView> {
-    const month = isoDate(now, NY).slice(0, 7);
-    const first = `${month}-01`;
+    const season = seasonOf(isoDate(now, NY));
+    const first = season.from;
     const members = await this.members();
     const name = (id: string) => aliases.get(id) ?? 'Sin nombre';
     const valueNow = (m: Member) => m.values.at(-1)?.v ?? START_USD;
-    const retMonth = (m: Member) => (m.values.length ? valueNow(m) / (valueBefore(m, first)?.v ?? START_USD) - 1 : null);
+    // Al empezar una temporada, antes del primer cierre, todos van en 0.
+    const retSeason = (m: Member) => (m.values.length ? valueNow(m) / (valueBefore(m, first)?.v ?? START_USD) - 1 : null);
     // Al último cierre ya valorizado: así cada posición suma lo mismo que el valor del ranking.
     const latest = (m: Member, s: string) => (m.lastValued ? closeOn(m, s, m.lastValued) : (m.closes[s]?.at(-1)?.c ?? null));
 
-    const standings = members
-      .filter((m) => m.key || m.appKey || m.values.length)
+    const playing = members.filter((m) => m.key || m.appKey || m.values.length);
+    const standings = playing
       .map((m) => ({
         alias: name(m.pid),
-        retMonth: retMonth(m),
+        retSeason: retSeason(m),
         retTotal: valueNow(m) / START_USD - 1,
         symbols: Object.entries(m.holdings)
           .sort(([a, x], [b, y]) => y.shares * (latest(m, b) ?? 0) - x.shares * (latest(m, a) ?? 0))
           .map(([s]) => s),
         mine: m.pid === pid,
       }))
-      .sort((a, b) => (b.retMonth ?? -Infinity) - (a.retMonth ?? -Infinity) || b.retTotal - a.retTotal || a.alias.localeCompare(b.alias));
+      .sort((a, b) => (b.retSeason ?? -Infinity) - (a.retSeason ?? -Infinity) || b.retTotal - a.retTotal || a.alias.localeCompare(b.alias));
 
-    // Campeón de cada mes ya terminado: el que más rindió entre el último valor del mes anterior y el último del mes.
-    const months = new Set(members.flatMap((m) => m.values.map((x) => x.d.slice(0, 7))).filter((x) => x < month));
-    const champions = [...months].sort().map((mo) => {
-      const rows = members
-        .map((m) => {
-          const end = [...m.values].reverse().find((x) => x.d <= lastDayOf(mo) && x.d >= `${mo}-01`);
-          return end ? { pid: m.pid, ret: end.v / (valueBefore(m, `${mo}-01`)?.v ?? START_USD) - 1 } : null;
-        })
-        .filter((r): r is { pid: string; ret: number } => !!r)
-        .sort((a, b) => b.ret - a.ret);
-      return { month: mo, top: rows[0] ?? null };
-    });
-    const lastChampion = champions.at(-1)?.top ? champions.at(-1)! : null;
+    // La carrera: cada uno sale de 0 (si ya jugaba antes de la temporada) y suma un punto por cierre valorizado.
+    const race = playing
+      .map((m) => {
+        const base = valueBefore(m, first);
+        // Objetos y no tuplas: las tuplas pierden el tipo al cruzar el RPC del Durable Object.
+        // La salida va el día antes de que empiece, para no caer en la fecha del primer cierre.
+        const points: { d: string; r: number }[] = base ? [{ d: addDays(first, -1), r: 0 }] : [];
+        for (const x of m.values) if (x.d >= first && x.d <= season.to) points.push({ d: x.d, r: Math.round((x.v / (base?.v ?? START_USD) - 1) * 1e6) / 1e6 });
+        return { alias: name(m.pid), mine: m.pid === pid, points };
+      })
+      .filter((r) => r.points.length);
+
+    // Campeones: las temporadas cerradas que guardó la tarea programada (las vacías no cuentan).
+    const records = [...(await this.store.list<SeasonRecord>({ prefix: SEASON })).values()]
+      .filter((r) => r.rows.length)
+      .sort((a, b) => b.id.localeCompare(a.id));
     const titles = new Map<string, number>();
-    for (const c of champions) if (c.top) titles.set(c.top.pid, (titles.get(c.top.pid) ?? 0) + 1);
+    for (const r of records) titles.set(r.rows[0]!.pid, (titles.get(r.rows[0]!.pid) ?? 0) + 1);
+    const sessions = seasonSessions(season);
+    const next = nextCloseSession(now);
 
     const mine = members.find((m) => m.pid === pid);
     let me: StockView['me'] = null;
@@ -338,9 +425,9 @@ export class Acciones {
         error: mine.error,
         value: valueNow(mine),
         cash: round2(mine.cash),
-        retMonth: retMonth(mine),
+        retSeason: retSeason(mine),
         retTotal: valueNow(mine) / START_USD - 1,
-        spyMonth: base?.spy && spyNow ? spyNow / base.spy - 1 : null,
+        spySeason: base?.spy && spyNow ? spyNow / base.spy - 1 : null,
         holdings: Object.entries(mine.holdings).map(([symbol, h]) => {
           const c = latest(mine, symbol);
           const value = c != null ? round2(h.shares * c) : null;
@@ -351,12 +438,19 @@ export class Acciones {
       };
     }
     return {
-      month,
+      season: { ...season, last: sessions.at(-1) ?? season.to, total: sessions.length, left: sessions.filter((d) => d >= next).length },
       popular: POPULAR,
       me,
       standings,
-      last: lastChampion?.top ? { month: lastChampion.month, champion: name(lastChampion.top.pid), ret: lastChampion.top.ret } : null,
-      titles: [...titles.entries()].map(([id, n]) => ({ alias: name(id), titles: n, mine: id === pid })).sort((a, b) => b.titles - a.titles),
+      race,
+      seasons: records.slice(0, SEASONS_SHOWN).map((r) => ({
+        id: r.id,
+        from: r.from,
+        to: r.to,
+        podium: r.rows.slice(0, 3).map((x) => ({ alias: name(x.pid), ret: x.ret, mine: x.pid === pid })),
+        players: r.rows.length,
+      })),
+      titles: [...titles.entries()].map(([id, n]) => ({ alias: name(id), titles: n, mine: id === pid })).sort((a, b) => b.titles - a.titles || a.alias.localeCompare(b.alias)),
     };
   }
 }

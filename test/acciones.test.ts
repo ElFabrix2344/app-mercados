@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { Acciones, BENCHMARK, START_USD } from '../src/game/acciones';
+import { Acciones, BENCHMARK, seasonOf, seasonSessions, START_USD } from '../src/game/acciones';
 import { nextCloseSession } from '../src/lib/market-hours';
 import { seal, unseal } from '../src/lib/secretbox';
 import { memoryStorage } from './helpers';
@@ -115,7 +115,7 @@ describe('liga de acciones', () => {
     expect(v.standings[1]!.retTotal).toBeLessThan(0);
     // Lo que ven los demás no trae precios ni montos.
     expect(JSON.stringify(v.standings)).not.toMatch(/220|4400|5800/);
-    expect(v.me!.spyMonth).toBeNull(); // sin cierre del mes anterior no hay con qué comparar
+    expect(v.me!.spySeason).toBeNull(); // sin cierre antes de la temporada no hay con qué comparar
 
     // Vender todo: con el cierre del día en que se pide (si es antes del cierre).
     await liga.order('p-ana', { action: 'vender', symbol: 'NVDA' }, new Date('2026-11-04T15:00:00Z'));
@@ -134,5 +134,63 @@ describe('liga de acciones', () => {
     expect(v.me!.value).toBe(START_USD);
     await revoked.disconnect('p-ana');
     expect((await revoked.view('p-ana', new Date(), aliases)).me!.connected).toBe(false);
+  });
+});
+
+describe('temporadas de quincena', () => {
+  it('van del 1 al 15 y del 16 a fin de mes, con las sesiones de la NYSE', () => {
+    expect(seasonOf('2026-11-04')).toEqual({ id: '2026-11-1', from: '2026-11-01', to: '2026-11-15' });
+    expect(seasonOf('2026-11-16')).toEqual({ id: '2026-11-2', from: '2026-11-16', to: '2026-11-30' });
+    expect(seasonOf('2027-02-20').to).toBe('2027-02-28');
+    expect(seasonSessions(seasonOf('2026-11-04'))).toEqual(['2026-11-02', '2026-11-03', '2026-11-04', '2026-11-05', '2026-11-06', '2026-11-09', '2026-11-10', '2026-11-11', '2026-11-12', '2026-11-13']);
+    expect(seasonSessions(seasonOf('2026-11-20'))).not.toContain('2026-11-26'); // Acción de Gracias
+  });
+
+  it('al terminar la quincena guarda el resultado, suma el trofeo y la siguiente sale de 0', async () => {
+    const book2 = {
+      SPY: { '2026-11-12': 600, '2026-11-13': 603, '2026-11-16': 606 },
+      NVDA: { '2026-11-12': 200, '2026-11-13': 210, '2026-11-16': 205 },
+      BAP: { '2026-11-12': 250, '2026-11-13': 240, '2026-11-16': 255 },
+    };
+    const store = memoryStorage();
+    const liga = new Acciones(store, { secret: SECRET, appKey: undefined, fetch: twelve(book2).f });
+    const thu = new Date('2026-11-12T15:00:00Z'); // jueves 12, 10:00 en NY
+    await liga.connect('p-ana', { key: KEY_ANA }, thu);
+    await liga.connect('p-beto', { key: KEY_BETO }, thu);
+    await liga.order('p-ana', { action: 'comprar', symbol: 'NVDA', usd: 5000 }, thu);
+    await liga.order('p-beto', { action: 'comprar', symbol: 'BAP', usd: 5000 }, thu);
+    await liga.tick(new Date('2026-11-12T21:30:00Z')); // se cumplen las compras
+    await liga.tick(new Date('2026-11-13T21:30:00Z')); // viernes 13: la última sesión de la quincena
+
+    const fri = await liga.view('p-ana', new Date('2026-11-13T22:00:00Z'), aliases);
+    expect(fri.season).toMatchObject({ id: '2026-11-1', last: '2026-11-13', total: 10, left: 0 });
+    expect(fri.standings.map((s) => s.alias)).toEqual(['Ana', 'Beto']);
+    // Entraron en la temporada: su carrera empieza en su primer cierre, sin salida en 0.
+    expect(fri.race.find((r) => r.mine)!.points.map((p) => p.d)).toEqual(['2026-11-12', '2026-11-13']);
+    expect(fri.race.find((r) => r.mine)!.points[1]!.r).toBeCloseTo(0.025, 6); // 25 NVDA de 200 a 210
+    expect(fri.seasons).toEqual([]); // todavía no termina
+    expect(JSON.stringify(fri.race)).not.toMatch(/10250|9800/); // la carrera son porcentajes, nunca montos
+
+    // El lunes queda guardada: gana Ana (+2.5 %) y Beto queda segundo (−2 %).
+    await liga.tick(new Date('2026-11-16T15:00:00Z'));
+    const mon = await liga.view('p-beto', new Date('2026-11-16T15:05:00Z'), aliases);
+    expect(mon.seasons).toHaveLength(1);
+    expect(mon.seasons[0]).toMatchObject({ id: '2026-11-1', from: '2026-11-01', to: '2026-11-15', players: 2 });
+    expect(mon.seasons[0]!.podium.map((p) => [p.alias, p.mine])).toEqual([['Ana', false], ['Beto', true]]);
+    expect(mon.seasons[0]!.podium[0]!.ret).toBeCloseTo(0.025, 6);
+    expect(mon.seasons[0]!.podium[1]!.ret).toBeCloseTo(-0.02, 6);
+    expect(mon.titles).toEqual([{ alias: 'Ana', titles: 1, mine: false }]);
+    // La nueva temporada: 10 sesiones (sin Acción de Gracias) y todos en 0 hasta el primer cierre.
+    expect(mon.season).toMatchObject({ id: '2026-11-2', from: '2026-11-16', to: '2026-11-30', total: 10, left: 10 });
+    expect(mon.standings.map((s) => s.retSeason)).toEqual([0, 0]);
+
+    // Lo guardado no se duplica, y la carrera nueva sale de 0 el día antes y suma el lunes.
+    await liga.tick(new Date('2026-11-16T21:30:00Z'));
+    const v = await liga.view('p-ana', new Date('2026-11-16T22:00:00Z'), aliases);
+    expect(v.seasons).toHaveLength(1);
+    expect(v.season.left).toBe(9);
+    expect(v.race.find((r) => r.mine)!.points.map((p) => p.d)).toEqual(['2026-11-15', '2026-11-16']);
+    expect(v.standings[0]!.alias).toBe('Beto'); // BAP sube el lunes
+    expect([...store.data.keys()].filter((k) => k.startsWith('ls:'))).toEqual(['ls:2026-11-1']);
   });
 });

@@ -302,7 +302,7 @@ Entre paréntesis, la opinión de Claude: **Sí**, Tal vez o No.
 El usuario pidió que lo cooperativo o competitivo tuviera su propia hoja «e ir armándolo con más ideas». Contó que un amigo hizo una app como Polymarket o Kalshi para las elecciones del centro de estudiantes de la universidad y que funcionó bien. Quiere juegos sobre la universidad o sobre economía y política en general.
 
 - [x] **Hoja «Juego»:** pestañas «Mercados» y «Juego» bajo el encabezado. Los pronósticos pasaron ahí, con todas las preguntas abiertas a la vista, el ranking y lo resuelto al costado. La pestaña muestra cuántas te faltan.
-- [x] **Mercado de predicciones del grupo** (aprobado el 2 nov: «Sí, ármalo»). Detalle en el README.
+- [x] ~~**Mercado de predicciones del grupo**~~ (publicado el 2 nov y quitado ese mismo día: «honestamente mercado de pronósticos puede ser droppeado»). Lo que fue:
   - **Cómo se juega:**
     - Preguntas de Sí o No con un precio de 1 a 99 fichas, que se lee como probabilidad.
     - El precio lo mueve un creador de mercado automático (LMSR), porque con 8 personas no hay quién venda del otro lado.
@@ -317,6 +317,9 @@ El usuario pidió que lo cooperativo o competitivo tuviera su propia hoja «e ir
   - **Técnico:** se pensó en D1, pero quedó en un Durable Object con SQLite, también gratis. Ordena los pedidos solo y no hay que crear nada en el panel: lo crea el despliegue. Con KV, dos compras al mismo tiempo podían pisarse, y cada vista gastaba uno de los 1.000 `list` diarios.
 - [x] **Juegos que no son de pronosticar** (2 nov; el usuario: «separarse de la idea de pronósticos solamente»). Eligió **2/3 del promedio** y **Gráfico del día**, y sumó una liga de carteras.
   - La liga la imaginaba como un presupuesto para comprar y vender cualquier acción. Quedó con compras y ventas, pero con dólar, oro, cobre y Bolsa de Lima (BCRP), porque la licencia gratis de Twelve Data no permite mostrarles precios de acciones a los amigos.
+- [x] **Liga de acciones, lo principal de «Juego»** (2 nov): arriba y a todo el ancho, con un tutorial aparte, paso a paso, que también abre el enlace `/#liga` para el grupo, y un aviso en «Mercados» para quien no entró.
+- [x] **Liga más llamativa y fácil de usar** (4 nov): de tres maquetas (A · Carrera, B · Podio, C · Marcador) se publicó la recomendada, A: quién lidera y tu puesto, la carrera de la quincena, ranking y campeones; abajo, tu cartera con su barra y «Comprar» en dos pasos (nombres en los accesos rápidos, montos rápidos y lo que te queda). B y C quedan como alternativas si la A no convence.
+- [x] **Temporadas de quincena** (4 nov, idea del usuario): del 1 al 15 y del 16 a fin de mes, con la misma cartera. Al cerrar cada una queda guardado el resultado de todos; el panel muestra el podio de cada temporada y los trofeos.
 - [x] **Liga de acciones** (2 nov): el usuario quería «simular carteras de verdad y competir» y que entrar fuera «lo más fácil posible». Cada amigo conecta su clave gratis de Twelve Data en tres pasos desde la tarjeta (con Google); el dueño juega con la de Rueda. Reemplazó a la liga del BCRP (dólar, oro, cobre y BVL), que estuvo publicada menos de una hora.
 - [ ] **Otras ideas** (sin elegir):
   - **Competitivas:** temporadas mensuales con campeón, logros (rachas, «contra la corriente») y duelos 1 a 1.

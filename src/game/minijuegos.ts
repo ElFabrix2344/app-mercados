@@ -1,13 +1,13 @@
-// Los otros juegos de la hoja «Juego», que no son de pronosticar: «2/3 del promedio» (semanal), «Gráfico del día»
-// (diario) y «Liga de acciones» (mensual). Viven en el mismo Durable Object que el mercado de predicciones y usan los
-// mismos jugadores y nombres. Cada pedido pone al día lo que corresponde y responde lo que ve quien pide.
+// Los juegos de la hoja «Juego» que no son de pronosticar: «Liga de acciones» (mensual), «Gráfico del día» (diario) y
+// «2/3 del promedio» (semanal). Viven en el mismo Durable Object y usan los jugadores y nombres del juego de
+// pronósticos. Cada pedido pone al día lo que corresponde y responde lo que ve quien pide.
 
 import { ApiError } from '../lib/http';
 import { isoDate } from '../lib/num';
 import type { Acciones, StockView } from './acciones';
 import { DosTercios, type K23View } from './dos-tercios';
 import { Grafico, type ChartView } from './grafico';
-import type { GameStorage, Juego, Who } from './juego';
+import type { GameStorage, Jugadores, Who } from './juego';
 import type { GamesInput } from './series';
 
 export interface GamesView {
@@ -25,7 +25,7 @@ export class Minijuegos {
 
   constructor(
     store: GameStorage,
-    private readonly juego: Juego,
+    private readonly juego: Jugadores,
     /** La liga de acciones, con Twelve Data o, en desarrollo local, con precios inventados. */
     private readonly stocks: (mock: boolean) => Acciones,
   ) {
@@ -33,7 +33,7 @@ export class Minijuegos {
     this.chart = new Grafico(store);
   }
 
-  /** Para jugar hace falta el nombre (el mismo de los pronósticos y el mercado). */
+  /** Para jugar hace falta el nombre (el mismo de los pronósticos). */
   private async player(who: Who, now: Date): Promise<void> {
     if (!(await this.juego.join(who, now))) throw new ApiError('bad_request', 400, 'Para jugar, elige tu nombre arriba.');
   }

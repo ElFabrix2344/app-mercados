@@ -55,6 +55,16 @@ describe('index.html', () => {
     expect(html.indexOf('id="forecasts"')).toBeGreaterThan(game);
     expect(html.indexOf('id="fc-rank"')).toBeGreaterThan(game);
   });
+
+  it('la liga de acciones es lo primero de «Juego», con su tutorial aparte; el mercado de predicciones ya no está', () => {
+    const game = html.indexOf('id="game"');
+    const league = html.indexOf('id="league"');
+    expect(league).toBeGreaterThan(game);
+    expect(html.slice(game, html.lastIndexOf('<section', league))).not.toContain('<section');
+    expect(html).toMatch(/<dialog class="tutorial" id="lg-tutorial"/);
+    expect(html).toContain('id="lg-teaser"');
+    expect(html).not.toContain('id="predict"');
+  });
 });
 
 describe('service worker', () => {
