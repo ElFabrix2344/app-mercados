@@ -92,6 +92,11 @@ App de mercados (Cloudflare Worker + panel web + conector MCP para Claude). El R
   - **Abrir una acción fuera de las listas gasta créditos** (precio e historial, unos 2): solo con la clave de Rueda para el dueño, o con la del amigo en su parte del Durable Object. Nunca con la de Rueda para un amigo.
   - **Tope de 20 nuevas al día por persona** (`LOOKUP_DAILY_MAX`) y registro `buscadas`. Fuera de las listas, historial, titulares y Finnhub solo se piden de las anotadas con precio (`lookedUp`). No saques ese control: es lo que impide gastar créditos y escrituras con cualquier símbolo.
   - **Si Twelve Data no tiene el símbolo**, se anota sin precio y no se pide su historial. Si el pedido falla (límite por minuto, freno del día), no se anota.
+  - **El precio de las buscadas del dueño sale de Finnhub** (5 nov, pedido del usuario: «conecta finnhub a la búsqueda de precios»).
+    - `finnhubFirst` usa `/quote` y el nombre de `/stock/profile2`, sin créditos de Twelve Data. Así una acción nueva cuesta 1 crédito (el historial).
+    - Divisas, cripto, o si Finnhub falla o responde ceros (no tiene el símbolo): Twelve Data.
+    - **Nunca para los amigos:** los términos de Finnhub no permiten mostrar sus datos a otros. Ellos siguen con `twelveSource` y su propia clave.
+    - La moneda es siempre US$: la del perfil de Finnhub es la de los informes (Credicorp informa en soles).
   - **Comparar sigue siendo con las listas.**
 - **Lo que espera el mercado** (`lib/polymarket.ts`, `services/polymarket.ts`, 4 nov; el usuario preguntó por «Polymarket o Kalshi»). Eligió tarjetas con el diseño de Rueda más el widget oficial, y los temas «Bolsa y empresas» y «Política y mundo». El dueño fija eventos pegando su enlace. Reglas:
   - **Kalshi, no:** sus términos de datos solo permiten uso personal y no comercial, y prohíben guardar en caché y usar con IA (también lo que genere).

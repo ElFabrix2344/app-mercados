@@ -35,6 +35,37 @@ const str = (v: unknown) => (typeof v === 'string' && v.trim() ? v.trim() : null
 const isoDay = (v: unknown) => (typeof v === 'string' && /^\d{4}-\d{2}-\d{2}/.test(v) ? v.slice(0, 10) : null);
 const desc = <T extends { period: string }>(a: T, b: T) => (a.period < b.period ? 1 : a.period > b.period ? -1 : 0);
 
+// ---------- precio (/quote) ----------
+
+/** Precio de una acción o ETF de EE. UU. (en US$), del plan gratis. */
+export interface FinnhubQuote {
+  price: number;
+  change: number | null;
+  changePct: number | null;
+  prevClose: number | null;
+  /** Hora del último precio (ISO). */
+  asOf: string | null;
+}
+
+/** null si Finnhub no tiene el símbolo: en vez de un error responde todo en 0. */
+export function parseFinnhubQuote(raw: unknown): FinnhubQuote | null {
+  const o = (raw ?? {}) as Record<string, unknown>;
+  const price = num(o.c);
+  if (price === null || price <= 0) return null;
+  const t = num(o.t);
+  const pc = num(o.pc);
+  return { price, change: num(o.d), changePct: num(o.dp), prevClose: pc && pc > 0 ? pc : null, asOf: t ? new Date(t * 1000).toISOString() : null };
+}
+
+/** «NASDAQ NMS - GLOBAL MARKET» → «NASDAQ»; «NEW YORK STOCK EXCHANGE, INC.» → «NYSE» (como las escribe Twelve Data). */
+export function shortExchange(name: string | null | undefined): string {
+  if (!name) return '';
+  if (/nasdaq/i.test(name)) return 'NASDAQ';
+  if (/new york|nyse/i.test(name)) return /arca/i.test(name) ? 'NYSE Arca' : 'NYSE';
+  if (/cboe|bats/i.test(name)) return 'Cboe';
+  return name;
+}
+
 // ---------- calendario de resultados ----------
 
 /** Antes de la apertura (bmo), después del cierre (amc) o durante la sesión (dmh) de la bolsa. */

@@ -17,6 +17,7 @@ import {
   mockFinancials,
   mockForecastExtras,
   mockFundamentals,
+  fakeFinnhub,
   mockHistory,
   mockLookupQuote,
   mockNews,
@@ -33,7 +34,7 @@ import {
   mockUsa,
 } from './mock';
 import { crypto } from './services/crypto';
-import { lookedUp, lookup, lookupStatus, searchQuery, suggest } from './services/lookup';
+import { finnhubFirst, lookedUp, lookup, lookupStatus, searchQuery, suggest, twelveSource } from './services/lookup';
 import { refreshSmv, smvView } from './services/smv';
 import { pinEvent, polymarket, readPins, unpinEvent } from './services/polymarket';
 import { slugFromUrl } from './lib/polymarket';
@@ -231,13 +232,15 @@ async function route(req: Request, env: Env, url: URL, role: Role, email: string
         return json({ ...res, credits: { used: await creditsUsed(env.CACHE, now), cap: DAILY_CREDIT_CAP } });
       }
 
-      // Buscador: abre la ficha de un símbolo que no está en las listas (su precio, 1 crédito, con un tope de 20 nuevos al
-      // día). Sin símbolo, cuántos se abrieron hoy.
+      // Buscador: abre la ficha de un símbolo que no está en las listas, con un tope de 20 nuevos al día. El precio, de
+      // Finnhub (el dueño; no gasta créditos) o, si no lo tiene, de Twelve Data. Sin símbolo, cuántos se abrieron hoy.
       case '/api/lookup': {
         const raw = url.searchParams.get('symbol');
         if (raw == null) return json(await lookupStatus(env.CACHE, now));
-        const getQuote = mock ? async (s: string) => mockLookupQuote(s, now) : undefined;
-        return json(await lookup(deps, raw, { force: url.searchParams.get('refresh') === '1', getQuote }));
+        const source = mock
+          ? finnhubFirst({ ...deps, finnhubKey: 'demo', fetch: fakeFinnhub }, twelveSource(deps, async (s) => mockLookupQuote(s, now)))
+          : finnhubFirst(deps);
+        return json(await lookup(deps, raw, { force: url.searchParams.get('refresh') === '1', source }));
       }
 
       // Sugerencias del buscador (SEC, públicas): para todos.

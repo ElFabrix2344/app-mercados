@@ -1273,7 +1273,7 @@
     const hist = detailHistory(sym, state.range);
     renderIndicatorToggles(hist);
     const eodRow = q ? null : eodRowFor(sym);
-    const name = q?.name ?? eodRow?.name ?? state.lookups.get(sym)?.name;
+    const name = (q?.name && q.name !== sym ? q.name : null) ?? eodRow?.name ?? state.lookups.get(sym)?.name ?? q?.name;
     $('d-title').textContent = name ? `${sym} · ${name}` : sym;
     $('d-sub').textContent = q ? [q.exchange, q.currency].filter(Boolean).join(' · ') : eodRow ? `Lista diaria · cierre del ${fDayYear.format(day(eodRow.date))}` : '';
     const chart = $('d-chart');
@@ -5922,7 +5922,8 @@
     if (state.selected === sym) renderDetail();
     return api(`/api/lookup?symbol=${encodeURIComponent(sym)}${refresh ? '&refresh=1' : ''}`)
       .then((r) => {
-        state.lookups.set(sym, { ...r, name: r.quote?.name ?? name ?? prev?.name ?? null });
+        const real = r.quote?.name && r.quote.name !== sym ? r.quote.name : null;
+        state.lookups.set(sym, { ...r, name: real ?? name ?? prev?.name ?? null });
         state.lookupStatus = r.lookups;
         if (!r.quote) forgetSearch(sym);
         if (r.credits && state.quotes) {
@@ -5984,7 +5985,9 @@
       row.hidden = !l.retry;
       return;
     }
-    text.textContent = l.stale && l.note ? `No está en tus listas · precio guardado (${l.note})` : 'No está en tus listas.';
+    // El precio del dueño sale de Finnhub (sin créditos de Twelve Data): puede diferir por centavos del de la lista.
+    const from = l.source === 'finnhub' ? ' · precio de Finnhub' : '';
+    text.textContent = l.stale && l.note ? `No está en tus listas${from} · precio guardado (${l.note})` : `No está en tus listas${from}.`;
     const target = addTarget();
     add.hidden = false;
     add.disabled = !target;

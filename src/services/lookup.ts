@@ -6,7 +6,12 @@
 // clave de Rueda solo para el dueño, y para un amigo con la suya. Por eso cada persona tiene un tope de acciones nuevas
 // al día y un registro de las que abrió (`buscadas`, en la KV del dueño o en la parte de cada amigo del Durable Object).
 // Fuera de las listas, el historial, los titulares y los datos de empresa solo se piden de las que están ahí.
+//
+// El precio de las que busca el dueño sale de Finnhub (5 nov, pedido del usuario: «conecta finnhub a la búsqueda de
+// precios»): no gasta créditos de Twelve Data, así que una acción nueva cuesta 1 crédito (el historial) en vez de 2. Sus
+// términos no permiten mostrar sus datos a otros: los amigos siguen con su clave de Twelve Data.
 
+import { finnhubGet, parseFinnhubQuote, parseProfile, shortExchange } from '../lib/finnhub';
 import { ApiError } from '../lib/http';
 import { usMarketOpen } from '../lib/market-hours';
 import { isoDate } from '../lib/num';
@@ -30,9 +35,74 @@ export interface LookupEntry {
   fetchedAt: string | null;
   /** Por qué no hay precio: Twelve Data no tiene el símbolo, o no en el plan gratis. */
   error: string | null;
+  /** De dónde salió el precio (falta en lo guardado antes del 5 nov: era Twelve Data). */
+  source?: PriceSource;
 }
 
 export type LookupStore = Record<string, LookupEntry>;
+
+export type PriceSource = 'twelvedata' | 'finnhub';
+
+/** El precio de una buscada, de dónde salió y cuántos créditos de Twelve Data costó (0 si vino de Finnhub). */
+export interface QuotePick {
+  batch: QuoteBatch;
+  credits: number;
+  source: PriceSource;
+}
+
+export type QuoteSource = (symbol: string) => Promise<QuotePick>;
+
+/** Twelve Data: 1 crédito, con el freno del día. `get` reemplaza el pedido (pruebas y datos de prueba). */
+export function twelveSource(d: CacheDeps, get?: (symbol: string) => Promise<QuoteBatch>): QuoteSource {
+  return async (symbol) => {
+    if ((await creditsUsed(d.kv, d.now)) + 1 > DAILY_CREDIT_CAP) {
+      throw new ApiError('rate_limited', 429, 'Freno de créditos del día: se muestra el último precio guardado.', 'twelvedata');
+    }
+    const batch = await (get ? get(symbol) : getQuotes([symbol], needKey(d.twelveKey, 'TWELVE_DATA_API_KEY', 'twelvedata'), d.fetch));
+    return { batch, credits: 1, source: 'twelvedata' };
+  };
+}
+
+/**
+ * Solo para el dueño: el precio de Finnhub (60 consultas por minuto en su plan gratis, sin créditos de Twelve Data), con
+ * el nombre de su perfil. Divisas y cripto, o si Finnhub falla o no tiene el símbolo, van a Twelve Data. Finnhub da
+ * precios de EE. UU., en dólares: la moneda del perfil es la de los informes (Credicorp informa en soles), no la del precio.
+ */
+export function finnhubFirst(d: CacheDeps & { finnhubKey?: string }, fallback: QuoteSource = twelveSource(d)): QuoteSource {
+  return async (symbol) => {
+    const key = d.finnhubKey;
+    if (key && !symbol.includes('/')) {
+      try {
+        const [rawQuote, rawProfile] = await Promise.all([
+          finnhubGet('/quote', { symbol }, key, d.fetch),
+          finnhubGet('/stock/profile2', { symbol }, key, d.fetch).catch(() => null),
+        ]);
+        const q = parseFinnhubQuote(rawQuote);
+        if (q) {
+          const p = parseProfile(rawProfile);
+          const quote: Quote = {
+            symbol,
+            name: p?.name ?? symbol,
+            exchange: shortExchange(p?.exchange),
+            currency: 'USD',
+            price: q.price,
+            prevClose: q.prevClose,
+            change: q.change,
+            changePct: q.changePct,
+            asOf: q.asOf,
+            isMarketOpen: null,
+            low52: null,
+            high52: null,
+          };
+          return { batch: { quotes: [quote], errors: {} }, credits: 0, source: 'finnhub' };
+        }
+      } catch {
+        // Límite por minuto, clave o red de Finnhub: el precio sale de Twelve Data.
+      }
+    }
+    return fallback(symbol);
+  };
+}
 
 /** Lo guardado, sin lo que ya venció. */
 async function readLookups(kv: CacheStore, now: Date): Promise<LookupStore> {
@@ -78,6 +148,8 @@ export interface LookupResult {
   lookups: LookupStatus;
   /** Créditos de Twelve Data usados hoy con esta clave (el panel los muestra arriba). */
   credits: { used: number; cap: number };
+  /** De dónde salió el precio. */
+  source: PriceSource | null;
 }
 
 /**
@@ -89,7 +161,7 @@ export interface LookupResult {
 export async function lookup(
   d: CacheDeps,
   raw: string,
-  opts: { force?: boolean; getQuote?: (symbol: string) => Promise<QuoteBatch> } = {},
+  opts: { force?: boolean; getQuote?: (symbol: string) => Promise<QuoteBatch>; source?: QuoteSource } = {},
 ): Promise<LookupResult> {
   const symbol = raw.trim().toUpperCase();
   if (!SYMBOL_RE.test(symbol)) throw new ApiError('bad_request', 400, 'Escribe un símbolo como AAPL, BRK.B o BTC/USD.');
@@ -110,17 +182,15 @@ export async function lookup(
   let note: string | null = null;
   if (quoteDue(entry.fetchedAt ?? undefined, symbol, d.now, !!opts.force)) {
     try {
-      if ((await creditsUsed(d.kv, d.now)) + 1 > DAILY_CREDIT_CAP) {
-        throw new ApiError('rate_limited', 429, 'Freno de créditos del día: se muestra el último precio guardado.', 'twelvedata');
-      }
-      const get = opts.getQuote ?? ((s: string) => getQuotes([s], needKey(d.twelveKey, 'TWELVE_DATA_API_KEY', 'twelvedata'), d.fetch));
-      const batch = await get(symbol);
-      await spendCredits(d.kv, d.now, 1);
+      const pick = await (opts.source ?? twelveSource(d, opts.getQuote))(symbol);
+      if (pick.credits) await spendCredits(d.kv, d.now, pick.credits);
+      const batch = pick.batch;
       const q = batch.quotes.find((x) => x.symbol === symbol) ?? batch.quotes[0] ?? null;
       const why = batch.errors[symbol] ?? Object.values(batch.errors)[0] ?? 'sin precio';
       if (q) {
         entry.quote = { ...q, symbol };
         entry.error = null;
+        entry.source = pick.source;
       } else if (entry.quote) {
         stale = true;
         note = `Twelve Data: ${why}`;
@@ -151,6 +221,7 @@ export async function lookup(
     market: { open: usMarketOpen(d.now) },
     lookups: statusOf({ ...store, [symbol]: entry }, d.now),
     credits: { used: await creditsUsed(d.kv, d.now), cap: DAILY_CREDIT_CAP },
+    source: entry.quote ? (entry.source ?? 'twelvedata') : null,
   };
 }
 

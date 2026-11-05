@@ -6,7 +6,8 @@ import worker from '../src/index';
 import { parseSearch, searchCompanies } from '../src/lib/sec';
 import type { QuoteBatch } from '../src/lib/twelvedata';
 import { playerId } from '../src/services/forecasts';
-import { LOOKUP_DAILY_MAX, LOOKUP_KEY, lookedUp, lookup, lookupStatus, noPrice, resetSearchCache, suggest } from '../src/services/lookup';
+import { parseFinnhubQuote, shortExchange } from '../src/lib/finnhub';
+import { finnhubFirst, LOOKUP_DAILY_MAX, LOOKUP_KEY, lookedUp, lookup, lookupStatus, noPrice, resetSearchCache, suggest, twelveSource } from '../src/services/lookup';
 import { DAILY_CREDIT_CAP } from '../src/services/market';
 import { fakeFetch, memoryKV, memoryStorage } from './helpers';
 
@@ -165,6 +166,76 @@ describe('fichas de acciones buscadas', () => {
   });
 });
 
+describe('precio de las buscadas desde Finnhub (solo el dueño)', () => {
+  const now = new Date('2026-11-05T16:00:00Z'); // jueves, con la bolsa abierta
+  /** Finnhub de mentira: AAPL con precio y perfil; SPY con precio y sin perfil (ETF); el resto, ceros. */
+  const finnhub = (status = 200) =>
+    fakeFetch((url) => {
+      const sym = url.searchParams.get('symbol');
+      if (status !== 200) return { status, body: { error: 'You don\'t have access to this resource.' } };
+      if (url.pathname.endsWith('/quote')) {
+        if (sym === 'AAPL') return { body: { c: 270.5, d: 2.5, dp: 0.9328, h: 271, l: 266, o: 267, pc: 268, t: 1793912400 } };
+        if (sym === 'SPY') return { body: { c: 690.1, d: -1.2, dp: -0.17, h: 692, l: 688, o: 691, pc: 691.3, t: 1793912400 } };
+        return { body: { c: 0, d: null, dp: null, h: 0, l: 0, o: 0, pc: 0, t: 0 } };
+      }
+      return { body: sym === 'AAPL' ? { name: 'Apple Inc', exchange: 'NASDAQ NMS - GLOBAL MARKET', currency: 'USD' } : {} };
+    });
+  const twelve = () => {
+    const asked: string[] = [];
+    const get = async (s: string): Promise<QuoteBatch> => {
+      asked.push(s);
+      return { quotes: [{ symbol: s, name: `${s} (Twelve Data)`, exchange: 'NYSE', currency: 'USD', price: 10, prevClose: 9, change: 1, changePct: 11.1, asOf: null, isMarketOpen: true, low52: null, high52: null }], errors: {} };
+    };
+    return { asked, get };
+  };
+
+  it('lee el precio de Finnhub y su bolsa como la escribe Twelve Data; sin símbolo responde ceros', () => {
+    expect(parseFinnhubQuote({ c: 270.5, d: 2.5, dp: 0.93, pc: 268, t: 1793912400 })).toEqual({ price: 270.5, change: 2.5, changePct: 0.93, prevClose: 268, asOf: '2026-11-05T21:00:00.000Z' });
+    expect(parseFinnhubQuote({ c: 0, d: null, dp: null, pc: 0, t: 0 })).toBeNull();
+    expect(parseFinnhubQuote(null)).toBeNull();
+    expect(shortExchange('NASDAQ NMS - GLOBAL MARKET')).toBe('NASDAQ');
+    expect(shortExchange('NEW YORK STOCK EXCHANGE, INC.')).toBe('NYSE');
+    expect(shortExchange(null)).toBe('');
+  });
+
+  it('con Finnhub no gasta créditos de Twelve Data; sin perfil (ETF), el nombre queda en el símbolo', async () => {
+    const m = memoryKV();
+    const fh = finnhub();
+    const tw = twelve();
+    const d = { kv: m.kv, now, finnhubKey: 'fh-key', fetch: fh.f };
+    const r = await lookup(d, 'AAPL', { source: finnhubFirst(d, twelveSource(d, tw.get)) });
+    expect(r.source).toBe('finnhub');
+    expect(r.quote).toMatchObject({ symbol: 'AAPL', name: 'Apple Inc', exchange: 'NASDAQ', currency: 'USD', price: 270.5, changePct: 0.9328 });
+    expect(r.credits.used).toBe(0);
+    expect(await m.kv.get('budget', 'json')).toBeNull();
+    expect(tw.asked).toEqual([]);
+    // La clave de Finnhub va como `token`, como pide su API; a Twelve Data no se le pidió nada.
+    expect(fh.calls.map((u) => u.pathname).sort()).toEqual(['/api/v1/quote', '/api/v1/stock/profile2']);
+    expect(fh.calls.every((u) => u.searchParams.get('token') === 'fh-key')).toBe(true);
+    const spy = await lookup(d, 'SPY', { source: finnhubFirst(d, twelveSource(d, tw.get)) });
+    expect(spy.quote).toMatchObject({ name: 'SPY', price: 690.1 });
+  });
+
+  it('si Finnhub no lo tiene, falla o es una divisa, el precio sale de Twelve Data (1 crédito)', async () => {
+    for (const [sym, status] of [['NOPE', 200], ['AAPL', 403], ['BTC/USD', 200]] as const) {
+      const m = memoryKV();
+      const tw = twelve();
+      const fh = finnhub(status);
+      const d = { kv: m.kv, now, finnhubKey: 'fh-key', fetch: fh.f };
+      const r = await lookup(d, sym, { source: finnhubFirst(d, twelveSource(d, tw.get)) });
+      expect(r.source, sym).toBe('twelvedata');
+      expect(tw.asked, sym).toEqual([sym]);
+      expect(r.credits.used, sym).toBe(1);
+      if (sym === 'BTC/USD') expect(fh.calls).toEqual([]);
+    }
+    // Sin clave de Finnhub, directo a Twelve Data.
+    const m = memoryKV();
+    const tw = twelve();
+    const d = { kv: m.kv, now };
+    expect((await lookup(d, 'AAPL', { source: finnhubFirst(d, twelveSource(d, tw.get)) })).source).toBe('twelvedata');
+  });
+});
+
 describe('rutas del buscador (local, con datos de prueba)', () => {
   function setup(role: 'owner' | 'friend') {
     const cache = memoryKV();
@@ -201,6 +272,9 @@ describe('rutas del buscador (local, con datos de prueba)', () => {
     const r = await get('/api/lookup?symbol=nvda');
     expect(r.status).toBe(200);
     expect(r.body.quote.name).toBe('NVIDIA Corporation');
+    // El precio del dueño sale de Finnhub (de prueba): no se gastó ningún crédito de Twelve Data.
+    expect(r.body.source).toBe('finnhub');
+    expect(r.body.credits.used).toBe(0);
     expect(r.body.lookups).toEqual({ used: 1, max: LOOKUP_DAILY_MAX, today: ['NVDA'] });
     for (const path of ['/api/history?symbol=NVDA&range=1A&ind=1', '/api/news/symbol?symbol=NVDA', '/api/company?symbol=NVDA', '/api/company/factors?symbol=NVDA']) {
       expect((await get(path)).status).toBe(200);

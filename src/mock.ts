@@ -325,6 +325,20 @@ export function mockSearch(q: string): SecMatch[] {
   return MOCK_SEARCH.filter((m) => m.symbol.toLowerCase().startsWith(t) || m.name.toLowerCase().startsWith(t) || m.name.toLowerCase().split(/[\s,.]+/).some((w) => w.startsWith(t))).slice(0, 8);
 }
 
+/** Finnhub de prueba para el buscador del dueño: el mismo precio que la lista de prueba; las ZZ… no existen (responde ceros). */
+export const fakeFinnhub: typeof fetch = async (input) => {
+  const url = new URL(typeof input === 'string' ? input : input instanceof URL ? input.href : input.url);
+  const symbol = url.searchParams.get('symbol') ?? '';
+  const isQuote = url.pathname.endsWith('/quote');
+  let body: unknown;
+  if (symbol.startsWith('ZZ')) body = isQuote ? { c: 0, d: null, dp: null, h: 0, l: 0, o: 0, pc: 0, t: 0 } : {};
+  else if (isQuote) {
+    const q = mockQuotes([symbol], new Date()).data.quotes[0]!;
+    body = { c: q.price, d: q.change, dp: q.changePct, h: q.price, l: q.price, o: q.prevClose, pc: q.prevClose, t: Math.floor(Date.now() / 1000) };
+  } else body = MOCK_ETFS.has(symbol) ? {} : { name: info(symbol).name, exchange: 'NASDAQ NMS - GLOBAL MARKET', currency: 'USD', country: 'US' };
+  return new Response(JSON.stringify(body), { headers: { 'Content-Type': 'application/json' } });
+};
+
 /** Precio de prueba de una acción buscada; las que empiezan con ZZ no existen (para ver el error). */
 export function mockLookupQuote(symbol: string, now: Date): QuoteBatch {
   if (symbol.startsWith('ZZ')) return { quotes: [], errors: { [symbol]: `**symbol** not found: ${symbol}` } };
