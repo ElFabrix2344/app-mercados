@@ -55,6 +55,8 @@ interface Fact {
   val?: number;
   form?: string;
   filed?: string;
+  /** Número del informe: dos valores con la misma fecha en el mismo informe son dos clases de acciones. */
+  accn?: string;
 }
 
 const ANNUAL_FORMS = new Set(['10-K', '10-K/A', '20-F', '20-F/A', '40-F', '40-F/A']);
@@ -73,6 +75,49 @@ export function annualValues(facts: Fact[]): AnnualValue[] {
     if (!prev || (x.filed ?? '') >= prev.filed) byEnd.set(x.end, { value: x.val, filed: x.filed ?? '' });
   }
   return [...byEnd.entries()].map(([end, v]) => ({ end, value: v.value })).sort((a, b) => (a.end < b.end ? -1 : 1));
+}
+
+export interface ShareCount {
+  /** Fecha a la que la portada cuenta las acciones. */
+  date: string;
+  value: number;
+  /** Formulario del informe (10-K, 10-Q, 20-F…). */
+  form: string;
+}
+
+/**
+ * Acciones en circulación de la portada de cada informe (dei:EntityCommonStockSharesOutstanding), de la más vieja a la
+ * más nueva. Si un mismo informe trae varias para la misma fecha, son clases distintas (A, B, C) y se suman. En los
+ * emisores extranjeros (20-F) son acciones ordinarias: un ADR puede valer varias.
+ */
+export function shareCounts(facts: Fact[]): ShareCount[] {
+  // Por informe y fecha, la suma de sus clases.
+  const byFiling = new Map<string, { date: string; value: number; filed: string; form: string; seen: Set<number> }>();
+  for (const x of facts) {
+    if (!x.end || typeof x.val !== 'number' || x.val <= 0) continue;
+    const k = `${x.accn ?? x.filed ?? ''}|${x.end}`;
+    const prev = byFiling.get(k);
+    if (!prev) byFiling.set(k, { date: x.end, value: x.val, filed: x.filed ?? '', form: x.form ?? '', seen: new Set([x.val]) });
+    else if (!prev.seen.has(x.val)) {
+      prev.seen.add(x.val);
+      prev.value += x.val;
+    }
+  }
+  // Por fecha, la del informe más nuevo (una corrección reemplaza a la original).
+  const byDate = new Map<string, { value: number; filed: string; form: string }>();
+  for (const v of byFiling.values()) {
+    const prev = byDate.get(v.date);
+    if (!prev || v.filed >= prev.filed) byDate.set(v.date, { value: v.value, filed: v.filed, form: v.form });
+  }
+  return [...byDate.entries()].map(([date, v]) => ({ date, value: v.value, form: v.form })).sort((a, b) => (a.date < b.date ? -1 : 1));
+}
+
+export async function sharesOutstanding(cik: number, f: typeof fetch = fetch): Promise<ShareCount[]> {
+  const id = String(cik).padStart(10, '0');
+  const body = (await secJson(`https://data.sec.gov/api/xbrl/companyconcept/CIK${id}/dei/EntityCommonStockSharesOutstanding.json`, f)) as {
+    units?: Record<string, Fact[]>;
+  } | null;
+  return shareCounts(body?.units?.shares ?? []);
 }
 
 /** Un concepto XBRL de la empresa en su moneda (USD, PEN…); null si no lo reporta. */

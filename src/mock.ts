@@ -14,6 +14,8 @@ import { gradeFactors, type FactorsResult } from './services/factors';
 import { SEC_YEARS, type FinancialsData } from './services/financials';
 import { getEodList, shapeEod, summarizeHistory, type EodRow, type EodView } from './services/eod';
 import { computeThermometer, THERMO_SYMBOL, type Thermometer } from './services/thermometer';
+import type { CryptoReply, CryptoSeries } from './services/crypto';
+import { shapeSmv, type SmvView } from './services/smv';
 import type { Entry, Results } from './services/forecasts';
 import { EARNINGS_AHEAD_DAYS, shapeCompanies, type CompanyCalendar } from './services/earnings';
 import type { NewsData, NewsGroup, NewsItem } from './services/news';
@@ -46,6 +48,11 @@ const BASE: Record<string, { name: string; exchange: string; currency: string; s
   SPY: { name: 'SPDR S&P 500 ETF', exchange: 'NYSE', currency: 'USD', start: 560, vol: 0.01, beta: 0.95 },
   'USD/PEN': { name: 'Dólar / Sol', exchange: 'Forex', currency: 'PEN', start: 3.7, vol: 0.003, beta: -0.35 },
   'BTC/USD': { name: 'Bitcoin / Dólar', exchange: 'Binance', currency: 'USD', start: 65000, vol: 0.03, beta: 0.35, crypto: true },
+  // Cripto de la sección «Cripto» (CoinGecko).
+  'CG:bitcoin': { name: 'Bitcoin', exchange: 'CoinGecko', currency: 'USD', start: 60000, vol: 0.03, beta: 0.35, crypto: true },
+  'CG:ethereum': { name: 'Ethereum', exchange: 'CoinGecko', currency: 'USD', start: 2600, vol: 0.038, beta: 0.4, crypto: true },
+  'CG:solana': { name: 'Solana', exchange: 'CoinGecko', currency: 'USD', start: 140, vol: 0.05, beta: 0.4, crypto: true },
+  'CG:ripple': { name: 'XRP', exchange: 'CoinGecko', currency: 'USD', start: 0.55, vol: 0.045, beta: 0.3, crypto: true },
   // Series del BCRP (cobre en US$/lb, oro en US$/oz, reservas en millones de US$, índice BVL).
   'BCRP:COBRE': { name: 'Cobre', exchange: 'BCRP', currency: 'USD', start: 4.4, vol: 0.014, beta: 0.4 },
   'BCRP:ORO': { name: 'Oro', exchange: 'BCRP', currency: 'USD', start: 2900, vol: 0.009, beta: -0.1 },
@@ -122,6 +129,53 @@ const mockPoints = (symbol: string, now: Date) => walk(symbol, now).map((p) => [
 
 function fresh<T>(data: T, now: Date): Fresh<T> {
   return { data, fetchedAt: now.toISOString(), stale: false, note: 'Datos de prueba' };
+}
+
+/** Cripto de prueba (sin CoinGecko): un año de precios inventados de cada moneda. */
+export function mockCrypto(now: Date): CryptoReply {
+  const coins: Record<string, CryptoSeries> = {};
+  // El último precio, parecido al real (la serie inventada sube mucho en 5 años): se escala todo el año a ese valor.
+  const list = [
+    ['bitcoin', 'BTC', 'Bitcoin', 71_000],
+    ['ethereum', 'ETH', 'Ethereum', 2_650],
+    ['solana', 'SOL', 'Solana', 165],
+    ['ripple', 'XRP', 'XRP', 0.62],
+  ] as const;
+  for (const [id, symbol, name, target] of list) {
+    const raw = mockPoints(`CG:${id}`, now).slice(-366);
+    const k = target / raw.at(-1)![1];
+    const points = raw.map(([d, v]) => [d, Number((v * k).toPrecision(6))] as [string, number]);
+    const [a, b] = [points.at(-2)?.[1], points.at(-1)?.[1]];
+    const change24h = a && b ? Math.round((b / a - 1) * 1e4) / 1e4 : null;
+    coins[id] = { points, summary: summarize(points), symbol, name, change24h, marketCap: null, updated: now.toISOString() };
+  }
+  return { enabled: true, ...fresh({ coins }, now) };
+}
+
+/** «2026-11-04T17:02» en Lima, `hours` horas antes de `now`. */
+function limaStamp(now: Date, hours: number): string {
+  const p = Object.fromEntries(
+    new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Lima', hourCycle: 'h23', year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' })
+      .formatToParts(new Date(now.getTime() - hours * 3_600_000))
+      .map((x) => [x.type, x.value]),
+  );
+  return `${p.year}-${p.month}-${p.day}T${p.hour}:${p.minute}`;
+}
+
+/** Hechos de importancia inventados, con la misma forma que los de la SMV (y el mismo filtro que lo guardado). */
+export function mockSmv(now: Date, symbol?: string): SmvView {
+  const rows: [string, string, string, number][] = [
+    ['COMPAÑIA DE MINAS BUENAVENTURA S.A.A.', 'Distribución o aplicación de utilidades', 'Hecho de prueba: el directorio aprobó el pago de un dividendo a cuenta.', 5],
+    ['CREDICORP LTD.', 'Otros hechos de importancia', 'Hecho de prueba: fecha de la conferencia de resultados del trimestre.', 20],
+    ['CEMENTOS PACASMAYO S.A.A.', 'Otros hechos de importancia', 'Hecho de prueba: publicación del aviso de una oferta pública de adquisición.', 30],
+    ['ALICORP S.A.A.', 'Cambios en el directorio y gerencia general y/o sus órganos equivalentes', 'Hecho de prueba: designación de un nuevo gerente de finanzas.', 44],
+    ['SERVICIO DE AGUA POTABLE Y ALCANTARILLADO - SEDAPAL', 'Informes de clasificación de riesgo', 'Hecho de prueba: informe de clasificación de riesgo de sus bonos.', 60],
+    ['SOUTHERN COPPER CORPORATION', 'Información financiera y memoria anual', '', 70],
+    ['BANCO BBVA PERU', 'Emisiones de valores por oferta pública o privada', 'Hecho de prueba: emisión de bonos corporativos en soles.', 90],
+    ['COMPAÑIA DE MINAS BUENAVENTURA S.A.A.', 'Convocatoria a juntas de accionistas, junta de acreedores o asamblea de obligacionistas, y acuerdos adoptados', 'Hecho de prueba: convocatoria a junta de accionistas.', 400],
+  ];
+  const items = rows.map(([empresa, tipo, texto, hours], i) => ({ id: `prueba-${i}`, empresa, tipo, at: limaStamp(now, hours), texto, sector: '' }));
+  return shapeSmv({ fetchedAt: now.toISOString(), data: { items, through: isoDate(now, 'America/Lima') } }, now, symbol);
 }
 
 /** Termómetro de prueba: con los 5 años inventados del SPY. */
@@ -544,7 +598,7 @@ export function mockFactors(symbol: string, now: Date): FactorsResult {
 }
 /** Resultados anuales de prueba (inventados): 12 años con altibajos, un año con pérdidas y, para BAP, como banco en soles. */
 export function mockFinancials(symbol: string, now: Date): Fresh<FinancialsData> {
-  if (MOCK_ETFS.has(symbol)) return fresh({ symbol, cik: null, name: null, standard: null, currency: null, years: [] }, now);
+  if (MOCK_ETFS.has(symbol)) return fresh({ symbol, cik: null, name: null, standard: null, currency: null, years: [], shares: [], foreign: false, adrRatio: 1 }, now);
   const rand = rng(seedOf(`sec${symbol}`));
   const bank = symbol === 'BAP';
   const lastYear = Number(isoDate(now).slice(0, 4)) - 1;
@@ -561,5 +615,24 @@ export function mockFinancials(symbol: string, now: Date): Fresh<FinancialsData>
       netIncome: Math.round(revenue * margin),
     };
   });
-  return fresh({ symbol, cik: 1_000_000 + Math.floor(rand() * 900_000), name: info(symbol).name, standard: bank ? 'ifrs-full' : 'us-gaap', currency: bank ? 'PEN' : 'USD', years }, now);
+  // Acciones de prueba: las que darían un P/S de 1,5 a 4 con el último precio inventado (y un poco menos cada año).
+  const price = walk(symbol, now).at(-1)!.close;
+  const ps = 1.5 + rand() * 2.5;
+  const lastRevenue = years.at(-1)!.revenue ?? 5e9;
+  const sharesNow = Math.round((ps * lastRevenue) / price);
+  const shares = years.slice(-6).map((y, i, all) => ({ date: y.end, value: Math.round(sharesNow * (1 + 0.01 * (all.length - 1 - i))) }));
+  return fresh(
+    {
+      symbol,
+      cik: 1_000_000 + Math.floor(rand() * 900_000),
+      name: info(symbol).name,
+      standard: bank ? 'ifrs-full' : 'us-gaap',
+      currency: bank ? 'PEN' : 'USD',
+      years,
+      shares,
+      foreign: bank,
+      adrRatio: 1,
+    },
+    now,
+  );
 }

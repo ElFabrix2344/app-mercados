@@ -71,11 +71,17 @@ Las tres preguntas pendientes las respondió Claude con la opción más simple, 
   - **Lo que sigue siendo del dueño:** Finnhub (por sus términos), la lista diaria, la cartera simulada y los precios para la cuenta de Hapi (esto último no se eligió).
   - **Dónde vive:** `game/panel.ts`, dentro del Durable Object del juego, donde está la clave cifrada. Cada persona tiene su caché con el prefijo `pn:<pid>:` (lista, precios, historiales y créditos, con freno de 600). Va ahí porque el Durable Object permite 100.000 escrituras al día y la KV, 1.000 para toda la cuenta.
   - **Al quitar la clave** se borra lo que trajo; su lista queda.
-- [ ] **Fuentes nuevas para todos** (elegidas el 4 nov, sin hacer todavía):
-  - **Cripto con CoinGecko:** clave Demo gratis (10.000 consultas al mes) y atribución obligatoria. El dueño tiene que crear la clave.
-  - **Hechos de importancia de la SMV:** API abierta, probada el 27 oct (ver 8f).
+- [x] **Fuentes nuevas para todos** (elegidas el 4 nov):
+  - **Cripto con CoinGecko** (sección «Cripto»): bitcoin, ether, solana y XRP, citando la fuente.
+  - **Hechos de importancia de la SMV:** en «Más del Perú» y en la ficha de BAP, BVN, SCCO, CPAC e IFS.
   - **Evaluadas y no elegidas:** Brent y gas natural (EIA vía FRED, de dominio público), monedas del BCE (Frankfurter) y Banco Mundial (CC BY 4.0).
   - **Descartadas:** Alpha Vantage (25 consultas al día), FMP (mostrar a otros es pagado), Tiingo (uso personal), Massive/ex Polygon (repite Twelve Data) y la SBS (no tiene API; el BCRP ya publica sus tasas).
+- [ ] **Cargar `COINGECKO_API_KEY`** (lo hace el dueño): crear la clave Demo en el panel de desarrolladores de CoinGecko y cargarla en Cloudflare, tipo Secret. Sin ella, «Cripto» no aparece.
+- [x] **Valorar por P/S** (4 nov). El usuario pidió «facilita con alguna herramienta el método P/S» y eligió las tres opciones:
+  - **Calculadora en la ficha:** P/S de hoy, el de cada cierre fiscal y un P/S objetivo.
+  - **Comparador con pares:** para todos, con precios escritos a mano si no hay clave.
+  - **`valorar_ps` en el conector.**
+  - **Pendiente:** pasar a dólares las ventas en otras monedas (CAD, EUR, MXN…), por ejemplo con Frankfurter (BCE).
 - [ ] **Conectar «Personas» con Access** (lo hace el dueño, una vez): crear un token en Cloudflare con un solo permiso, «Access: Apps and Policies → Edit», en la cuenta de Rueda. Cargarlo como secreto `ACCESS_API_TOKEN` en el Worker `mercados` y tocar «Copiar ahora» en «Personas». Si la app de Access tiene varias políticas con correos, Rueda pide ponerle «Personas de Rueda» de nombre a la de los amigos. Después se puede borrar `ALLOWED_EMAILS`.
 
 Lo de abajo es cómo se abrió la app el 26 de octubre, antes de «Personas» (sirve si hay que rehacer Access):

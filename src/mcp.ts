@@ -29,7 +29,8 @@ import {
 } from './mock';
 import { companyData } from './services/company';
 import { factorGrades } from './services/factors';
-import { financials } from './services/financials';
+import { financials, type FinancialsData } from './services/financials';
+import { isPsRow, median, priceAtPs, psHistory, psRow, type PsResult } from './services/valuation';
 import { eodView, knownSymbols } from './services/eod';
 import { forecastView } from './services/forecasts';
 import { companyCalendar, epsSurprise, MOMENT, quarterLabel } from './services/earnings';
@@ -171,6 +172,119 @@ function registerMarketTools(server: McpServer, c: McpContext, when: When): void
           })),
           errores: Object.fromEntries(Object.entries(r.data.errors).filter(([s]) => inList.includes(s))),
           ...(outside.length ? { fuera_de_lista: { simbolos: outside, nota: `No están en la lista (${list.join(', ')}).` } } : {}),
+        };
+      }),
+  );
+
+  server.registerTool(
+    'valorar_ps',
+    {
+      title: 'Valorar por P/S (precio / ventas)',
+      description:
+        'P/S de una acción y de hasta 3 comparables: capitalización ÷ ventas del último año fiscal. Ventas y acciones en ' +
+        'circulación de la SEC (portada del informe más nuevo; en los ADR, entre las acciones por ADR); el dólar del BCRP si ' +
+        'la empresa reporta en soles. Los precios salen de la caché del panel para los símbolos de las listas del dueño; para ' +
+        'los demás, pásalos en `precios` (por ejemplo, del conector de Twelve Data). Devuelve el P/S de cada uno, la mediana ' +
+        'de los comparables, el precio al que la acción tendría ese P/S (o `ps_objetivo`) y, si hay 5 años guardados, su ' +
+        'P/S al cierre de cada año fiscal. No sirve para bancos ni aseguradoras (no informan ventas). Es un cálculo, no una ' +
+        'recomendación de inversión.',
+      inputSchema: z.object({
+        simbolo: z.string().max(20).describe('La acción a valorar, p. ej. "SCCO".'),
+        comparables: z.array(z.string().max(20)).max(3).default([]).describe('Hasta 3 empresas parecidas, p. ej. ["FCX", "TECK"].'),
+        precios: z
+          .record(z.string().max(20), z.number().positive())
+          .optional()
+          .describe('Precio de los símbolos que no están en las listas del panel, p. ej. {"FCX": 45.2}.'),
+        ps_objetivo: z.number().positive().max(500).optional().describe('P/S con el que calcular el precio implícito (si no, la mediana de los comparables).'),
+      }),
+      annotations: { readOnlyHint: true, openWorldHint: true },
+    },
+    ({ simbolo, comparables, precios, ps_objetivo }) =>
+      run(async () => {
+        const target = normalize(simbolo);
+        const all = unique([target, ...comparables.map(normalize)]);
+        const wrong = all.filter((s) => !SYMBOL_RE.test(s) || !isUsEquity(s));
+        if (wrong.length) throw new ApiError('bad_request', 400, `${wrong.join(', ')}: escribe símbolos de acciones, como SCCO o AAPL.`);
+        const given = new Map(Object.entries(precios ?? {}).map(([k, v]) => [normalize(k), v]));
+        const src = c.mock ? mockPriceSource(all, deps.now) : kvSource(deps);
+        const q = await src.quotes();
+        const priceOf = async (s: string): Promise<{ price: number; fuente: string } | null> => {
+          const g = given.get(s);
+          if (g) return { price: g, fuente: 'dado' };
+          const quote = q?.quotes.find((x) => x.symbol === s);
+          if (quote) return { price: quote.price, fuente: 'lista de seguimiento (caché del panel)' };
+          const closes = await src.closes(s, false);
+          const last = closes?.at(-1);
+          return last ? { price: last[1], fuente: `cierre del ${last[0]} (caché del panel)` } : null;
+        };
+        const fx = c.mock ? mockPeru(deps.now).data.fx.at(-1)?.sell ?? null : ((await peru(deps).catch(() => null))?.data.fx.at(-1)?.sell ?? null);
+        // De a uno: cada empresa nueva son unas 8 consultas a la SEC (y el plan gratis permite 50 por pedido).
+        const fins = new Map<string, FinancialsData>();
+        const rows: PsResult[] = [];
+        const sources = new Map<string, string>();
+        for (const s of all) {
+          const fin = (c.mock ? mockFinancials(s, deps.now) : await financials(deps, s)).data;
+          fins.set(s, fin);
+          const p = await priceOf(s);
+          if (!p) {
+            rows.push({ symbol: s, error: 'No hay precio guardado: pásalo en «precios».' });
+            continue;
+          }
+          sources.set(s, p.fuente);
+          rows.push(psRow(fin, p.price, fx));
+        }
+        const show = (r: PsResult) =>
+          isPsRow(r)
+            ? {
+                simbolo: r.symbol,
+                empresa: r.name,
+                precio: r.price,
+                fuente_precio: sources.get(r.symbol),
+                anio_fiscal_ventas: r.year,
+                ventas: r.revenue,
+                moneda_ventas: r.currency,
+                ventas_usd: r.revenueUsd,
+                acciones: r.shares,
+                acciones_al: r.sharesDate,
+                ...(r.adrRatio !== 1 ? { acciones_por_adr: r.adrRatio } : {}),
+                ...(r.foreign ? { emisor_extranjero: true } : {}),
+                capitalizacion_usd: r.marketCapUsd,
+                ps: r.ps,
+              }
+            : { simbolo: r.symbol, error: r.error };
+        const t = rows[0]!;
+        const peerPs = rows.slice(1).filter(isPsRow).map((r) => r.ps);
+        const med = median(peerPs);
+        const used = ps_objetivo ?? med;
+        const closes = isPsRow(t) ? await src.closes(target, false) : null;
+        const hist = isPsRow(t) && closes ? psHistory(fins.get(target)!, closes, fx) : [];
+        return {
+          fuente: 'SEC EDGAR (ventas y acciones), BCRP (dólar) y la caché de precios del panel',
+          ...(fx ? { soles_por_dolar: fx } : {}),
+          accion: show(t),
+          comparables: rows.slice(1).map(show),
+          ps_mediana_comparables: med === null ? null : round(med),
+          ...(isPsRow(t) && used
+            ? {
+                valoracion: {
+                  ps_usado: round(used),
+                  origen: ps_objetivo ? 'ps_objetivo' : 'mediana de los comparables',
+                  precio_implicito: priceAtPs(t, used),
+                  diferencia_pct: pct(priceAtPs(t, used) / t.price - 1),
+                },
+              }
+            : {}),
+          ...(hist.length
+            ? {
+                ps_historico: hist.map((h) => ({ anio_fiscal: h.year, cierre: h.end, precio: h.price, ps: h.ps })),
+                ps_historico_mediana: round(median(hist.map((h) => h.ps))),
+              }
+            : {}),
+          notas: [
+            'P/S = precio × acciones en circulación ÷ ventas del último año fiscal (en dólares).',
+            'Las acciones son las de la portada del informe más nuevo; en el P/S histórico, las de la portada siguiente a cada cierre.',
+            ...(fx ? ['Las ventas en soles se pasan a dólares con el dólar de hoy del BCRP (en el histórico es una aproximación).'] : []),
+          ],
         };
       }),
   );

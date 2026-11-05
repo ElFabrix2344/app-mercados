@@ -10,6 +10,7 @@ import {
   mockCompany,
   mockCompanyCalendar,
   mockCompare,
+  mockCrypto,
   mockCurve,
   mockEodView,
   mockFactors,
@@ -22,10 +23,13 @@ import {
   mockThermometer,
   mockPriceSource,
   mockQuotes,
+  mockSmv,
   mockSummary,
   mockSymbolNews,
   mockUsa,
 } from './mock';
+import { crypto } from './services/crypto';
+import { refreshSmv, smvView } from './services/smv';
 import { companyData } from './services/company';
 import { readSummaries } from './services/summary';
 import { portfolioXray, type ProfileOf } from './services/xray';
@@ -131,6 +135,8 @@ export default {
         refreshEod(deps).then((r) => {
           if (Object.keys(r.errors).length) console.warn('Lista diaria:', JSON.stringify(r.errors));
         }),
+        // Hechos de importancia de la SMV: cada 3 horas (la API tarda; el panel solo lee lo guardado).
+        refreshSmv(deps),
         resolveForecasts(deps).then((done) => {
           if (done.length) console.log('Pronósticos resueltos:', done.join(', '));
         }),
@@ -158,7 +164,14 @@ async function route(req: Request, env: Env, url: URL, role: Role, email: string
 
   const now = new Date();
   const mock = isMock(url, env);
-  const deps: Deps = { kv: env.CACHE, now, twelveKey: env.TWELVE_DATA_API_KEY, fredKey: env.FRED_API_KEY, finnhubKey: env.FINNHUB_API_KEY };
+  const deps: Deps = {
+    kv: env.CACHE,
+    now,
+    twelveKey: env.TWELVE_DATA_API_KEY,
+    fredKey: env.FRED_API_KEY,
+    finnhubKey: env.FINNHUB_API_KEY,
+    coingeckoKey: env.COINGECKO_API_KEY,
+  };
 
   if (OWNER_ONLY.has(p) && role !== 'owner') {
     if (FRIEND_KEYED.has(p) && env.JUEGO && email) return friendPanel(req, env.JUEGO, url, email, mock, now);
@@ -304,6 +317,17 @@ async function route(req: Request, env: Env, url: URL, role: Role, email: string
 
       case '/api/usa':
         return json(mock ? mockUsa(now) : await usa(deps));
+
+      // Cripto (CoinGecko, plan Demo con atribución): para todos. Sin COINGECKO_API_KEY, `enabled: false`.
+      case '/api/crypto':
+        return json(mock ? mockCrypto(now) : await crypto(deps));
+
+      // Hechos de importancia de la SMV (públicos): la lista general o, con ?symbol=, los de esa empresa.
+      case '/api/smv': {
+        const raw = url.searchParams.get('symbol');
+        const symbol = raw == null ? undefined : raw.trim().toUpperCase();
+        return json(mock ? mockSmv(now, symbol) : await smvView(env.CACHE, now, symbol));
+      }
 
       // Curva del Tesoro de EE. UU. (FRED): datos públicos.
       case '/api/curve':
@@ -564,6 +588,7 @@ export function configStatus(env: Env): Record<string, SecretInfo | number> {
     TWELVE_DATA_API_KEY: info(env.TWELVE_DATA_API_KEY, (s) => /^[A-Za-z0-9]{16,64}$/.test(s)),
     FRED_API_KEY: info(env.FRED_API_KEY, (s) => /^[a-z0-9]{32}$/.test(s)),
     FINNHUB_API_KEY: info(env.FINNHUB_API_KEY, (s) => /^[A-Za-z0-9]{10,64}$/.test(s)),
+    COINGECKO_API_KEY: info(env.COINGECKO_API_KEY, (s) => /^CG-[A-Za-z0-9]{10,64}$/.test(s)),
     OWNER_BIRTHDAY: info(env.OWNER_BIRTHDAY, (s) => parseBirthday(s) !== null),
   };
 }

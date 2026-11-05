@@ -171,7 +171,8 @@ describe('tarea programada', () => {
     const controller = { scheduledTime: Date.parse('2026-10-22T21:00:00Z'), cron: '*/10 * * * *', noRetry() {} } as ScheduledController;
     await worker.scheduled(controller, env, ctx);
     await Promise.all(pending);
-    expect(calls.map((u) => u.searchParams.get('end_date'))).toEqual(['2026-10-23']);
+    // A las :00 la tarea también consulta la SMV (hechos de importancia): aquí solo cuentan los pedidos a Twelve Data.
+    expect(calls.filter((u) => u.hostname.includes('twelvedata')).map((u) => u.searchParams.get('end_date'))).toEqual(['2026-10-23']);
     expect((JSON.parse(mem.store.get('eod')!) as EodSummary).rows.NVDA).toMatchObject({ date: '2026-10-22', checked: '2026-10-22' });
   });
 });

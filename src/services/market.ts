@@ -41,6 +41,7 @@ export interface Deps extends CacheDeps {
   kv: KVNamespace;
   fredKey?: string;
   finnhubKey?: string;
+  coingeckoKey?: string;
 }
 
 export interface Fresh<T> {

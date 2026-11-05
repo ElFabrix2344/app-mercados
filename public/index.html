@@ -87,7 +87,7 @@
           <li><strong>Liga de acciones:</strong> en la hoja «Juego», arriba, arma una cartera con acciones de verdad y compite con el grupo. Es la misma clave.</li>
           <li><strong>Más juegos:</strong> el gráfico del día, 2/3 del promedio y los pronósticos de tasas, inflación y dólar.</li>
           <li><strong>Mi cuenta Hapi:</strong> importa tu estado de cuenta en PDF o anota tus operaciones. Se cifra con tu frase: nadie más la puede ver, tampoco el dueño de la app.</li>
-          <li><strong>Resultados de empresas:</strong> ingresos y utilidades de los últimos años de cualquier acción que reporte a la SEC.</li>
+          <li><strong>Resultados de empresas y P/S:</strong> ingresos y utilidades de los últimos años de cualquier acción que reporte a la SEC, y un comparador por P/S (precio / ventas) con empresas parecidas.</li>
           <li><strong>Materias primas:</strong> cobre, oro, plata, zinc y petróleo.</li>
           <li><strong>Perú y EE. UU.:</strong> dólar, tasas, inflación, BVL, bonos y la curva del Tesoro, con el calendario de anuncios y las noticias.</li>
           <li id="welcome-install"><strong>Como app:</strong> con «Instalar app», arriba, Rueda queda en tu celular o computadora con su ícono y se abre a pantalla completa.</li>
@@ -170,6 +170,24 @@
           </details>
         </div>
         <div id="cmd-grid" class="pm-grid"><p class="muted">Cargando…</p></div>
+      </section>
+
+      <!-- Cripto (CoinGecko, plan Demo: se puede mostrar citando la fuente): para todos. Aparece con COINGECKO_API_KEY. -->
+      <section class="screen" id="cg" aria-labelledby="cg-h" hidden>
+        <div class="screen-head">
+          <h2 id="cg-h">Cripto</h2>
+          <span class="src">CoinGecko · último año</span>
+          <details class="help">
+            <summary aria-label="Qué muestra esta sección">?</summary>
+            <div class="help-body">
+              <p>Precio en dólares de cuatro de las criptomonedas más grandes, con su variación en 24 horas, en un mes y en un año. Cotizan todos los días y a toda hora; aquí se renueva una vez por hora.</p>
+              <p>Se mueven mucho más que una acción: en un día pueden variar lo que un índice en un mes.</p>
+            </div>
+          </details>
+        </div>
+        <div id="cg-grid" class="pm-grid"></div>
+        <p class="hint cg-credit">Fuente: <a href="https://www.coingecko.com" target="_blank" rel="noopener noreferrer">CoinGecko</a></p>
+        <p class="hint owner-only" id="cg-setup" hidden>Para prender esta sección (también para los chicos), crea una clave Demo gratis en CoinGecko y cárgala como secreto <code>COINGECKO_API_KEY</code> en Cloudflare.</p>
       </section>
 
       <!-- Quién puede entrar (solo el dueño). Cada cambio se copia a Cloudflare Access, que manda el código por correo. -->
@@ -288,6 +306,10 @@
           <summary>Resultados anuales (SEC)</summary>
           <div id="d-fin-body"></div>
         </details>
+        <details class="d-tool" id="d-ps">
+          <summary>Valorar por P/S (precio / ventas)</summary>
+          <div id="d-ps-body"></div>
+        </details>
         <div class="d-co" id="d-co" hidden>
           <p class="hint">Datos de la empresa <span id="d-co-meta"></span></p>
           <dl class="stats" id="d-co-stats"></dl>
@@ -301,6 +323,11 @@
         <div class="d-news" id="d-news" hidden>
           <p class="hint">Noticias de <span id="d-news-sym"></span> (Yahoo Finance y Google News)</p>
           <ol class="news" id="d-news-list"></ol>
+        </div>
+        <!-- Empresas peruanas que cotizan en EE. UU.: sus hechos de importancia de los últimos 60 días (SMV, públicos). -->
+        <div class="d-news" id="d-smv" hidden>
+          <p class="hint">Hechos de importancia de <span id="d-smv-name"></span> (SMV, últimos 60 días)</p>
+          <ol class="news" id="d-smv-list"></ol>
         </div>
         <details class="table-view">
           <summary>Ver tabla (cierre de cada mes)</summary>
@@ -445,19 +472,28 @@
       <section class="screen" id="pm" aria-labelledby="pm-h">
         <div class="screen-head">
           <h2 id="pm-h">Más del Perú</h2>
-          <span class="src">BCRP · último año</span>
+          <span class="src">BCRP · SMV</span>
           <details class="help">
             <summary aria-label="Qué muestra esta sección">?</summary>
             <div class="help-body">
               <p>Las variaciones de los índices van en %; las de las tasas, en puntos porcentuales (pp), y las del riesgo país, en puntos básicos (pb).</p>
               <p>El riesgo país es aproximado: la diferencia entre el bono peruano en dólares a 10 años y el del Tesoro de EE. UU. a 10 años. Se mueve parecido al EMBIG, que el BCRP no actualiza desde el 3 de setiembre de 2026.</p>
               <p>Los bonos peruanos llegan con un día de atraso y el del Tesoro, con unos tres.</p>
+              <p>Los hechos de importancia son lo que las empresas que emiten valores en el Perú tienen que comunicar al mercado: dividendos, juntas, cambios en el directorio, emisiones, ofertas. Vienen de la SMV, se renuevan cada 3 horas y no se muestran los avisos de información financiera que no dicen nada.</p>
             </div>
           </details>
         </div>
         <details class="pm-fold" id="pm-fold">
-          <summary>Bolsa de Lima, reservas, bonos y riesgo país</summary>
+          <summary>Bolsa de Lima, reservas, bonos, riesgo país y hechos de importancia</summary>
           <div id="peru-markets" class="pm-grid"></div>
+          <div class="smv" id="smv">
+            <p class="smv-h">Hechos de importancia <span class="src">SMV · últimos 14 días</span></p>
+            <ol class="news" id="smv-list"></ol>
+            <div class="news-foot">
+              <button type="button" id="smv-more" hidden>Ver más</button>
+              <p class="hint">Fuente: <a href="https://www.smv.gob.pe" target="_blank" rel="noopener noreferrer">Superintendencia del Mercado de Valores</a><span id="smv-note"></span></p>
+            </div>
+          </div>
         </details>
       </section>
 
@@ -481,6 +517,32 @@
         </form>
         <div class="ranges fin-chips" id="fin-chips" role="group" aria-label="Empresas sugeridas"></div>
         <div id="fin-body"></div>
+      </section>
+
+      <!-- Valorar por P/S con comparables (pedido del usuario, 4 nov): ventas y acciones de la SEC (públicas), dólar del
+           BCRP; precios de tu lista o escritos a mano. La misma cuenta que la herramienta valorar_ps del conector. -->
+      <section class="screen" id="ps" aria-labelledby="ps-h">
+        <div class="screen-head">
+          <h2 id="ps-h">Valorar por P/S</h2>
+          <span class="src">SEC EDGAR · BCRP</span>
+          <details class="help">
+            <summary aria-label="Cómo se calcula el P/S">?</summary>
+            <div class="help-body">
+              <p>P/S (precio / ventas) = capitalización ÷ ventas del último año fiscal. La capitalización es el precio por las acciones en circulación: las de la portada del informe más nuevo a la SEC (en un ADR, entre las acciones que vale cada uno).</p>
+              <p>Se compara con empresas parecidas: el precio implícito es el que tendría la acción con el P/S de sus comparables (la mediana) o con el que escribas. Si está por encima del precio de hoy, a esos múltiplos la acción se ve barata, y al revés.</p>
+              <p>Sirve para empresas con ventas, no para bancos ni aseguradoras. Las ventas en soles se pasan a dólares con el dólar de hoy del BCRP; las de otras monedas, todavía no. Es un cálculo, no una recomendación de inversión.</p>
+            </div>
+          </details>
+        </div>
+        <form class="fin-form ps-form" id="ps-form" autocomplete="off">
+          <label for="ps-sym">Acción</label>
+          <input id="ps-sym" maxlength="12" spellcheck="false" autocapitalize="characters" placeholder="SCCO" required>
+          <label for="ps-peers">Comparables</label>
+          <input id="ps-peers" class="ps-peers" maxlength="40" spellcheck="false" autocapitalize="characters" placeholder="FCX, NEM (hasta 3)">
+          <button type="submit">Calcular</button>
+        </form>
+        <div class="ranges fin-chips" id="ps-chips" role="group" aria-label="Ejemplos"></div>
+        <div id="ps-body"></div>
       </section>
     </main>
 

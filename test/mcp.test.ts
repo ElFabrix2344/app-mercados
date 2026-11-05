@@ -70,8 +70,26 @@ describe('servidor MCP', () => {
     const init = await rpc(c, 'initialize', { protocolVersion: '2025-06-18', capabilities: {}, clientInfo: { name: 'test', version: '0' } });
     expect(init.result.serverInfo.name).toBe('rueda');
     const { result } = await rpc(c, 'tools/list');
-    expect(result.tools.map((t: { name: string }) => t.name)).toEqual(['precios', 'historial', 'comparar', 'cartera', 'empresa', 'lista_diaria', 'peru_bcrp', 'eeuu_fred', 'resultados_anuales', 'noticias', 'pronosticos', 'publicar_resumen', ...CALENDAR_TOOL]);
+    expect(result.tools.map((t: { name: string }) => t.name)).toEqual(['precios', 'valorar_ps', 'historial', 'comparar', 'cartera', 'empresa', 'lista_diaria', 'peru_bcrp', 'eeuu_fred', 'resultados_anuales', 'noticias', 'pronosticos', 'publicar_resumen', ...CALENDAR_TOOL]);
     for (const t of result.tools) expect(t.annotations.readOnlyHint).toBe(t.name !== 'publicar_resumen');
+  });
+
+  it('valorar_ps: P/S de la acción y de sus comparables, la mediana y el precio implícito (datos de prueba)', async () => {
+    const { c } = ctx();
+    const mock = { ...c, mock: true };
+    const { data } = await callTool(mock, 'valorar_ps', { simbolo: 'scco', comparables: ['NVDA', 'BAP'] });
+    expect(data.accion).toMatchObject({ simbolo: 'SCCO', fuente_precio: expect.any(String) });
+    expect(data.accion.ps).toBeGreaterThan(0);
+    // Con los datos de prueba, el P/S es la capitalización entre las ventas del último año fiscal.
+    expect(data.accion.ps).toBeCloseTo(data.accion.capitalizacion_usd / data.accion.ventas_usd, 1);
+    // Un banco no tiene ventas: se dice por qué.
+    expect(data.comparables.find((x: { simbolo: string }) => x.simbolo === 'BAP').error).toMatch(/bancos/);
+    expect(data.ps_mediana_comparables).toBe(data.comparables.find((x: { simbolo: string }) => x.simbolo === 'NVDA').ps);
+    expect(data.valoracion.origen).toBe('mediana de los comparables');
+    expect(data.valoracion.precio_implicito).toBeCloseTo((data.accion.precio * data.ps_mediana_comparables) / data.accion.ps, 0);
+    const fixed = await callTool(mock, 'valorar_ps', { simbolo: 'SCCO', ps_objetivo: 2 });
+    expect(fixed.data.valoracion).toMatchObject({ ps_usado: 2, origen: 'ps_objetivo' });
+    expect((await callTool(mock, 'valorar_ps', { simbolo: 'USD/PEN' })).isError).toBe(true);
   });
 
   it('a un amigo solo le ofrece las herramientas de datos públicos', async () => {

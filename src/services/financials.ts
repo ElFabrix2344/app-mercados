@@ -4,12 +4,20 @@
 // también cuando la SEC no tiene la empresa, para no buscarla de nuevo en cada visita.
 
 import { addDays, isoDate } from '../lib/num';
-import { companyConcept, findCik, type AnnualValue } from '../lib/sec';
+import { companyConcept, findCik, sharesOutstanding, type AnnualValue } from '../lib/sec';
 import { cached, type Deps, type Fresh } from './market';
 
 export const SEC_TTL_MS = 7 * 24 * 3_600_000;
 /** Años que se muestran. */
 export const SEC_YEARS = 12;
+/** Portadas que se guardan (para el P/S de cada año fiscal). */
+const SHARES_KEPT = 24;
+
+/**
+ * Acciones comunes por ADR de los emisores extranjeros que cotizan con ADR, cuando no es 1 (la portada del 20-F cuenta
+ * acciones ordinarias). Cementos Pacasmayo: 1 ADS = 5 acciones comunes (prospecto F-1 de 2012 y avisos de dividendos).
+ */
+export const ADR_RATIO: Record<string, number> = { CPAC: 5 };
 
 export type Standard = 'us-gaap' | 'ifrs-full';
 type Line = 'revenue' | 'operatingIncome' | 'netIncome';
@@ -52,7 +60,15 @@ export interface FinancialsData {
   currency: string | null;
   /** Del más viejo al más nuevo, hasta SEC_YEARS. */
   years: FinancialYear[];
+  /** Acciones en circulación de la portada de cada informe (para el P/S), de la más vieja a la más nueva. */
+  shares: { date: string; value: number }[];
+  /** Emisor extranjero (20-F o 40-F): sus acciones son ordinarias, y un ADR puede valer varias. */
+  foreign: boolean;
+  /** Acciones por ADR, si se sabe (1 si cotiza directo). */
+  adrRatio: number;
 }
+
+const empty = (symbol: string): FinancialsData => ({ symbol, cik: null, name: null, standard: null, currency: null, years: [], shares: [], foreign: false, adrRatio: 1 });
 
 /** Los ejercicios de 52 o 53 semanas pueden cerrar en los primeros días de enero: cuentan para el año anterior. */
 export const fiscalYear = (end: string) => Number(addDays(end, -7).slice(0, 4));
@@ -79,11 +95,14 @@ export function mergeLines(found: Record<Line, Found[]>): { currency: string | n
   return { currency, years: [...byYear.values()].slice(-SEC_YEARS) };
 }
 
-/** Resultados anuales de un símbolo (acciones de EE. UU. y extranjeras que reportan a la SEC). */
+/**
+ * Resultados anuales de un símbolo (acciones de EE. UU. y extranjeras que reportan a la SEC) y sus acciones en
+ * circulación. Lo guardado antes del 4 nov no traía las acciones: se renueva una vez.
+ */
 export async function financials(d: Deps, symbol: string): Promise<Fresh<FinancialsData>> {
   return cached<FinancialsData>(d, `sec:${symbol}`, SEC_TTL_MS, async () => {
     const company = await findCik(symbol, d.fetch);
-    if (!company) return { symbol, cik: null, name: null, standard: null, currency: null, years: [] };
+    if (!company) return empty(symbol);
     // Hasta 6 pedidos a la vez: la SEC pide no pasar de 10 por segundo.
     const read = async (standard: Standard) => {
       const lines = await Promise.all(LINES.map((l) => Promise.all(CONCEPTS[standard][l].map((c) => companyConcept(company.cik, standard, c, d.fetch)))));
@@ -101,6 +120,18 @@ export async function financials(d: Deps, symbol: string): Promise<Fresh<Financi
         standard = 'ifrs-full';
       }
     }
-    return { symbol, cik: company.cik, name: company.name, standard: merged.years.length ? standard : null, currency: merged.currency, years: merged.years };
-  });
+    const shares = (await sharesOutstanding(company.cik, d.fetch)).slice(-SHARES_KEPT);
+    const lastForm = shares.at(-1)?.form ?? '';
+    return {
+      symbol,
+      cik: company.cik,
+      name: company.name,
+      standard: merged.years.length ? standard : null,
+      currency: merged.currency,
+      years: merged.years,
+      shares: shares.map(({ date, value }) => ({ date, value })),
+      foreign: standard === 'ifrs-full' || /^(20|40)-F/.test(lastForm),
+      adrRatio: ADR_RATIO[symbol] ?? 1,
+    };
+  }, { valid: (x) => Array.isArray(x.shares) });
 }

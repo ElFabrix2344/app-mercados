@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { annualValues, companyConcept, findCik, secTicker } from '../src/lib/sec';
+import { annualValues, companyConcept, findCik, secTicker, shareCounts } from '../src/lib/sec';
 import { financials, fiscalYear, mergeLines, SEC_TTL_MS, SEC_YEARS } from '../src/services/financials';
 import type { Deps } from '../src/services/market';
 import { memoryKV } from './helpers';
@@ -121,24 +121,60 @@ describe('financials', () => {
     'CIK0001001838/us-gaap/Revenues.json': concept('USD', [fact('2024-01-01', '2024-12-31', 11_433e6, '2025-02-28'), fact('2025-01-01', '2025-12-31', 12_100e6, '2026-02-27')]),
     'CIK0001001838/us-gaap/OperatingIncomeLoss.json': concept('USD', [fact('2025-01-01', '2025-12-31', 6_000e6, '2026-02-27')]),
     'CIK0001001838/us-gaap/NetIncomeLoss.json': concept('USD', [fact('2024-01-01', '2024-12-31', 3_383e6, '2025-02-28'), fact('2025-01-01', '2025-12-31', 4_000e6, '2026-02-27')]),
+    // Acciones de la portada: la del 10-Q más nuevo manda.
+    'CIK0001001838/dei/EntityCommonStockSharesOutstanding.json': {
+      units: {
+        shares: [
+          { end: '2026-04-29', val: 826_065_041, filed: '2026-04-30', form: '10-Q', accn: 'a1' },
+          { end: '2026-10-29', val: 844_343_266, filed: '2026-10-30', form: '10-Q', accn: 'a2' },
+        ],
+      },
+    },
   };
 
-  it('busca la empresa, lee los conceptos de US GAAP y guarda todo 7 días', async () => {
+  it('busca la empresa, lee los conceptos de US GAAP y sus acciones, y guarda todo 7 días', async () => {
     const { f, calls } = secFetch(sccoRoutes);
     const d: Deps = { kv: memoryKV().kv, now: NOW, fetch: f };
     const r = await financials(d, 'SCCO');
-    expect(r.data).toMatchObject({ symbol: 'SCCO', cik: 1001838, name: 'SOUTHERN COPPER CORP', standard: 'us-gaap', currency: 'USD' });
+    expect(r.data).toMatchObject({ symbol: 'SCCO', cik: 1001838, name: 'SOUTHERN COPPER CORP', standard: 'us-gaap', currency: 'USD', foreign: false, adrRatio: 1 });
     expect(r.data.years).toEqual([
       { year: 2024, end: '2024-12-31', revenue: 11_433e6, operatingIncome: null, netIncome: 3_383e6 },
       { year: 2025, end: '2025-12-31', revenue: 12_100e6, operatingIncome: 6_000e6, netIncome: 4_000e6 },
     ]);
-    // La búsqueda y los 6 conceptos de US GAAP; con datos recientes no hacen falta los de NIIF.
-    expect(calls).toHaveLength(7);
+    expect(r.data.shares).toEqual([
+      { date: '2026-04-29', value: 826_065_041 },
+      { date: '2026-10-29', value: 844_343_266 },
+    ]);
+    // La búsqueda, los 6 conceptos de US GAAP y las acciones; con datos recientes no hacen falta los de NIIF.
+    expect(calls).toHaveLength(8);
     expect(calls.some((c) => c.url.includes('ifrs-full'))).toBe(false);
     await financials(d, 'SCCO');
-    expect(calls).toHaveLength(7);
+    expect(calls).toHaveLength(8);
     await financials({ ...d, now: new Date(NOW.getTime() + SEC_TTL_MS + 60_000) }, 'SCCO');
-    expect(calls).toHaveLength(14);
+    expect(calls).toHaveLength(16);
+  });
+
+  it('lo guardado antes de las acciones (4 nov) se renueva una vez', async () => {
+    const kv = memoryKV({ 'sec:SCCO': { fetchedAt: NOW.toISOString(), data: { symbol: 'SCCO', cik: 1001838, name: 'X', standard: 'us-gaap', currency: 'USD', years: [] } } }).kv;
+    const { f, calls } = secFetch(sccoRoutes);
+    const r = await financials({ kv, now: NOW, fetch: f }, 'SCCO');
+    expect(calls).toHaveLength(8);
+    expect(r.data.shares).toHaveLength(2);
+  });
+
+  it('las acciones: varias clases del mismo informe se suman; una corrección reemplaza a la original', () => {
+    expect(
+      shareCounts([
+        { end: '2026-10-20', val: 5_800, filed: '2026-10-25', form: '10-Q', accn: 'q3' },
+        { end: '2026-10-20', val: 860, filed: '2026-10-25', form: '10-Q', accn: 'q3' },
+        { end: '2025-12-31', val: 100, filed: '2026-02-01', form: '20-F', accn: 'k1' },
+        { end: '2025-12-31', val: 120, filed: '2026-03-01', form: '20-F/A', accn: 'k2' },
+        { end: '2024-12-31', val: 0, filed: '2025-02-01', form: '20-F', accn: 'k0' },
+      ]),
+    ).toEqual([
+      { date: '2025-12-31', value: 120, form: '20-F/A' },
+      { date: '2026-10-20', value: 6_660, form: '10-Q' },
+    ]);
   });
 
   it('las extranjeras con NIIF: sin US GAAP se lee la otra taxonomía (Credicorp, en soles y sin «ingresos»)', async () => {
@@ -147,8 +183,8 @@ describe('financials', () => {
       'CIK0001001290/ifrs-full/ProfitLossAttributableToOwnersOfParent.json': concept('PEN', [fact('2025-01-01', '2025-12-31', 6_000e6, '2026-04-29', '20-F')]),
     });
     const r = await financials({ kv: memoryKV().kv, now: NOW, fetch: f }, 'BAP');
-    expect(r.data).toMatchObject({ standard: 'ifrs-full', currency: 'PEN', years: [{ year: 2025, revenue: null, operatingIncome: null, netIncome: 6_000e6 }] });
-    expect(calls).toHaveLength(11); // búsqueda + 6 de US GAAP + 4 de NIIF
+    expect(r.data).toMatchObject({ standard: 'ifrs-full', currency: 'PEN', foreign: true, years: [{ year: 2025, revenue: null, operatingIncome: null, netIncome: 6_000e6 }] });
+    expect(calls).toHaveLength(12); // búsqueda + 6 de US GAAP + 4 de NIIF + las acciones
   });
 
   it('un ETF no está en la SEC: se guarda igual, para no buscarlo en cada visita', async () => {

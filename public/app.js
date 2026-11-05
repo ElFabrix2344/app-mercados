@@ -25,6 +25,7 @@
     peruData: null, // lo último de /api/peru y /api/usa (el calendario muestra la tasa o la inflación actual)
     usaData: null,
     peruMarkets: null, // materias primas, BVL, reservas, bonos y riesgo país del BCRP (también van en la cinta)
+    crypto: null, // respuesta de /api/crypto (CoinGecko): bitcoin también va en la cinta
     portfolio: null, // respuesta de /api/portfolio (cartera simulada, solo el dueño)
     news: null, // respuesta de /api/news (titulares generales)
     summary: null, // respuesta de /api/resumen (resumen del día, lo ven todos)
@@ -805,6 +806,9 @@
       const pts = pm?.[key]?.points;
       if (pts?.length) items.push({ sym: label, value: nf(2).format(pts.at(-1)[1]), ch: lastChange(pts) });
     }
+    // Bitcoin de CoinGecko (público), si no está ya en la lista.
+    const btc = state.crypto?.coins?.bitcoin;
+    if (btc?.summary?.last && !items.some((it) => it.sym === 'BTC/USD')) items.push({ sym: 'Bitcoin', value: nf(0).format(btc.summary.last.value), ch: btc.change24h });
     const pe10 = pm?.bond10pen?.points;
     if (pe10?.length) items.push({ sym: 'Bono Perú 10A', value: rate(pe10.at(-1)[1]), pp: pe10.length > 1 ? pe10.at(-1)[1] - pe10.at(-2)[1] : null });
     const t10 = state.usaData?.treasury10y;
@@ -979,6 +983,9 @@
     renderTape();
     renderFresh();
     if (state.selected) renderDetail();
+    // El comparador por P/S usa los precios de tu lista, y los hechos de la SMV abren la ficha de sus empresas.
+    if (psState.sym) renderPsSection();
+    if (smv.feed) renderSmv();
   }
 
   async function loadHistories() {
@@ -1123,11 +1130,13 @@
     hapi.href = hapiUrl(sym);
     renderRanges();
     renderSymbolNews();
+    renderDetailSmv();
     renderEarnings(sym);
     renderCompany();
     renderSeason();
     renderStrategy();
     renderDetailFin();
+    renderDetailPs();
     const q = quoteFor(sym);
     const hist = detailHistory(sym, state.range);
     renderIndicatorToggles(hist);
@@ -1349,6 +1358,7 @@
           if (state.selected !== sym) return;
           renderSeason();
           renderStrategy();
+          renderDetailPs();
         });
     }
     return undefined;
@@ -2212,7 +2222,11 @@
       .catch((e) => state.fin.set(sym, { error: e.message }))
       .finally(() => {
         if (state.finSym === sym) renderFinSection();
-        if (state.selected === sym) renderDetailFin();
+        if (state.selected === sym) {
+          renderDetailFin();
+          renderDetailPs();
+        }
+        if (psState.sym === sym || psState.peers.includes(sym)) renderPsSection();
       });
     return undefined;
   }
@@ -2395,6 +2409,296 @@
     const saved = prefs.get('mercados.sec', 'SCCO');
     $('fin-sym').value = saved;
     pickFin(saved);
+  }
+
+  // ---------- P/S (precio / ventas) ----------
+  // Pedido del usuario el 4 nov («facilita con alguna herramienta el método P/S»): calculadora en la ficha, comparador
+  // con pares (#ps, para todos) y la herramienta valorar_ps del conector. Ventas y acciones de la SEC (/api/financials),
+  // dólar del BCRP; el precio, de tu lista o escrito a mano. Las mismas cuentas que src/services/valuation.ts: si
+  // cambias una, cambia la otra.
+  const psFmt = (v) => `${nf(2).format(v)}×`;
+  const usdBig = (v) => `US$ ${millions(v / 1e6)}`;
+  const usdPenNow = () => state.peruData?.fx?.at(-1)?.sell ?? null;
+  const SYM_EQ = /^[A-Z0-9][A-Z0-9.-]{0,11}$/;
+
+  /** Ventas del último año fiscal (también en dólares) y acciones de la portada más nueva; o por qué no se puede. */
+  function psBase(fin) {
+    if (!fin?.cik) return { error: 'No reporta a la SEC (pasa con los ETF, los fondos y las empresas que no cotizan en EE. UU.).' };
+    const last = [...fin.years].reverse().find((y) => y.revenue > 0);
+    if (!last) return { error: 'La SEC no tiene sus ventas: los bancos y las aseguradoras no informan «ventas», y el P/S no les sirve.' };
+    const sh = fin.shares?.at(-1);
+    if (!sh) return { error: 'La SEC no tiene sus acciones en circulación.' };
+    const fx = usdPenNow();
+    const k = fin.currency === 'USD' ? 1 : fin.currency === 'PEN' && fx ? 1 / fx : null;
+    if (k == null) {
+      return { error: fin.currency === 'PEN' ? 'Reporta en soles: falta el dólar del BCRP (llega con «Perú»).' : `Reporta en ${fin.currency}: por ahora Rueda solo pasa a dólares las ventas en soles.` };
+    }
+    return { year: last.year, end: last.end, revenue: last.revenue, revenueUsd: last.revenue * k, k, currency: fin.currency, shares: sh.value, sharesDate: sh.date, adr: fin.adrRatio ?? 1, foreign: !!fin.foreign };
+  }
+  const capOf = (b, price) => (price * b.shares) / b.adr;
+  const psOf = (b, price) => capOf(b, price) / b.revenueUsd;
+  const priceAtPsOf = (b, ps) => (ps * b.revenueUsd * b.adr) / b.shares;
+  function medianOf(xs) {
+    if (!xs.length) return null;
+    const s = [...xs].sort((a, b) => a - b);
+    const mid = s.length >> 1;
+    return s.length % 2 ? s[mid] : (s[mid - 1] + s[mid]) / 2;
+  }
+
+  /** P/S al cierre de cada año fiscal: el precio de ese día y las acciones de la portada siguiente más cercana. */
+  function psByYear(fin, b, points) {
+    const out = [];
+    for (const y of fin.years) {
+      if (!(y.revenue > 0)) continue;
+      let c = null;
+      for (const p of points) {
+        if (p[0] > y.end) break;
+        c = p;
+      }
+      // Sin precio de ese día (antes de los 5 años guardados) o con un hueco de más de 10 días, no se cuenta.
+      if (!c || Date.parse(y.end) - Date.parse(c[0]) > 10 * 86_400_000) continue;
+      const sh = fin.shares.find((s) => s.date >= y.end) ?? fin.shares.at(-1);
+      out.push({ year: y.year, end: y.end, price: c[1], ps: (c[1] * sh.value) / b.adr / (y.revenue * b.k) });
+    }
+    return out;
+  }
+
+  /** Precio de hoy, si está en tu lista o en tu lista diaria (sin gastar créditos). */
+  function knownPrice(sym) {
+    if (!hasPrices()) return null;
+    const q = quoteFor(sym);
+    if (q?.price != null) return { price: q.price, src: 'de tu lista' };
+    const e = eodRowFor(sym);
+    return e?.close != null ? { price: e.close, src: `cierre del ${calDay(e.date)}` } : null;
+  }
+
+  /** «▲ +12.3 % frente a hoy» con su color. */
+  const vsToday = (implied, price) => h('span', { class: trend(implied - price) }, `${arrowOf(implied - price)} ${pctFrac(implied / price - 1)} frente a hoy`);
+
+  function psNotes(b) {
+    return [
+      `Ventas del año fiscal ${b.year} (SEC)${b.currency === 'PEN' ? ', pasadas a dólares con el dólar de hoy del BCRP' : ''}.`,
+      `Acciones de la portada al ${fDayYear.format(day(b.sharesDate))}${b.adr !== 1 ? `; cada ADR vale ${b.adr}` : ''}.`,
+      b.foreign && b.adr === 1 ? 'Es un emisor extranjero: si cotiza con ADR y cada uno vale varias acciones, el P/S sale mal.' : null,
+    ]
+      .filter(Boolean)
+      .join(' ');
+  }
+
+  // Calculadora de la ficha: el P/S de hoy, el de cada cierre fiscal de los últimos 5 años y un P/S objetivo.
+  const psTargets = new Map(); // símbolo → P/S objetivo escrito en esta sesión
+
+  function renderDetailPs() {
+    const box = $('d-ps');
+    const sym = state.selected;
+    box.hidden = !sym || sym.includes('/');
+    if (box.hidden || !box.open) return;
+    const host = $('d-ps-body');
+    const fr = financialsFor(sym);
+    if (!fr) return host.replaceChildren(h('p', { class: 'muted' }, `Buscando las ventas de ${sym} en la SEC…`));
+    if (fr.error) return host.replaceChildren(h('p', { class: 'err' }, fr.error));
+    const fin = fr.data;
+    const b = psBase(fin);
+    if (b.error) return host.replaceChildren(h('p', { class: 'muted' }, b.error));
+    const kp = knownPrice(sym);
+    if (!kp) return host.replaceChildren(h('p', { class: 'muted' }, 'Todavía no llega el precio de hoy.'));
+    const full = fullHistory(sym);
+    const years = full?.points ? psByYear(fin, b, full.points) : [];
+    const med = medianOf(years.map((y) => y.ps));
+    const now = psOf(b, kp.price);
+
+    const target = h('input', { type: 'number', min: '0.1', max: '500', step: '0.1', inputmode: 'decimal', class: 'ps-target', id: 'd-ps-target' });
+    target.value = psTargets.get(sym) ?? (med ?? now).toFixed(2);
+    const out = h('p', { class: 'ps-out' });
+    const update = () => {
+      const v = Number(target.value);
+      if (!(v > 0)) return out.replaceChildren('Escribe un P/S mayor que 0.');
+      const implied = priceAtPsOf(b, v);
+      out.replaceChildren('Con ese P/S, ', h('strong', {}, fmtPrice(implied)), ' por acción: ', vsToday(implied, kp.price), '.');
+    };
+    // Solo lo que escribes queda guardado: si no, el valor de partida (la mediana) sigue a los datos que llegan.
+    target.addEventListener('input', () => {
+      psTargets.set(sym, target.value);
+      update();
+    });
+    update();
+
+    const table =
+      years.length > 0
+        ? h(
+            'details',
+            { class: 'table-view' },
+            h('summary', {}, 'P/S al cierre de cada año fiscal'),
+            h(
+              'table',
+              { class: 'fin-table' },
+              h('thead', {}, h('tr', {}, h('th', { scope: 'col' }, 'Año'), h('th', { scope: 'col' }, 'Precio al cierre'), h('th', { scope: 'col' }, 'P/S'))),
+              h('tbody', {}, ...[...years].reverse().map((y) => h('tr', {}, h('th', { scope: 'row', title: `Cierre: ${fDayYear.format(day(y.end))}` }, String(y.year)), h('td', {}, fmtPrice(y.price)), h('td', {}, psFmt(y.ps))))),
+            ),
+          )
+        : full === undefined
+          ? h('p', { class: 'muted' }, 'Cargando los 5 años de precios para el P/S de cada año…')
+          : null;
+    const toPeers = h('button', { type: 'button', class: 'linkish' }, 'compararlo con otras empresas');
+    toPeers.addEventListener('click', () => {
+      $('ps-sym').value = sym;
+      $('ps-peers').value = '';
+      $('ps').scrollIntoView({ behavior: 'smooth', block: 'start' });
+      $('ps-peers').focus();
+    });
+    host.replaceChildren(
+      h(
+        'dl',
+        { class: 'stats' },
+        stat('P/S hoy', psFmt(now), `Precio ${fmtPrice(kp.price)} (${kp.src})`),
+        stat('Capitalización', usdBig(capOf(b, kp.price)), `${compact.format(b.shares)} acciones${b.adr !== 1 ? `, ${b.adr} por ADR` : ''}`),
+        stat(`Ventas ${b.year}`, usdBig(b.revenueUsd), b.currency === 'PEN' ? `S/ ${millions(b.revenue / 1e6)}` : 'Último año fiscal'),
+        med != null ? stat(`P/S mediano (${years.length} cierres fiscales)`, psFmt(med), `De ${years[0].year} a ${years.at(-1).year}`) : null,
+      ),
+      h('div', { class: 'ps-calc' }, h('label', { for: 'd-ps-target' }, 'P/S objetivo'), target, out),
+      table,
+      h('p', { class: 'hint' }, psNotes(b), ' También puedes ', toPeers, '.'),
+    );
+  }
+
+  // Comparador (#ps, para todos): la acción y hasta 3 comparables; sin clave, los precios se escriben a mano.
+  const PS_EXAMPLES = [
+    ['SCCO', ['FCX']],
+    ['BVN', ['NEM']],
+    ['AAPL', ['MSFT', 'GOOGL']],
+  ];
+  const psState = { sym: null, peers: [], prices: new Map(), target: '' };
+
+  function pickPs(rawSym, rawPeers) {
+    const up = (s) => String(s ?? '').trim().toUpperCase();
+    const sym = up(rawSym);
+    const peers = [...new Set(String(rawPeers ?? '').split(/[\s,;]+/).map(up).filter(Boolean))].filter((s) => s !== sym);
+    const bad = [sym, ...peers].filter((s) => !SYM_EQ.test(s));
+    if (bad.length || peers.length > 3) {
+      $('ps-body').replaceChildren(h('p', { class: 'err' }, peers.length > 3 ? 'Hasta 3 comparables.' : 'Escribe símbolos de acciones, como SCCO o FCX.'));
+      return;
+    }
+    // Si la SEC no respondió la vez anterior, se vuelve a intentar.
+    for (const s of [sym, ...peers]) if (state.fin.get(s)?.error) state.fin.delete(s);
+    Object.assign(psState, { sym, peers, target: '' });
+    prefs.set('mercados.ps', { sym, peers });
+    renderPsSection();
+  }
+
+  function renderPsSection() {
+    const host = $('ps-body');
+    if (!psState.sym) return;
+    for (const b of $('ps-chips').querySelectorAll('button')) b.setAttribute('aria-pressed', String(b.dataset.sym === psState.sym && b.dataset.peers === psState.peers.join(',')));
+    const all = [psState.sym, ...psState.peers];
+    const loaded = all.map((s) => [s, financialsFor(s)]);
+    if (loaded.some(([, r]) => !r)) return host.replaceChildren(h('p', { class: 'muted' }, `Buscando ${listJoin(all)} en la SEC…`));
+    const rows = loaded.map(([s, r]) => {
+      if (r.error) return { s, error: r.error };
+      const b = psBase(r.data);
+      if (b.error) return { s, name: r.data.name, error: b.error };
+      const kp = knownPrice(s);
+      const typed = psState.prices.get(s);
+      const price = kp?.price ?? (typed > 0 ? typed : null);
+      return { s, name: r.data.name, b, kp, price, ps: price ? psOf(b, price) : null };
+    });
+
+    const priceCell = (row) => {
+      if (row.kp) return h('td', {}, fmtPrice(row.kp.price), h('small', {}, row.kp.src));
+      const input = h('input', { type: 'number', min: '0', step: 'any', inputmode: 'decimal', class: 'ps-price', 'aria-label': `Precio de ${row.s} en US$`, placeholder: 'US$' });
+      if (psState.prices.has(row.s)) input.value = psState.prices.get(row.s);
+      input.addEventListener('change', () => {
+        const v = Number(input.value);
+        if (v > 0) psState.prices.set(row.s, v);
+        else psState.prices.delete(row.s);
+        renderPsSection();
+      });
+      return h('td', {}, input);
+    };
+    const tr = (row, i) =>
+      h(
+        'tr',
+        { class: i === 0 ? 'ps-main' : null },
+        h('th', { scope: 'row' }, row.s, row.name ? h('small', {}, shortName(row.name, 26)) : null),
+        ...(row.error
+          ? [h('td', { colspan: 4, class: 'muted' }, row.error)]
+          : [
+              priceCell(row),
+              h('td', {}, row.price ? usdBig(capOf(row.b, row.price)) : '—'),
+              h('td', {}, usdBig(row.b.revenueUsd), h('small', {}, String(row.b.year))),
+              h('td', { class: 'ps-val' }, row.ps != null ? psFmt(row.ps) : '—'),
+            ]),
+      );
+    const table = h(
+      'div',
+      { class: 'ps-wrap' },
+      h(
+        'table',
+        { class: 'fin-table ps-table' },
+        h('thead', {}, h('tr', {}, ...['Empresa', 'Precio', 'Capitalización', 'Ventas', 'P/S'].map((t) => h('th', { scope: 'col' }, t)))),
+        h('tbody', {}, ...rows.map(tr)),
+      ),
+    );
+
+    const main = rows[0];
+    const peerPs = rows.slice(1).filter((r) => r.ps != null).map((r) => r.ps);
+    const med = medianOf(peerPs);
+    const parts = [table];
+    if (!main.error) {
+      const target = h('input', { type: 'number', min: '0.1', max: '500', step: '0.1', inputmode: 'decimal', class: 'ps-target', id: 'ps-target' });
+      target.value = psState.target || (med != null ? med.toFixed(2) : '');
+      target.placeholder = med != null ? '' : 'p. ej. 3';
+      const out = h('p', { class: 'ps-out' });
+      const update = () => {
+        const v = Number(target.value);
+        if (!(v > 0)) {
+          out.replaceChildren(peerPs.length ? 'Escribe un P/S mayor que 0.' : 'Escribe el precio de los comparables, o un P/S objetivo.');
+          return;
+        }
+        const implied = priceAtPsOf(main.b, v);
+        out.replaceChildren(`${main.s} valdría `, h('strong', {}, fmtPrice(implied)), ' por acción', main.price ? ': ' : '', main.price ? vsToday(implied, main.price) : '', '.');
+      };
+      // Solo lo que escribes queda guardado: si no, sigue a la mediana de los comparables.
+      target.addEventListener('input', () => {
+        psState.target = target.value;
+        update();
+      });
+      update();
+      parts.push(
+        h(
+          'div',
+          { class: 'ps-calc' },
+          h('label', { for: 'ps-target' }, med != null ? `P/S de los comparables (mediana ${psFmt(med)})` : 'P/S objetivo'),
+          target,
+          out,
+        ),
+        h('p', { class: 'hint' }, psNotes(main.b)),
+      );
+    }
+    if (!hasPrices()) parts.push(h('p', { class: 'hint' }, 'Con tu clave de Twelve Data, los precios de tu lista se ponen solos.'));
+    host.replaceChildren(...parts);
+  }
+
+  function setupPsSection() {
+    $('ps-chips').replaceChildren(
+      ...PS_EXAMPLES.map(([sym, peers]) => {
+        const b = h('button', { type: 'button', 'aria-pressed': 'false', 'data-sym': sym, 'data-peers': peers.join(',') }, `${sym} · ${peers.join(', ')}`);
+        b.addEventListener('click', () => {
+          $('ps-sym').value = sym;
+          $('ps-peers').value = peers.join(', ');
+          pickPs(sym, peers.join(','));
+        });
+        return b;
+      }),
+    );
+    $('ps-form').addEventListener('submit', (e) => {
+      e.preventDefault();
+      pickPs($('ps-sym').value, $('ps-peers').value);
+    });
+    const saved = prefs.get('mercados.ps', null);
+    const [sym, peers] = saved?.sym ? [saved.sym, saved.peers ?? []] : PS_EXAMPLES[0];
+    $('ps-sym').value = sym;
+    $('ps-peers').value = peers.join(', ');
+    pickPs(sym, peers.join(','));
   }
 
   // ---------- cartera simulada ----------
@@ -3216,6 +3520,9 @@
       renderCalendar();
       renderTape();
       refreshForecastContext();
+      // Con el dólar, el P/S de las empresas que reportan en soles.
+      if (psState.sym) renderPsSection();
+      if (state.selected) renderDetailPs();
       const { fx, policyRate, inflation } = r.data;
       const lastFx = fx.at(-1);
       const lastInf = inflation.at(-1);
@@ -3400,23 +3707,154 @@
     }
   }
 
-  /** «Más del Perú» se abre y se cierra a mano (y se recuerda en el equipo); sus gráficos se dibujan al abrirla. */
+  /**
+   * «Más del Perú» se abre y se cierra a mano (y se recuerda en el equipo); sus gráficos se dibujan al abrirla y los
+   * hechos de importancia se piden recién entonces.
+   */
   function setupPeruFold() {
     const fold = $('pm-fold');
     fold.open = prefs.get('mercados.mas-peru', null) === 'abierto';
     fold.addEventListener('toggle', () => {
       prefs.set('mercados.mas-peru', fold.open ? 'abierto' : 'cerrado');
       if (fold.open && peruMarketsReply) renderMarketCards($('peru-markets'), PERU_MARKETS, peruMarketsReply);
+      if (fold.open) loadSmv();
+    });
+    if (fold.open) loadSmv();
+    $('smv-more').addEventListener('click', () => {
+      smv.shown += 10;
+      renderSmv();
     });
   }
 
-  /** Una tarjeta por serie: último dato, variaciones a 1 y 12 meses y el gráfico del último año. */
-  function renderMarketCards(host, list, r) {
+  // ---------- cripto (CoinGecko, para todos) ----------
+  // Su plan Demo deja mostrar los datos citando la fuente (el enlace va debajo de las tarjetas). Sin COINGECKO_API_KEY
+  // la sección no aparece para los amigos; el dueño ve cómo prenderla.
+  const CRYPTO = [
+    { key: 'bitcoin', label: 'Bitcoin', unit: 'US$ · BTC', dec: 0, csv: 'bitcoin_usd' },
+    { key: 'ethereum', label: 'Ether', unit: 'US$ · ETH', dec: 2, csv: 'ether_usd' },
+    { key: 'solana', label: 'Solana', unit: 'US$ · SOL', dec: 2, csv: 'solana_usd' },
+    { key: 'ripple', label: 'XRP', unit: 'US$ · XRP', dec: 4, csv: 'xrp_usd' },
+  ];
+
+  async function loadCrypto() {
+    const sec = $('cg');
+    try {
+      const r = await api('/api/crypto');
+      if (!r.enabled) {
+        sec.hidden = state.role !== 'owner';
+        $('cg-setup').hidden = false;
+        $('cg-grid').replaceChildren();
+        return;
+      }
+      sec.hidden = false;
+      $('cg-setup').hidden = true;
+      state.crypto = r.data;
+      renderMarketCards($('cg-grid'), CRYPTO, { ...r, data: r.data.coins }, { empty: 'Sin datos de CoinGecko', csvPrefix: 'coingecko' });
+      renderTape();
+    } catch (e) {
+      sec.hidden = false;
+      $('cg-grid').replaceChildren(h('p', { class: 'err' }, e.message));
+    }
+  }
+
+  // ---------- hechos de importancia (SMV, para todos) ----------
+  // La lista general va plegada en «Más del Perú»; en la ficha, los de las empresas peruanas que cotizan en EE. UU.
+  /** Las de SMV_ISSUERS (src/services/smv.ts): solo para ellas se piden hechos en la ficha. */
+  const SMV_SYMBOLS = new Set(['BAP', 'BVN', 'SCCO', 'CPAC', 'IFS']);
+  const smv = { feed: null, shown: 6, by: new Map() };
+
+  /** «2026-11-04T17:02» (ya en hora de Lima) → «4 nov, 17:02». */
+  const smvWhen = (at) => `${fDay.format(day(at.slice(0, 10))).replace('.', '')}, ${at.slice(11, 16)}`;
+
+  function smvItem(x, withName = true) {
+    let name = null;
+    if (withName) {
+      // Si es una empresa de tu lista, su nombre abre la ficha.
+      const opens = x.symbol && hasPrices() && state.symbols.includes(x.symbol);
+      name = opens ? h('button', { type: 'button', class: 'linkish smv-co', title: `Abrir la ficha de ${x.symbol}` }, x.nombre) : h('span', { class: 'smv-co' }, x.nombre);
+      if (opens) {
+        name.addEventListener('click', () => {
+          if (state.selected !== x.symbol) select(x.symbol);
+          else $('detail').scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+        });
+      }
+    }
+    return h(
+      'li',
+      { class: 'smv-item' },
+      h('p', { class: 'smv-top' }, name, h('span', { class: 'smv-tipo' }, x.tipo)),
+      x.texto ? h('p', { class: 'smv-text' }, x.texto) : null,
+      h('small', { class: 'smv-when' }, smvWhen(x.at)),
+    );
+  }
+
+  async function loadSmv() {
+    if (smv.feed) return renderSmv();
+    try {
+      smv.feed = await api('/api/smv');
+    } catch (e) {
+      $('smv-list').replaceChildren(h('li', { class: 'err' }, e.message));
+      return;
+    }
+    renderSmv();
+  }
+
+  function renderSmv() {
+    const r = smv.feed;
+    if (!r) return;
+    const list = $('smv-list');
+    $('smv-note').textContent = r.fetchedAt ? ` · revisado ${ago(r.fetchedAt)}` : '';
+    if (!r.items.length) {
+      list.replaceChildren(h('li', { class: 'muted' }, r.fetchedAt ? 'No hubo hechos de importancia en los últimos 14 días.' : 'Se cargan en las próximas horas.'));
+      $('smv-more').hidden = true;
+      return;
+    }
+    list.replaceChildren(...r.items.slice(0, smv.shown).map((x) => smvItem(x)));
+    $('smv-more').hidden = r.items.length <= smv.shown;
+  }
+
+  /** En la ficha de BAP, BVN, SCCO, CPAC o IFS: sus hechos de los últimos 60 días (se piden una vez por sesión). */
+  function renderDetailSmv() {
+    const sym = state.selected;
+    const wrap = $('d-smv');
+    if (!sym || !SMV_SYMBOLS.has(sym)) {
+      wrap.hidden = true;
+      return;
+    }
+    const r = smv.by.get(sym);
+    if (!r) {
+      smv.by.set(sym, 'cargando');
+      api(`/api/smv?symbol=${encodeURIComponent(sym)}`)
+        .then((x) => smv.by.set(sym, x))
+        .catch((e) => smv.by.set(sym, { error: e.message }))
+        .finally(() => {
+          if (state.selected === sym) renderDetailSmv();
+        });
+    }
+    if (!r || r === 'cargando') {
+      wrap.hidden = true;
+      return;
+    }
+    $('d-smv-name').textContent = r.issuer?.name ?? sym;
+    if (r.error) {
+      wrap.hidden = false;
+      $('d-smv-list').replaceChildren(h('li', { class: 'err' }, r.error));
+      return;
+    }
+    wrap.hidden = !r.items.length;
+    $('d-smv-list').replaceChildren(...r.items.slice(0, 5).map((x) => smvItem(x, false)));
+  }
+
+  /**
+   * Una tarjeta por serie: último dato, variaciones (24 horas si la serie la trae, 1 y 12 meses) y el gráfico del último
+   * año. La usan materias primas y «Más del Perú» (BCRP) y cripto (CoinGecko).
+   */
+  function renderMarketCards(host, list, r, opts = {}) {
     const draws = [];
     const cards = list.map((m) => {
       const s = r.data[m.key];
       const last = s?.summary?.last;
-      if (!last) return h('div', { class: 'pm-card' }, metric(m.label, '—', 'Sin datos del BCRP'));
+      if (!last) return h('div', { class: 'pm-card' }, metric(m.label, '—', opts.empty ?? 'Sin datos del BCRP'));
       const fmt = (v) => nf(m.dec).format(v);
       const pbRow = (sr, v0, v1) => ({ value: `${arrowOf(v1 - v0)} ${sign(v1 - v0)}${nf(0).format(Math.abs(v1 - v0))} pb`, label: `${fmt(v0)} → ${fmt(v1)}` });
       // Sin título: «último año» lo dice una sola vez el encabezado de la sección.
@@ -3429,14 +3867,20 @@
           aria: `${m.label}, último año (${m.unit})`,
           ...(m.kind === 'pp' ? { measureRow: measureRowPoints } : m.kind === 'pb' ? { measureRow: pbRow } : {}),
         },
-        { filename: `bcrp_${m.csv}_${today()}.csv`, header: ['fecha', m.csv], rows: s.points },
+        { filename: `${opts.csvPrefix ?? 'bcrp'}_${m.csv}_${today()}.csv`, header: ['fecha', m.csv], rows: s.points },
       );
       draws.push(block.draw);
       return h(
         'div',
         { class: 'pm-card' },
         metric(m.label, fmt(last.value), `${m.unit} · ${fDay.format(day(last.date))}`),
-        h('div', { class: 'pm-chgs' }, changeChip('1 mes', s.summary.m1, m.kind), changeChip('12 meses', s.summary.y1, m.kind)),
+        h(
+          'div',
+          { class: 'pm-chgs' },
+          s.change24h != null ? changeChip('24 h', { pct: s.change24h }) : null,
+          changeChip('1 mes', s.summary.m1, m.kind),
+          changeChip('12 meses', s.summary.y1, m.kind),
+        ),
         block.wrap,
       );
     });
@@ -4929,6 +5373,7 @@
     $('d-strat').addEventListener('toggle', renderStrategy);
     $('d-strat-kind').addEventListener('change', renderStrategy);
     $('d-fin').addEventListener('toggle', renderDetailFin);
+    $('d-ps').addEventListener('toggle', renderDetailPs);
     $('pf-xray').addEventListener('toggle', loadXray);
     $('pf-form').addEventListener('submit', submitTrade);
     $('tape-toggle').addEventListener('click', () => {
@@ -4949,8 +5394,9 @@
     // Noticias y resumen del día para todos (son públicos); el servidor renueva las noticias cada 30 minutos.
     loadNews();
     loadSummary();
-    // Resultados de empresas (SEC): públicos, también para los amigos.
+    // Resultados de empresas (SEC) y el comparador por P/S: públicos, también para los amigos.
     setupFinSection();
+    setupPsSection();
     setInterval(() => {
       if (document.visibilityState !== 'visible') return;
       loadNews();
@@ -4992,6 +5438,7 @@
       loadUsa();
       loadCurve();
       loadPeruMarkets();
+      loadCrypto();
       loadCalendar();
       loadForecasts();
       loadGames();
@@ -5017,6 +5464,7 @@
     loadUsa();
     loadCurve();
     loadPeruMarkets();
+    loadCrypto();
     loadCalendar();
     loadForecasts();
     loadGames();

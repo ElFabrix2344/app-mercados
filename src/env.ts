@@ -33,6 +33,8 @@ export interface Env {
   FRED_API_KEY?: string;
   /** Clave gratis de Finnhub para las fechas de resultados de la lista (solo las ve el dueño: así lo piden sus términos). */
   FINNHUB_API_KEY?: string;
+  /** Clave Demo gratis de CoinGecko (sección «Cripto», para todos, citando la fuente). Sin ella, la sección no aparece. */
+  COINGECKO_API_KEY?: string;
   /** Clave compartida con mercados-mcp para firmar «este correo inició sesión» (32+ caracteres). */
   LOGIN_LINK_SECRET?: string;
   /** Token de Cloudflare con un solo permiso («Access: Apps and Policies → Edit»): copia «Personas» a Access. */
@@ -58,6 +60,7 @@ export const SECRET_KEYS = [
   'TWELVE_DATA_API_KEY',
   'FRED_API_KEY',
   'FINNHUB_API_KEY',
+  'COINGECKO_API_KEY',
   'LOGIN_LINK_SECRET',
   'ACCESS_API_TOKEN',
   'OWNER_BIRTHDAY',

@@ -37,7 +37,8 @@ body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--f-mono);fo
   .bar,.sheets,.teaser,#install-panel,.tape,.banner{order:-2}
   #summary{order:-1}
   #welcome{order:1} #keycard{order:2} #watchlist{order:2} #eod{order:3} #thermo{order:4} #detail{order:5} #news{order:6} #compare{order:7}
-  #portfolio{order:8} #hapi{order:9} #cmd{order:10} #macro{order:11} #pm{order:12} #fin{order:13} #cal{order:14} #people{order:15}
+  #portfolio{order:8} #hapi{order:9} #cmd{order:10} #cg{order:11} #macro{order:12} #pm{order:13} #fin{order:14} #ps{order:15} #cal{order:16}
+  #people{order:17}
   .foot{order:20}
 }
 @media (min-width:900px){
@@ -681,6 +682,30 @@ a.cta{display:inline-flex;align-items:center;gap:6px;border-radius:var(--r);text
 .lg-pitch-card{max-width:640px}
 .lg-pitch{margin:0 0 12px;font-family:var(--f-sans);font-size:1rem;line-height:1.5}
 .lg-go{padding:10px 18px;font-size:1rem}
+
+/* Hechos de importancia (SMV): en «Más del Perú» y en la ficha. Empresa en cian, tipo en gris, el aviso y la hora. */
+.smv{margin-top:16px}
+.smv-h{margin:0 0 4px;font-family:var(--f-sans);color:var(--accent);font-weight:500}
+.smv-h .src{margin-left:8px}
+.smv-item{display:flex;flex-direction:column;gap:2px;padding:7px 0;border-bottom:1px solid var(--hair)}
+.smv-top{margin:0;display:flex;flex-wrap:wrap;align-items:baseline;gap:2px 10px}
+.smv-co{color:var(--accent);font-weight:500}
+.smv-tipo{font-family:var(--f-sans);font-size:.82rem;color:var(--muted)}
+.smv-text{margin:0;font-family:var(--f-sans);font-size:.92rem;line-height:1.45}
+.smv-when{font-family:var(--f-sans);font-size:.8rem;color:var(--muted)}
+.cg-credit{margin-top:10px}
+
+/* Valorar por P/S: la tabla de la acción y sus comparables (la acción en cian) y la casilla del P/S objetivo. */
+.ps-peers{width:16ch}
+.ps-wrap{overflow-x:auto}
+.ps-table th small,.ps-table td small{display:block;color:var(--muted);font-family:var(--f-sans);font-size:.8rem;font-weight:400}
+.ps-table .ps-main th{color:var(--accent)}
+.ps-table .ps-val{font-weight:600}
+.ps-price{width:9ch;font:inherit;font-family:var(--f-mono);color:var(--ink);background:var(--bg);border:1px solid var(--line);border-radius:var(--r);padding:3px 6px}
+.ps-calc{display:flex;flex-wrap:wrap;align-items:center;gap:6px 10px;margin:12px 0 4px}
+.ps-calc label{font-family:var(--f-sans);font-size:.9rem;color:var(--muted)}
+.ps-target{width:8ch;font:inherit;font-family:var(--f-mono);color:var(--ink);background:var(--bg);border:1px solid var(--accent);border-radius:var(--r);padding:4px 8px}
+.ps-out{flex:1 1 100%;margin:0;font-family:var(--f-sans)}
 
 /* «Precios con tu clave»: para un amigo sin clave, donde iría su lista. */
 .kc-text{margin:0 0 12px;font-family:var(--f-sans);line-height:1.5}
