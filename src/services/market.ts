@@ -543,6 +543,12 @@ export interface PeruMarkets {
   copper: MarketSeries;
   /** Oro en Londres, US$ por onza troy. */
   gold: MarketSeries;
+  /** Plata (H. Harman), US$ por onza troy. */
+  silver: MarketSeries;
+  /** Zinc en Londres, US$ por libra (el BCRP lo publica en centavos). */
+  zinc: MarketSeries;
+  /** Petróleo West Texas Intermediate, US$ por barril. */
+  oil: MarketSeries;
   /** Reservas internacionales netas, millones de US$. */
   reserves: MarketSeries;
   /** Índice general de la Bolsa de Valores de Lima. */
@@ -581,6 +587,9 @@ const MARKET_CODES = [
   BCRP_SERIES.bond10pen,
   BCRP_SERIES.bond10usd,
   BCRP_SERIES.ust10,
+  BCRP_SERIES.silver,
+  BCRP_SERIES.zinc,
+  BCRP_SERIES.oil,
 ];
 
 /** Columnas del pedido (en el orden de MARKET_CODES) → series sin los días sin dato. */
@@ -602,14 +611,17 @@ export function shapeMarkets(points: BcrpPoint[]): PeruMarkets {
     bond10pen: column(4),
     bond10usd: column(5),
     spread10: spread,
+    silver: column(7),
+    zinc: column(8, 0.01),
+    oil: column(9),
   };
 }
 
 /** Un año y algo de datos diarios (para la variación a 12 meses). Datos públicos: también los ven los amigos. */
 export async function peruMarkets(d: Deps): Promise<Fresh<PeruMarkets>> {
   const today = isoDate(d.now);
-  // «peru-markets2»: desde que se sumaron los bonos y el riesgo país (el registro anterior no los tenía).
-  return cached<PeruMarkets>(d, 'peru-markets2', MACRO_TTL_MS, async () =>
+  // «peru-markets3»: desde que se sumaron la plata, el zinc y el petróleo (4 nov; el registro anterior no los tenía).
+  return cached<PeruMarkets>(d, 'peru-markets3', MACRO_TTL_MS, async () =>
     shapeMarkets(await getBcrp(MARKET_CODES, addDays(today, -400), today, d.fetch)),
   );
 }

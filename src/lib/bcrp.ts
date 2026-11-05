@@ -17,8 +17,12 @@ export const BCRP_SERIES = {
   expGdp12m: 'PD38048AM', // crecimiento del PBI esperado a 12 meses, %
   expFx12m: 'PD38049AM', // tipo de cambio esperado a 12 meses, soles por dólar
   reserves: 'PD04650MD', // reservas internacionales netas, millones de US$ (diario, aunque el código termine en MD)
+  // Materias primas (cotizaciones internacionales del BCRP; códigos revisados en su API el 4 nov 2026).
   copper: 'PD04701XD', // cobre en Londres, centavos de US$ por libra (diario)
+  silver: 'PD04702XD', // plata (H. Harman), US$ por onza troy (diario)
+  zinc: 'PD04703XD', // zinc en Londres, centavos de US$ por libra (diario)
   gold: 'PD04704XD', // oro en Londres, US$ por onza troy (diario)
+  oil: 'PD04705XD', // petróleo West Texas Intermediate, US$ por barril (diario)
   bvl: 'PD38026MD', // índice general de la Bolsa de Valores de Lima (diario)
   bond10pen: 'PD31893DD', // rendimiento del bono del gobierno peruano a 10 años en soles, % (diario, un día de atraso)
   bond10usd: 'PD31894DD', // rendimiento del bono del gobierno peruano a 10 años en dólares, % (diario)

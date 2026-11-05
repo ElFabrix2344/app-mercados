@@ -24,7 +24,7 @@
     cmpError: null, // { key, message } del último intento fallido
     peruData: null, // lo último de /api/peru y /api/usa (el calendario muestra la tasa o la inflación actual)
     usaData: null,
-    peruMarkets: null, // cobre, oro, BVL y reservas (también van en la cinta)
+    peruMarkets: null, // materias primas, BVL, reservas, bonos y riesgo país del BCRP (también van en la cinta)
     portfolio: null, // respuesta de /api/portfolio (cartera simulada, solo el dueño)
     news: null, // respuesta de /api/news (titulares generales)
     summary: null, // respuesta de /api/resumen (resumen del día, lo ven todos)
@@ -798,7 +798,7 @@
     const fx = state.peruData?.fx;
     if (fx?.length) items.push({ sym: 'Dólar BCRP', value: nf(4).format(fx.at(-1).sell), ch: fx.length > 1 ? fx.at(-1).sell / fx.at(-2).sell - 1 : null });
     const pm = state.peruMarkets;
-    for (const [key, label] of [['copper', 'Cobre'], ['gold', 'Oro'], ['bvl', 'BVL']]) {
+    for (const [key, label] of [['copper', 'Cobre'], ['gold', 'Oro'], ['oil', 'Petróleo'], ['bvl', 'BVL']]) {
       const pts = pm?.[key]?.points;
       if (pts?.length) items.push({ sym: label, value: nf(2).format(pts.at(-1)[1]), ch: lastChange(pts) });
     }
@@ -3251,10 +3251,17 @@
     }
   }
 
-  // ---------- Perú: cobre, oro, BVL y reservas ----------
-  const PERU_MARKETS = [
+  // ---------- materias primas y «Más del Perú» (BCRP, un solo pedido) ----------
+  // Materias primas a la vista, donde antes estaba lo del Perú (pedido del usuario, 4 nov). Lo del Perú quedó plegado
+  // en «Más del Perú» y se dibuja recién al abrirlo (con la sección cerrada los gráficos no tienen ancho).
+  const COMMODITIES = [
     { key: 'copper', label: 'Cobre (Londres)', unit: 'US$ por libra', dec: 2, csv: 'cobre_usd_libra' },
     { key: 'gold', label: 'Oro (Londres)', unit: 'US$ por onza troy', dec: 2, csv: 'oro_usd_onza' },
+    { key: 'silver', label: 'Plata', unit: 'US$ por onza troy', dec: 2, csv: 'plata_usd_onza' },
+    { key: 'zinc', label: 'Zinc (Londres)', unit: 'US$ por libra', dec: 2, csv: 'zinc_usd_libra' },
+    { key: 'oil', label: 'Petróleo WTI', unit: 'US$ por barril', dec: 2, csv: 'petroleo_wti_usd_barril' },
+  ];
+  const PERU_MARKETS = [
     { key: 'bvl', label: 'Índice general BVL', unit: 'puntos', dec: 2, csv: 'indice_general_bvl' },
     { key: 'reserves', label: 'Reservas internacionales netas', unit: 'millones de US$', dec: 0, csv: 'reservas_millones_usd' },
     // Tasas: su variación va en puntos porcentuales (pp); el riesgo país, en puntos básicos (pb).
@@ -3277,45 +3284,63 @@
     return h('span', { class: 'pm-chg' }, `${label} `, h('span', { class: trend(d) }, changeText(ch, kind)));
   }
 
+  let peruMarketsReply = null;
+
   async function loadPeruMarkets() {
-    const host = $('peru-markets');
     try {
       const r = await api('/api/peru-markets');
+      peruMarketsReply = r;
       state.peruMarkets = r.data;
       renderTape();
-      const draws = [];
-      const cards = PERU_MARKETS.map((m) => {
-        const s = r.data[m.key];
-        const last = s?.summary?.last;
-        if (!last) return h('div', { class: 'pm-card' }, metric(m.label, '—', 'Sin datos del BCRP'));
-        const fmt = (v) => nf(m.dec).format(v);
-        const pbRow = (sr, v0, v1) => ({ value: `${arrowOf(v1 - v0)} ${sign(v1 - v0)}${nf(0).format(Math.abs(v1 - v0))} pb`, label: `${fmt(v0)} → ${fmt(v1)}` });
-        // Sin título: «último año» lo dice una sola vez el encabezado de la sección.
-        const block = chartBlock(
-          null,
-          s.points.map(([date, v]) => ({ date, v })),
-          {
-            fmt,
-            height: 120,
-            aria: `${m.label}, último año (${m.unit})`,
-            ...(m.kind === 'pp' ? { measureRow: measureRowPoints } : m.kind === 'pb' ? { measureRow: pbRow } : {}),
-          },
-          { filename: `bcrp_${m.csv}_${today()}.csv`, header: ['fecha', m.csv], rows: s.points },
-        );
-        draws.push(block.draw);
-        return h(
-          'div',
-          { class: 'pm-card' },
-          metric(m.label, fmt(last.value), `${m.unit} · ${fDay.format(day(last.date))}`),
-          h('div', { class: 'pm-chgs' }, changeChip('1 mes', s.summary.m1, m.kind), changeChip('12 meses', s.summary.y1, m.kind)),
-          block.wrap,
-        );
-      });
-      host.replaceChildren(...cards, ...[staleHint(r)].filter(Boolean));
-      for (const draw of draws) draw();
+      renderMarketCards($('cmd-grid'), COMMODITIES, r);
+      if ($('pm-fold').open) renderMarketCards($('peru-markets'), PERU_MARKETS, r);
     } catch (e) {
-      host.replaceChildren(h('p', { class: 'err' }, e.message));
+      for (const id of ['cmd-grid', 'peru-markets']) $(id).replaceChildren(h('p', { class: 'err' }, e.message));
     }
+  }
+
+  /** «Más del Perú» se abre y se cierra a mano (y se recuerda en el equipo); sus gráficos se dibujan al abrirla. */
+  function setupPeruFold() {
+    const fold = $('pm-fold');
+    fold.open = prefs.get('mercados.mas-peru', null) === 'abierto';
+    fold.addEventListener('toggle', () => {
+      prefs.set('mercados.mas-peru', fold.open ? 'abierto' : 'cerrado');
+      if (fold.open && peruMarketsReply) renderMarketCards($('peru-markets'), PERU_MARKETS, peruMarketsReply);
+    });
+  }
+
+  /** Una tarjeta por serie: último dato, variaciones a 1 y 12 meses y el gráfico del último año. */
+  function renderMarketCards(host, list, r) {
+    const draws = [];
+    const cards = list.map((m) => {
+      const s = r.data[m.key];
+      const last = s?.summary?.last;
+      if (!last) return h('div', { class: 'pm-card' }, metric(m.label, '—', 'Sin datos del BCRP'));
+      const fmt = (v) => nf(m.dec).format(v);
+      const pbRow = (sr, v0, v1) => ({ value: `${arrowOf(v1 - v0)} ${sign(v1 - v0)}${nf(0).format(Math.abs(v1 - v0))} pb`, label: `${fmt(v0)} → ${fmt(v1)}` });
+      // Sin título: «último año» lo dice una sola vez el encabezado de la sección.
+      const block = chartBlock(
+        null,
+        s.points.map(([date, v]) => ({ date, v })),
+        {
+          fmt,
+          height: 120,
+          aria: `${m.label}, último año (${m.unit})`,
+          ...(m.kind === 'pp' ? { measureRow: measureRowPoints } : m.kind === 'pb' ? { measureRow: pbRow } : {}),
+        },
+        { filename: `bcrp_${m.csv}_${today()}.csv`, header: ['fecha', m.csv], rows: s.points },
+      );
+      draws.push(block.draw);
+      return h(
+        'div',
+        { class: 'pm-card' },
+        metric(m.label, fmt(last.value), `${m.unit} · ${fDay.format(day(last.date))}`),
+        h('div', { class: 'pm-chgs' }, changeChip('1 mes', s.summary.m1, m.kind), changeChip('12 meses', s.summary.y1, m.kind)),
+        block.wrap,
+      );
+    });
+    host.replaceChildren(...cards, ...[staleHint(r)].filter(Boolean));
+    for (const draw of draws) draw();
   }
 
   // ---------- calendario ----------
@@ -4706,6 +4731,7 @@
   async function init() {
     renderClock();
     setupSheets();
+    setupPeruFold();
     setupInstall();
     $('refresh-btn').addEventListener('click', () => loadQuotes(true));
     $('edit-btn').addEventListener('click', () => openEditor($('wl-form').hidden));

@@ -85,7 +85,8 @@
           <li><strong>Más juegos:</strong> el gráfico del día, 2/3 del promedio y los pronósticos de tasas, inflación y dólar.</li>
           <li><strong>Mi cuenta Hapi:</strong> importa tu estado de cuenta en PDF o anota tus operaciones. Se cifra con tu frase: nadie más la puede ver, tampoco el dueño de la app.</li>
           <li><strong>Resultados de empresas:</strong> ingresos y utilidades de los últimos años de cualquier acción que reporte a la SEC.</li>
-          <li><strong>Perú y EE. UU.:</strong> dólar, tasas, inflación, cobre, oro, BVL, bonos y la curva del Tesoro, con el calendario de anuncios y las noticias.</li>
+          <li><strong>Materias primas:</strong> cobre, oro, plata, zinc y petróleo.</li>
+          <li><strong>Perú y EE. UU.:</strong> dólar, tasas, inflación, BVL, bonos y la curva del Tesoro, con el calendario de anuncios y las noticias.</li>
           <li id="welcome-install"><strong>Como app:</strong> con «Instalar app», arriba, Rueda queda en tu celular o computadora con su ícono y se abre a pantalla completa.</li>
         </ul>
         <p class="hint">Los precios de las acciones no se pueden compartir: la licencia gratis de su proveedor no lo permite. <a href="/terminos.html">Términos y privacidad</a>.</p>
@@ -142,20 +143,20 @@
         <div class="rows" id="eod-rows"><p class="muted">Cargando…</p></div>
       </section>
 
-      <section class="screen" id="pm" aria-labelledby="pm-h">
+      <!-- Materias primas (BCRP): donde estaba «Mercados y tasas del Perú», a pedido del usuario (4 nov). -->
+      <section class="screen" id="cmd" aria-labelledby="cmd-h">
         <div class="screen-head">
-          <h2 id="pm-h">Mercados y tasas del Perú</h2>
+          <h2 id="cmd-h">Materias primas</h2>
           <span class="src">BCRP · último año</span>
           <details class="help">
             <summary aria-label="Qué muestra esta sección">?</summary>
             <div class="help-body">
-              <p>Las variaciones de los precios e índices van en %; las de las tasas, en puntos porcentuales (pp), y las del riesgo país, en puntos básicos (pb).</p>
-              <p>El riesgo país es aproximado: la diferencia entre el bono peruano en dólares a 10 años y el del Tesoro de EE. UU. a 10 años. Se mueve parecido al EMBIG, que el BCRP no actualiza desde el 3 de setiembre de 2026.</p>
-              <p>Los bonos peruanos llegan con un día de atraso y el del Tesoro, con unos tres.</p>
+              <p>Precios internacionales que publica el BCRP cada día hábil: cobre y zinc en la Bolsa de Metales de Londres (en US$ por libra; el BCRP los da en centavos), oro en Londres y plata (H. Harman) en US$ por onza troy, y petróleo West Texas Intermediate en US$ por barril.</p>
+              <p>Llegan con uno o dos días de atraso. Cobre, zinc, oro y plata son buena parte de lo que exporta el Perú.</p>
             </div>
           </details>
         </div>
-        <div id="peru-markets" class="pm-grid"><p class="muted">Cargando…</p></div>
+        <div id="cmd-grid" class="pm-grid"><p class="muted">Cargando…</p></div>
       </section>
 
       <!-- Quién puede entrar (solo el dueño). Cada cambio se copia a Cloudflare Access, que manda el código por correo. -->
@@ -426,6 +427,26 @@
           <div id="curve" class="macro-body"></div>
         </section>
       </div>
+
+      <!-- Más del Perú (BCRP): Bolsa de Lima, reservas, bonos y riesgo país, plegado (antes iba arriba, en la columna izquierda). -->
+      <section class="screen" id="pm" aria-labelledby="pm-h">
+        <div class="screen-head">
+          <h2 id="pm-h">Más del Perú</h2>
+          <span class="src">BCRP · último año</span>
+          <details class="help">
+            <summary aria-label="Qué muestra esta sección">?</summary>
+            <div class="help-body">
+              <p>Las variaciones de los índices van en %; las de las tasas, en puntos porcentuales (pp), y las del riesgo país, en puntos básicos (pb).</p>
+              <p>El riesgo país es aproximado: la diferencia entre el bono peruano en dólares a 10 años y el del Tesoro de EE. UU. a 10 años. Se mueve parecido al EMBIG, que el BCRP no actualiza desde el 3 de setiembre de 2026.</p>
+              <p>Los bonos peruanos llegan con un día de atraso y el del Tesoro, con unos tres.</p>
+            </div>
+          </details>
+        </div>
+        <details class="pm-fold" id="pm-fold">
+          <summary>Bolsa de Lima, reservas, bonos y riesgo país</summary>
+          <div id="peru-markets" class="pm-grid"></div>
+        </details>
+      </section>
 
       <section class="screen" id="fin" aria-labelledby="fin-h">
         <div class="screen-head">

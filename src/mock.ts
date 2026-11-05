@@ -48,6 +48,9 @@ const BASE: Record<string, { name: string; exchange: string; currency: string; s
   // Series del BCRP (cobre en US$/lb, oro en US$/oz, reservas en millones de US$, índice BVL).
   'BCRP:COBRE': { name: 'Cobre', exchange: 'BCRP', currency: 'USD', start: 4.4, vol: 0.014, beta: 0.4 },
   'BCRP:ORO': { name: 'Oro', exchange: 'BCRP', currency: 'USD', start: 2900, vol: 0.009, beta: -0.1 },
+  'BCRP:PLATA': { name: 'Plata', exchange: 'BCRP', currency: 'USD', start: 33, vol: 0.016, beta: 0 },
+  'BCRP:ZINC': { name: 'Zinc', exchange: 'BCRP', currency: 'USD', start: 1.3, vol: 0.013, beta: 0.35 },
+  'BCRP:PETROLEO': { name: 'Petróleo WTI', exchange: 'BCRP', currency: 'USD', start: 72, vol: 0.02, beta: 0.3 },
   'BCRP:RIN': { name: 'Reservas', exchange: 'BCRP', currency: 'USD', start: 80000, vol: 0.002, beta: 0.1 },
   'BCRP:BVL': { name: 'BVL', exchange: 'BCRP', currency: 'PEN', start: 30000, vol: 0.011, beta: 0.5 },
   // Tasas (%): bono peruano a 10 años en soles y en dólares, y Tesoro de EE. UU. a 10 años.
@@ -264,6 +267,9 @@ export function mockPeruMarkets(now: Date): Fresh<PeruMarkets> {
       bond10pen: series('BCRP:BONO10PEN'),
       bond10usd: series('BCRP:BONO10USD'),
       spread10: { points: spread, summary: summarize(spread) },
+      silver: series('BCRP:PLATA'),
+      zinc: series('BCRP:ZINC'),
+      oil: series('BCRP:PETROLEO'),
     },
     now,
   );

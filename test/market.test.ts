@@ -330,16 +330,21 @@ describe('Perú: cobre, oro, reservas, BVL, bonos y riesgo país', () => {
     const { f, calls } = fakeFetch(() => ({
       body: {
         periods: [
-          { name: '10.Oct.25', values: ['80000', '450', '2500', '4.0', '6.5', '5.0', '30000'] },
-          { name: '15.Set.26', values: ['95000', '640', '4000', '4.9', '6.6', '6.0', 'n.d.'] },
-          { name: '16.Oct.26', values: ['96654.60272427', '662.018070575889', '4165.58', 'n.d.', '6.72', '6.106', '59870.67'] },
+          // Ordenadas por código, como responde el BCRP: RIN, cobre, plata, zinc, oro, petróleo, Tesoro, bonos y BVL.
+          { name: '10.Oct.25', values: ['80000', '450', '30.1', '120', '2500', '70.5', '4.0', '6.5', '5.0', '30000'] },
+          { name: '15.Set.26', values: ['95000', '640', '45.2', '170', '4000', '90.1', '4.9', '6.6', '6.0', 'n.d.'] },
+          { name: '16.Oct.26', values: ['96654.60272427', '662.018070575889', '50.6271', '178.488597582757', '4165.58', '96.46', 'n.d.', '6.72', '6.106', '59870.67'] },
         ],
       },
     }));
     const { kv } = memoryKV();
     const r = await peruMarkets({ kv, now: new Date('2026-10-17T15:00:00Z'), fetch: f });
     expect(calls).toHaveLength(1);
-    expect(calls[0]!.pathname).toContain('/PD04650MD-PD04701XD-PD04704XD-PD04719XD-PD31893DD-PD31894DD-PD38026MD/json/');
+    expect(calls[0]!.pathname).toContain('/PD04650MD-PD04701XD-PD04702XD-PD04703XD-PD04704XD-PD04705XD-PD04719XD-PD31893DD-PD31894DD-PD38026MD/json/');
+    // Materias primas: el zinc, como el cobre, llega en centavos de US$ por libra.
+    expect(r.data.silver.summary.last).toEqual({ date: '2026-10-16', value: 50.6271 });
+    expect(r.data.zinc.summary.last).toEqual({ date: '2026-10-16', value: 1.7849 });
+    expect(r.data.oil.summary.y1!.pct).toBeCloseTo(96.46 / 70.5 - 1, 10);
     // Tasas: la variación que importa es la diferencia (puntos porcentuales), no el %.
     expect(r.data.bond10pen.summary.last).toEqual({ date: '2026-10-16', value: 6.72 });
     expect(r.data.bond10pen.summary.y1!.diff).toBeCloseTo(0.22, 10);

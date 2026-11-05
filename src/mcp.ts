@@ -528,13 +528,13 @@ function registerPublicTools(server: McpServer, c: McpContext, when: When): void
   server.registerTool(
     'peru_bcrp',
     {
-      title: 'Perú: dólar, tasas, inflación, cobre, oro, reservas y BVL (BCRP)',
+      title: 'Perú: dólar, tasas, inflación, materias primas, reservas y BVL (BCRP)',
       description:
         'Datos del Banco Central de Reserva del Perú (BCRPData, guardados hasta 6 h): tipo de cambio interbancario del dólar ' +
         '(compra y venta en soles, últimos ~30 días hábiles), tasa de referencia de política monetaria (%), inflación de Lima ' +
         'Metropolitana a 12 meses (%, últimos 13 meses), lo que esperan los analistas a 12 meses según la encuesta de ' +
-        'expectativas del BCRP (inflación y PBI en %, tipo de cambio en soles; últimos 6 meses) y, en «mercados», cobre y ' +
-        'oro en Londres, reservas internacionales ' +
+        'expectativas del BCRP (inflación y PBI en %, tipo de cambio en soles; últimos 6 meses) y, en «mercados», cobre, ' +
+        'zinc y oro en Londres, plata, petróleo WTI, reservas internacionales ' +
         'netas, índice general de la Bolsa de Valores de Lima, rendimiento del bono del gobierno peruano a 10 años (en soles ' +
         'y en dólares) y un riesgo país aproximado (bono peruano en dólares menos Tesoro de EE. UU., ambos a 10 años, en ' +
         'puntos básicos; no es el EMBIG, que el BCRP no actualiza desde el 3 de setiembre de 2026). Para cada uno: último ' +
@@ -572,6 +572,9 @@ function registerPublicTools(server: McpServer, c: McpContext, when: When): void
           mercados: mk && {
             cobre_usd_por_libra: marketOut(mk.data.copper),
             oro_usd_por_onza_troy: marketOut(mk.data.gold),
+            plata_usd_por_onza_troy: marketOut(mk.data.silver),
+            zinc_usd_por_libra: marketOut(mk.data.zinc),
+            petroleo_wti_usd_por_barril: marketOut(mk.data.oil),
             reservas_internacionales_netas_millones_usd: marketOut(mk.data.reserves),
             indice_general_bvl: marketOut(mk.data.bvl),
             bono_peru_10_anios_soles_pct: marketOut(mk.data.bond10pen, 'pp'),
@@ -589,6 +592,9 @@ function registerPublicTools(server: McpServer, c: McpContext, when: When): void
             expectativas: 'PD12912AM (inflación), PD38048AM (PBI), PD38049AM (tipo de cambio)',
             cobre: 'PD04701XD (centavos de US$ por libra, aquí convertido a US$)',
             oro: 'PD04704XD',
+            plata: 'PD04702XD',
+            zinc: 'PD04703XD (centavos de US$ por libra, aquí convertido a US$)',
+            petroleo_wti: 'PD04705XD',
             reservas: 'PD04650MD',
             bvl: 'PD38026MD',
             bono_soles: 'PD31893DD',
