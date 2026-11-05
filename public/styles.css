@@ -1,7 +1,8 @@
-/* Rueda (antes «Mercados») — dirección «Terminal», paleta «negro neutro» (grises puros) con acento cian
-   para la marca, símbolos, títulos y gráficos. Números, títulos y datos en IBM Plex Mono; frases y etiquetas en
-   IBM Plex Sans, que se lee mejor (legibilidad, opción B del 22 oct: base de 15 px y nada por debajo de 12 px).
-   Verde/rojo solo para subidas/bajadas (siempre con ▲/▼ y signo). Solo modo oscuro. */
+/* Rueda (antes «Mercados») — dirección «Terminal», paleta «negro neutro» (grises puros) con acento cian. Desde el 5 nov,
+   «A · Limpio» (elegida por el usuario entre tres maquetas): títulos, etiquetas y botones en IBM Plex Sans y en letra
+   normal; números y símbolos en IBM Plex Mono; tarjetas sin bordes (las separa el fondo); el cian para lo que se toca,
+   la marca y los gráficos. Base de 15 px y nada por debajo de 12 px. Verde/rojo solo para subidas/bajadas (siempre con
+   ▲/▼ y signo). Solo modo oscuro. */
 :root{
   --bg:#0A0A0A; --panel:#121212; --raise:#1A1A1A; --ink:#E8E8E8; --muted:#A3A3A3; --line:#2A2A2A; --hair:#1C1C1C;
   --accent:#45C8E6; --accent-soft:rgba(69,200,230,.10);
@@ -12,7 +13,7 @@
   --s1:#259CB9; --s2:#D55181; --s3:#9085E9; --s4:#C98500;
   --f-mono:"IBM Plex Mono", ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
   --f-sans:"IBM Plex Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
-  --r:4px;
+  --r:10px; --r-card:14px;
   color-scheme:dark;
 }
 
@@ -36,7 +37,7 @@ body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--f-mono);fo
 @media (max-width:899px){
   /* En una columna, este orden: en el HTML las secciones están repartidas por columna. */
   .top,.teaser,#install-panel,.tape,.banner{order:-2}
-  #welcome{order:1} #summary{order:2} #news{order:3} #cal{order:4} #pmk{order:5} #people{order:6}
+  #welcome{order:1} #dia{order:2} #milista{order:3} #summary{order:4} #news{order:5} #cal{order:6} #pmk{order:7} #people{order:8}
   #keycard{order:1} #watchlist{order:2} #detail{order:3} #eod{order:4} #compare{order:5} #portfolio{order:6} #hapi{order:7} #fin{order:8} #ps{order:9}
   #thermo{order:1} #cmd{order:2} #cg{order:3} #macro{order:4} #pm{order:5}
   .foot{order:20}
@@ -63,8 +64,8 @@ body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--f-mono);fo
 .sheetbar{display:flex;align-items:flex-end;gap:8px 16px;border-bottom:1px solid var(--line)}
 .sheets{display:flex;gap:4px}
 .sheets [role="tab"]{border:0;border-bottom:2px solid transparent;border-radius:0;background:none;margin-bottom:-1px;padding:8px 14px 7px;
-  color:var(--muted);font-size:.85rem;text-transform:uppercase;letter-spacing:.08em}
-.sheets [role="tab"]:hover{color:var(--ink);border-color:transparent;border-bottom-color:var(--line)}
+  color:var(--muted);font-size:.95rem;font-weight:500}
+.sheets [role="tab"]:hover{color:var(--ink);background:none;border-color:transparent;border-bottom-color:var(--line)}
 .sheets [role="tab"][aria-selected="true"]{color:var(--accent);border-bottom-color:var(--accent)}
 .tab-ico{display:none;width:22px;height:22px;fill:none;stroke:currentColor;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round}
 /* Pronósticos que te faltan en las preguntas abiertas. */
@@ -73,6 +74,8 @@ body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--f-mono);fo
 /* Hoja «Juego»: sin la cinta ni el aviso de la liga. Pronósticos a lo ancho; ranking y lo resuelto al costado. */
 .game{display:flex;flex-direction:column;gap:24px}
 [data-hoja="juego"] .tape,[data-hoja="juego"] .teaser{display:none!important}
+/* En «Hoy» no va la cinta: «Tu día» muestra lo mismo, más grande. */
+[data-hoja="hoy"] .tape{display:none!important}
 .game-main,.game-side{display:flex;flex-direction:column;gap:24px;min-width:0}
 /* El nombre con que juegas, arriba de los dos juegos. */
 .game-me:empty{display:none}
@@ -96,22 +99,23 @@ h1,h2,h3{margin:0;font-weight:500;font-size:inherit}
 p.muted,li.muted{font-family:var(--f-sans)}
 .hint{font-family:var(--f-sans);font-size:.85rem;line-height:1.45;color:var(--muted);margin:8px 0 0}
 .err{font-family:var(--f-sans);color:var(--down);margin:6px 0 0}
-.eyebrow{font-size:.8rem;color:var(--muted);text-transform:uppercase;letter-spacing:.06em}
+.eyebrow{font-family:var(--f-sans);font-size:.85rem;color:var(--muted)}
 
 a{color:var(--accent);text-underline-offset:3px}
-button{font:inherit;color:var(--ink);background:var(--panel);border:1px solid var(--line);border-radius:var(--r);
-  padding:5px 12px;cursor:pointer;display:inline-flex;align-items:center;gap:6px}
-button:hover{border-color:var(--accent);color:var(--accent)}
+/* Botones sin borde: los marca el fondo, un poco más claro que la tarjeta. El cian queda para el principal (.cta). */
+button{font:inherit;font-family:var(--f-sans);color:var(--ink);background:var(--raise);border:1px solid transparent;border-radius:var(--r);
+  padding:6px 12px;cursor:pointer;display:inline-flex;align-items:center;gap:6px}
+button:hover{background:#242424}
 button:focus-visible,a:focus-visible,input:focus-visible,select:focus-visible,summary:focus-visible,svg:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
 button[disabled]{opacity:.6;cursor:default}
 
 /* Ayuda «?»: explica cómo se usa una sección sin llenar la pantalla de texto. */
 /* El panel de ayuda se ubica respecto del encabezado de la sección (no del «?»): así nunca se sale de la pantalla. */
 .help{position:static}
-.help > summary{list-style:none;cursor:pointer;width:24px;height:24px;border:1px solid var(--line);border-radius:50%;
+.help > summary{list-style:none;cursor:pointer;width:24px;height:24px;border:0;background:var(--raise);border-radius:50%;
   display:inline-flex;align-items:center;justify-content:center;color:var(--muted);font-family:var(--f-sans);font-size:.85rem}
 .help > summary::-webkit-details-marker{display:none}
-.help > summary:hover,.help[open] > summary{color:var(--accent);border-color:var(--accent)}
+.help > summary:hover,.help[open] > summary{color:var(--accent);background:var(--accent-soft)}
 .help-body{position:absolute;right:0;top:calc(100% + 4px);z-index:5;width:min(340px,100%);background:var(--raise);border:1px solid var(--line);
   border-radius:var(--r);padding:10px 12px;font-family:var(--f-sans);font-size:.88rem;line-height:1.5;color:var(--ink)}
 .help-body p{margin:0 0 6px}
@@ -132,7 +136,7 @@ button[disabled]{opacity:.6;cursor:default}
 .mkt-cel{display:none}
 .brand .mkt::before{content:"●";margin-right:6px}
 .brand .mkt:not(.open)::before{content:"○"}
-.clock{color:var(--muted);text-transform:uppercase;letter-spacing:.04em}
+.clock{color:var(--muted);font-family:var(--f-sans)}
 /* Cumpleaños del dueño: un chip discreto junto a la hora, ese día y para todos. Al tocarlo, un poco de confeti (con
    «menos movimiento», solo un 🎉 al lado). */
 .cumple{align-self:center;max-width:100%;min-width:0;padding:1px 10px;border-color:var(--accent);border-radius:999px;background:var(--accent-soft);
@@ -186,7 +190,7 @@ button[disabled]{opacity:.6;cursor:default}
   .sheets{position:fixed;left:0;right:0;bottom:0;z-index:42;display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:0;
     padding:0 4px env(safe-area-inset-bottom,0px);background:var(--bg);border-top:1px solid var(--line)}
   .sheets [role="tab"]{position:relative;flex-direction:column;justify-content:center;gap:3px;min-height:56px;margin:0;padding:6px 2px 5px;
-    border:0;font-size:.75rem;letter-spacing:.05em}
+    border:0;font-size:.75rem}
   .sheets [role="tab"]:hover{border:0}
   .sheets [role="tab"][aria-selected="true"]{border:0;box-shadow:inset 0 2px 0 var(--accent)}
   .tab-ico{display:block}
@@ -202,7 +206,7 @@ button[disabled]{opacity:.6;cursor:default}
 .search-ico{width:16px;height:16px;flex:none;fill:none;stroke:var(--muted);stroke-width:2;stroke-linecap:round}
 .search-toggle .search-ico{width:18px;height:18px;stroke:var(--ink)}
 .search-toggle:hover .search-ico{stroke:var(--accent)}
-.search-box{position:relative;display:flex;align-items:center;gap:8px;padding:0 8px 0 10px;border:1px solid var(--line);border-radius:var(--r);background:var(--panel)}
+.search-box{position:relative;display:flex;align-items:center;gap:8px;padding:0 8px 0 10px;border:1px solid transparent;border-radius:var(--r);background:var(--panel)}
 .search-box:focus-within{border-color:var(--accent);box-shadow:0 0 0 1px var(--accent)}
 .search-box:focus-within .search-ico{stroke:var(--accent)}
 /* 16 px: con menos, Safari del iPhone agranda la página al tocar el campo. El anillo de foco lo pone la caja. */
@@ -249,16 +253,16 @@ button[disabled]{opacity:.6;cursor:default}
 #d-title:focus{outline:none}
 
 /* ---------- cinta de precios ---------- */
-.tape{display:flex;align-items:stretch;border:1px solid var(--line);border-radius:var(--r);background:var(--panel);font-size:.85rem;margin-top:-6px}
+.tape{display:flex;align-items:stretch;border-radius:var(--r-card);background:var(--panel);font-size:.85rem;margin-top:-6px;overflow:hidden}
 /* Botón ▶/⏸ al inicio: la cinta se mueve o queda quieta según lo que elijas (sin elegir, lo que pida el sistema). */
-.tape-toggle{flex:none;border:0;border-right:1px solid var(--line);border-radius:0;background:transparent;color:var(--muted);padding:0 10px;font-size:.8rem}
-.tape-toggle:hover{color:var(--accent);border-color:var(--line)}
+.tape-toggle{flex:none;border:0;border-right:1px solid var(--hair);border-radius:0;background:transparent;color:var(--muted);padding:0 10px;font-size:.8rem}
+.tape-toggle:hover{color:var(--accent);background:transparent;border-color:var(--hair)}
 .tape-view{flex:1;min-width:0;overflow:hidden;white-space:nowrap}
 .tape-track{display:inline-flex;padding:6px 0;animation:tape 60s linear infinite}
 .tape-view:hover .tape-track{animation-play-state:paused}
 .tape-half{display:inline-flex;gap:28px;padding:0 14px}
 .tape-item{display:inline-flex;gap:8px}
-.tape-sym{color:var(--accent);text-transform:uppercase}
+.tape-sym{color:var(--muted)}
 @keyframes tape{to{transform:translateX(-50%)}}
 /* Quieta: se recorre deslizándola y basta una copia de los datos. */
 .tape.still .tape-view{overflow-x:auto}
@@ -270,19 +274,26 @@ button[disabled]{opacity:.6;cursor:default}
 
 /* ---------- pantallas ---------- */
 /* Cada sección mide su propio ancho (container queries): en una columna angosta se ve como en el celular. */
-.screen{background:var(--panel);border:1px solid var(--line);border-radius:var(--r);padding:14px 16px;container-type:inline-size}
-.screen-head{position:relative;display:flex;flex-wrap:wrap;align-items:center;gap:4px 12px;margin-bottom:10px;min-width:0}
-.screen-head h2{color:var(--accent);text-transform:uppercase;letter-spacing:.08em;font-size:.9rem;white-space:nowrap}
+.screen{background:var(--panel);border-radius:var(--r-card);padding:16px;container-type:inline-size}
+/* Sin tarjeta: lo de adentro ya son tarjetas («Tu día»). */
+.screen.bare{background:none;padding:0}
+.screen-head{position:relative;display:flex;flex-wrap:wrap;align-items:center;gap:4px 12px;margin-bottom:12px;min-width:0}
+.screen-head h2{font-family:var(--f-sans);color:var(--ink);font-weight:600;font-size:1.05rem;white-space:nowrap}
 .screen-head > :last-child{margin-left:auto}
 .screen-head .help{margin-left:auto}
 .screen-head .help + :last-child{margin-left:0}
+/* Los enlaces del encabezado («Ver toda ›») van sin subrayar, como un botón chico. */
+.screen-head .linkish{font-family:var(--f-sans);font-size:.9rem;text-decoration:none}
+.screen-head .linkish:hover{text-decoration:underline}
+/* En una sección angosta, la fuente baja a su propia línea: así el «?» queda junto al título. */
+@container (max-width:460px){.screen-head > .src{order:5;flex-basis:100%;margin-top:-4px}}
 /* Un título solo (sin botones) queda a la izquierda, como los demás. */
 .screen-head > :only-child{margin-left:0}
-.src,.mkt{font-size:.78rem;color:var(--muted);text-transform:uppercase;letter-spacing:.06em}
+.src,.mkt{font-family:var(--f-sans);font-size:.82rem;color:var(--muted)}
 .mkt.open{color:var(--up)}
 
 /* ---------- lista ---------- */
-.wl-form{border:1px solid var(--line);border-radius:var(--r);padding:12px;margin-bottom:10px;background:var(--bg)}
+.wl-form{border-radius:var(--r);padding:12px;margin-bottom:10px;background:var(--raise)}
 .wl-form label{display:block;margin-bottom:6px;color:var(--muted);font-family:var(--f-sans)}
 .wl-row{display:flex;gap:8px;flex-wrap:wrap}
 .wl-row input{flex:1 1 220px;min-width:0;font:inherit;font-size:16px;padding:6px 10px;border-radius:var(--r);border:1px solid var(--line);
@@ -290,22 +301,22 @@ button[disabled]{opacity:.6;cursor:default}
 
 .row{all:unset;box-sizing:border-box;cursor:pointer}
 .wl-cols,.row{display:grid;grid-template-columns:9ch minmax(0,1fr) 12ch 20ch 120px 9ch 6ch;gap:0 14px;align-items:center}
-.wl-cols{padding:0 10px 6px 12px;font-family:var(--f-sans);font-size:.82rem;color:var(--muted);border-bottom:1px solid var(--line)}
+.wl-cols{padding:0 10px 6px 12px;font-family:var(--f-sans);font-size:.82rem;color:var(--muted);border-bottom:1px solid var(--hair)}
 .wl-cols span:nth-child(n+3){text-align:right}
 .rows{display:flex;flex-direction:column}
-.row{padding:7px 10px;border-bottom:1px solid var(--hair);border-left:2px solid transparent}
+.row{padding:8px 10px;border-bottom:1px solid var(--hair);border-left:2px solid transparent;border-radius:6px}
 /* Anula el hover genérico de los botones: la fila solo se aclara. */
 .row:hover{background:var(--raise);color:var(--ink);border-color:var(--hair);border-left-color:transparent}
 .row:focus-visible{outline:2px solid var(--accent);outline-offset:-2px}
 .row[aria-pressed="true"]{background:var(--raise);border-left-color:var(--accent)}
-.c-sym{color:var(--accent);font-weight:500;white-space:nowrap}
+.c-sym{color:var(--ink);font-weight:600;white-space:nowrap}
 .c-name{display:flex;align-items:center;gap:8px;min-width:0;font-family:var(--f-sans);color:var(--muted)}
 .c-name-text{min-width:0;flex:0 1 auto;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 /* Señales junto al nombre: resultados en los próximos 7 días, precio frente a la MM200 y RSI en zona extrema. Si no caben,
    las que sobran pasan a una segunda línea oculta: se ocultan enteras, nunca cortadas. Tienen prioridad, pero dejan al menos
    6 caracteres para el nombre. */
 .c-sigs{display:flex;flex-wrap:wrap;gap:10px 6px;flex:none;max-width:calc(100% - 6ch - 8px);max-height:20px;overflow:hidden}
-.sig{flex:none;font-family:var(--f-mono);font-size:.8rem;line-height:1.3;border:1px solid var(--line);border-radius:var(--r);padding:0 5px;color:var(--muted)}
+.sig{flex:none;font-family:var(--f-mono);font-size:.8rem;line-height:1.3;border-radius:6px;padding:0 6px;color:var(--muted);background:var(--raise)}
 .sig.up{color:var(--up)} .sig.down{color:var(--down)}
 .c-price{text-align:right;font-weight:500}
 .c-chg,.c-ret,.c-time{text-align:right;white-space:nowrap}
@@ -332,9 +343,14 @@ button[disabled]{opacity:.6;cursor:default}
 /* Selector de periodo y botones de descarga */
 .d-tools{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:8px;margin-bottom:10px}
 .d-acts{display:flex;flex-wrap:wrap;align-items:center;gap:8px}
-.ranges{display:flex;flex-wrap:wrap;gap:4px}
-.ranges button,.csv-btn{padding:3px 9px;font-size:.82rem;color:var(--muted)}
-.ranges button[aria-pressed="true"]{border-color:var(--accent);color:var(--accent)}
+/* Periodos y elecciones de un grupo: un selector de una pieza, con la opción elegida más clara. */
+.ranges{display:inline-flex;flex-wrap:wrap;gap:2px;padding:3px;border-radius:var(--r);background:var(--raise)}
+.ranges button{padding:4px 10px;font-size:.85rem;color:var(--muted);background:none;border-radius:7px}
+/* Periodos y símbolos en Mono (son datos); los grupos de palabras («Todas», «Bolsa y empresas») quedan en Sans. */
+#d-ranges button,#cmp-ranges button,.fin-chips button,.lg-chips button{font-family:var(--f-mono);font-size:.82rem}
+.ranges button:hover{background:#242424;color:var(--ink)}
+.ranges button[aria-pressed="true"]{background:#2E2E2E;color:var(--ink)}
+.csv-btn{padding:4px 10px;font-family:var(--f-sans);font-size:.85rem;color:var(--muted)}
 .chart-head{display:flex;align-items:baseline;justify-content:space-between;gap:8px}
 .chart-head .hint{margin:0}
 .chart-head .csv-btn{margin-left:auto}
@@ -345,8 +361,8 @@ button[disabled]{opacity:.6;cursor:default}
 .vol,.hist{--c:var(--muted)}
 .legend{display:flex;flex-wrap:wrap;align-items:center;gap:4px}
 .legend-item{display:inline-flex;align-items:center;gap:6px;font-size:.82rem;color:var(--muted);padding:3px 6px}
-.tog{padding:3px 9px;font-size:.82rem;color:var(--muted)}
-.tog[aria-pressed="true"]{color:var(--ink);border-color:var(--muted)}
+.tog{padding:4px 10px;font-size:.85rem;color:var(--muted);border-radius:999px}
+.tog[aria-pressed="true"]{color:var(--ink);background:#2E2E2E}
 .tog[aria-pressed="false"] .key{opacity:.35}
 .key{display:inline-block;flex:none;width:14px;height:2px;border-radius:1px;background:var(--c,var(--accent))}
 .key.band{height:8px;border-radius:0;background:rgba(232,232,232,.10);border-top:1px solid var(--muted);border-bottom:1px solid var(--muted)}
@@ -404,7 +420,7 @@ button[disabled]{opacity:.6;cursor:default}
 .tooltip strong.down{color:var(--down)}
 
 /* ---------- ficha ---------- */
-.stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:12px 18px;margin:14px 0 0;border-top:1px solid var(--line);padding-top:12px}
+.stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:14px 18px;margin:14px 0 0;border-top:1px solid var(--hair);padding-top:12px}
 .stats div{display:flex;flex-direction:column}
 .stats dt{font-family:var(--f-sans);font-size:.85rem;color:var(--muted)}
 .stats dd{margin:0;font-size:1.05rem}
@@ -418,7 +434,7 @@ button[disabled]{opacity:.6;cursor:default}
 .table-view th:first-child,.table-view td:first-child{text-align:left}
 
 /* ---------- comparar ---------- */
-.cmp-grid{display:grid;gap:14px 28px;grid-template-columns:minmax(0,1fr);margin-top:14px;border-top:1px solid var(--line);padding-top:12px}
+.cmp-grid{display:grid;gap:14px 28px;grid-template-columns:minmax(0,1fr);margin-top:14px;border-top:1px solid var(--hair);padding-top:12px}
 @container (min-width:900px){.cmp-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
 .cmp-grid .hint{margin:0 0 6px}
 .cmp-stats{border-collapse:collapse;font-size:.9rem;width:100%}
@@ -451,7 +467,7 @@ button[disabled]{opacity:.6;cursor:default}
 @container (min-width:640px){.macro{grid-template-columns:repeat(2,minmax(0,1fr))}}
 .macro-body{display:flex;flex-direction:column;gap:14px}
 .metric-row{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:12px 16px}
-.metric{display:flex;flex-direction:column;gap:1px;border-left:2px solid var(--line);padding-left:10px}
+.metric{display:flex;flex-direction:column;gap:1px}
 .metric .label{font-family:var(--f-sans);font-size:.85rem;color:var(--muted)}
 .metric .value{font-size:1.4rem;font-weight:500}
 .metric .sub{font-family:var(--f-sans);font-size:.82rem;color:var(--muted)}
@@ -501,8 +517,7 @@ a.news-title:hover{color:var(--accent);text-decoration:underline}
 .more-btn{margin-top:8px}
 
 /* ---------- resumen del día ---------- */
-/* El titular va en Plex Mono (es un título); el párrafo, en Plex Sans, como las demás frases. */
-.sum-title{margin:0 0 6px;font-size:1.05rem;line-height:1.4;color:var(--ink)}
+.sum-title{margin:0 0 6px;font-family:var(--f-sans);font-weight:600;font-size:1.1rem;line-height:1.4;color:var(--ink)}
 .sum-text{margin:0;font-family:var(--f-sans);line-height:1.6;color:var(--ink);max-width:72ch}
 /* Fuentes, días anteriores y «Profundiza» en una línea chica; lo que se abre ocupa el ancho completo debajo. */
 .sum-foot{display:flex;flex-wrap:wrap;align-items:baseline;gap:6px 18px;margin-top:10px}
@@ -515,8 +530,8 @@ a.news-title:hover{color:var(--accent);text-decoration:underline}
 .sum-old h4{margin:0 0 4px;font-size:.92rem;font-weight:500;line-height:1.4}
 .sum-old-date{color:var(--muted);margin-right:8px}
 /* Ficha: bloques plegables (estacionalidad y estrategia). */
-.d-tool{margin-top:12px;border-top:1px solid var(--line);padding-top:8px}
-.d-tool > summary{cursor:pointer;color:var(--accent);font-family:var(--f-sans)}
+.d-tool{margin-top:12px;border-top:1px solid var(--hair);padding-top:8px}
+.d-tool > summary{cursor:pointer;color:var(--accent);font-family:var(--f-sans);font-weight:500}
 .d-tool[open] > summary{margin-bottom:8px}
 .season-wrap{overflow-x:auto}
 .season{border-collapse:separate;border-spacing:2px;font-size:.78rem;min-width:560px}
@@ -528,7 +543,7 @@ a.news-title:hover{color:var(--accent);text-decoration:underline}
 .season td.count{color:var(--muted);font-family:var(--f-sans)}
 .season tfoot tr:first-child td,.season tfoot tr:first-child th{border-top:1px solid var(--line)}
 .d-strat-pick{display:flex;align-items:center;gap:8px;margin-bottom:8px;font-family:var(--f-sans);color:var(--muted)}
-.d-strat-pick select{font:inherit;font-family:var(--f-sans);color:var(--ink);background:var(--panel);border:1px solid var(--line);border-radius:var(--r);padding:4px 6px}
+.d-strat-pick select{max-width:100%;font:inherit;font-family:var(--f-sans);color:var(--ink);background:var(--raise);border:1px solid transparent;border-radius:var(--r);padding:4px 8px}
 #d-strat-body .stats{border-top:0;margin-top:10px;padding-top:0}
 #d-strat-body .co-h{margin:12px 0 4px}
 /* Rayos X de la cartera: barras de una sola serie (un color), con el % al final. */
@@ -545,13 +560,13 @@ a.news-title:hover{color:var(--accent);text-decoration:underline}
 #d-co-grades{margin-top:12px}
 #d-co-grades > .co-h{margin:0 0 6px}
 .fx-tiles{display:flex;flex-wrap:wrap;gap:8px}
-.fx-tile{display:flex;flex-direction:column;align-items:center;min-width:88px;padding:6px 10px;border:1px solid var(--line);border-radius:var(--r);background:var(--bg)}
+.fx-tile{display:flex;flex-direction:column;align-items:center;min-width:88px;padding:8px 12px;border-radius:var(--r);background:var(--raise)}
 .fx-grade{font-size:1.4rem;font-weight:600;line-height:1.2}
 .fx-label{font-family:var(--f-sans);font-size:.8rem;color:var(--muted)}
 .fx-table{max-width:none}
 .fx-table td:first-child{font-family:var(--f-sans);color:var(--muted)}
 /* Ficha: datos de la empresa (Finnhub, solo el dueño). */
-.d-co{margin-top:14px;border-top:1px solid var(--line);padding-top:10px}
+.d-co{margin:0}
 .d-co > .hint:first-child{margin:0}
 .d-co .stats{border-top:0;margin-top:8px;padding-top:0}
 .d-co-cols{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:12px 28px;margin-top:12px}
@@ -562,7 +577,7 @@ a.news-title:hover{color:var(--accent);text-decoration:underline}
 .co-table th{font-family:var(--f-sans);color:var(--muted);font-weight:400;font-size:.82rem}
 .co-table th,.co-table td{text-align:right;padding:3px 8px;border-bottom:1px solid var(--hair)}
 .co-table th:first-child,.co-table td:first-child{text-align:left}
-.d-news{margin-top:14px;border-top:1px solid var(--line);padding-top:10px}
+.d-news{margin:0}
 .d-news > .hint{margin:0 0 4px}
 /* Ficha: próximos resultados y el último del mes (Finnhub, solo el dueño). */
 .d-earn{display:flex;flex-wrap:wrap;gap:2px 20px;margin:0 0 10px;font-family:var(--f-sans);font-size:.88rem;color:var(--muted)}
@@ -628,12 +643,11 @@ a.hapi-btn:hover{border-color:var(--accent);color:var(--accent)}
 /* ---------- calendario ---------- */
 .cal{list-style:none;margin:0;padding:0;display:flex;flex-direction:column}
 .cal-row{display:grid;grid-template-columns:12ch 6ch minmax(0,1fr) auto;gap:2px 14px;align-items:baseline;padding:9px 0;border-bottom:1px solid var(--hair)}
-.cal-date{text-transform:uppercase;white-space:nowrap}
-.cal-src{font-size:.75rem;color:var(--muted);border:1px solid var(--line);border-radius:var(--r);padding:0 5px;text-align:center;
-  text-transform:uppercase;letter-spacing:.04em;white-space:nowrap}
+.cal-date{white-space:nowrap}
+.cal-src{font-family:var(--f-sans);font-size:.78rem;color:var(--muted);background:var(--raise);border-radius:6px;padding:1px 6px;text-align:center;white-space:nowrap}
 /* Resultados de una acción de la lista: el símbolo en cian, como botón que abre su ficha. */
-.cal-src.sym{font-family:var(--f-mono);color:var(--accent);background:none;cursor:pointer;line-height:inherit;justify-content:center}
-.cal-src.sym:hover,.cal-src.sym:focus-visible{border-color:var(--accent)}
+.cal-src.sym{font-family:var(--f-mono);color:var(--accent);background:var(--accent-soft);cursor:pointer;line-height:inherit;justify-content:center}
+.cal-src.sym:hover,.cal-src.sym:focus-visible{background:rgba(69,200,230,.2)}
 .cal-body{display:flex;flex-direction:column;min-width:0;font-family:var(--f-sans)}
 .cal-body small{color:var(--muted);font-size:.82rem}
 .cal-when{color:var(--muted);font-size:.85rem;text-align:right;white-space:nowrap}
@@ -648,11 +662,11 @@ a.hapi-btn:hover{border-color:var(--accent);color:var(--accent)}
 
 /* ---------- pronósticos del grupo ---------- */
 .fc-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:12px;margin-top:8px}
-.fc-card{border:1px solid var(--line);border-radius:var(--r);padding:10px 12px;display:flex;flex-direction:column;gap:7px;background:var(--bg)}
+.fc-card{border-radius:12px;padding:12px 14px;display:flex;flex-direction:column;gap:8px;background:var(--raise)}
 .fc-card h3{font-family:var(--f-sans);font-size:.95rem;font-weight:500;line-height:1.35}
 .fc-card .hint{margin:0}
 .fc-head{display:flex;align-items:center;justify-content:space-between;gap:8px}
-.fc-when{color:var(--muted);font-size:.85rem;text-transform:uppercase;white-space:nowrap}
+.fc-when{color:var(--muted);font-size:.85rem;white-space:nowrap}
 .fc-choices{display:flex;gap:6px}
 .fc-choices button{flex:1 1 0;justify-content:center;padding:5px 4px;font-family:var(--f-sans);font-size:.85rem;white-space:nowrap}
 .fc-choices button[aria-pressed="true"]{border-color:var(--accent);color:var(--accent);background:var(--accent-soft)}
@@ -693,15 +707,15 @@ a.cta{display:inline-flex;align-items:center;gap:6px;border-radius:var(--r);text
    Opción A, «Carrera» (4 nov): quién lidera y tu puesto, la carrera de la quincena, el ranking y los campeones; abajo,
    tu cartera y para comprar. Nada por debajo de 12 px (0,8rem). */
 .game > .hero{grid-column:1/-1}
-.hero{border-color:var(--accent);box-shadow:inset 0 3px 0 var(--accent)}
-.hero .screen-head h2{font-size:1.05rem}
+.hero{box-shadow:inset 0 2px 0 var(--accent)}
+.hero .screen-head h2{font-size:1.2rem}
 .lg-head{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:10px 24px}
 .lg-big{margin:0;font-size:1.4rem;font-weight:600;line-height:1.25}
 .lg-big strong{font-weight:600;color:var(--ink)}
 .lg-me{margin:4px 0 0;font-family:var(--f-sans);font-size:1rem}
 .lg-me strong{font-family:var(--f-mono)}
 .lg-season{display:flex;align-items:center;gap:10px;flex:0 1 300px;min-width:220px}
-.lg-season .k{font-size:.8rem;color:var(--muted);text-transform:uppercase;letter-spacing:.06em}
+.lg-season .k{font-family:var(--f-sans);font-size:.82rem;color:var(--muted)}
 .lg-season .bar{flex:1;height:8px;border-radius:999px;background:var(--line);overflow:hidden}
 .lg-season .bar i{display:block;height:100%;background:var(--accent)}
 .lg-season .left{font-size:.85rem;white-space:nowrap}
@@ -731,7 +745,7 @@ a.cta{display:inline-flex;align-items:center;gap:6px;border-radius:var(--r);text
 .lg-rank .mine .who{color:var(--accent)}
 .lg-rank .syms{color:var(--muted);font-size:.8rem}
 .lg-champs{display:flex;flex-wrap:wrap;align-items:center;gap:6px 16px;margin-top:12px;padding-top:10px;border-top:1px solid var(--hair);font-size:.88rem}
-.lg-champs .k{font-size:.8rem;color:var(--muted);text-transform:uppercase;letter-spacing:.08em}
+.lg-champs .k{font-family:var(--f-sans);font-size:.82rem;color:var(--muted)}
 .lg-champs .c{white-space:nowrap}
 .lg-champs .d,.lg-all .d{color:var(--muted);margin-right:6px}
 .lg-champs .end{margin-left:auto;color:var(--muted)}
@@ -744,8 +758,8 @@ a.cta{display:inline-flex;align-items:center;gap:6px;border-radius:var(--r);text
 @container (min-width:720px){
   .lg-duo{grid-template-columns:1fr 1fr}
 }
-.lg-card{border:1px solid var(--line);border-radius:var(--r);background:var(--bg);padding:12px 14px;min-width:0}
-.lg-k{margin:0 0 6px;font-size:.8rem;color:var(--muted);text-transform:uppercase;letter-spacing:.08em}
+.lg-card{border-radius:12px;background:var(--raise);padding:14px 16px;min-width:0}
+.lg-k{margin:0 0 6px;font-family:var(--f-sans);font-size:.85rem;color:var(--muted)}
 .lg-worth{margin:0;font-size:1.5rem;font-weight:700;line-height:1.2}
 .lg-worth > span{font-size:1rem;font-weight:600}
 .lg-when{margin:2px 0 0}
@@ -765,14 +779,14 @@ a.cta{display:inline-flex;align-items:center;gap:6px;border-radius:var(--r);text
 .lg-pos .nm{min-width:0}
 .lg-pos .nm small{display:block;font-family:var(--f-sans);color:var(--muted);font-size:.8rem;overflow-wrap:anywhere}
 .lg-pos .queued{color:var(--muted)}
-.lg-pos .lg-due{font-family:var(--f-sans);font-size:.8rem;border:1px solid var(--line);border-radius:999px;padding:0 8px;white-space:nowrap}
+.lg-pos .lg-due{font-family:var(--f-sans);font-size:.8rem;background:#262626;border-radius:999px;padding:0 8px;white-space:nowrap}
 .lg-step{display:flex;align-items:center;gap:8px;margin:10px 0 6px;font-family:var(--f-sans);font-weight:600}
 .lg-step .n{display:inline-grid;place-items:center;width:20px;height:20px;border-radius:50%;background:var(--accent);color:var(--bg);font-family:var(--f-mono);font-size:.8rem;font-weight:700}
 .lg-ticket input{font:inherit;font-size:16px;padding:8px 10px;border:1px solid var(--line);border-radius:var(--r);background:var(--panel);color:var(--ink)}
 .lg-ticket .lg-sym{width:100%;text-transform:uppercase}
 .lg-ticket .lg-sym::placeholder{text-transform:none}
 .lg-chips{display:flex;flex-wrap:wrap;gap:6px;margin:8px 0 4px}
-.lg-chip{padding:4px 10px;font-size:.85rem;border-radius:999px;background:var(--panel)}
+.lg-chip{padding:4px 10px;font-family:var(--f-mono);font-size:.85rem;border-radius:999px;background:var(--panel)}
 .lg-chip small{color:var(--muted);font-family:var(--f-sans);font-size:.8rem;margin-left:4px}
 .lg-chip[aria-pressed="true"]{border-color:var(--accent);color:var(--accent)}
 .lg-amount{display:flex;flex-wrap:wrap;gap:6px;align-items:center}
@@ -786,11 +800,12 @@ a.cta{display:inline-flex;align-items:center;gap:6px;border-radius:var(--r);text
 
 /* Hechos de importancia (SMV): en «Más del Perú» y en la ficha. Empresa en cian, tipo en gris, el aviso y la hora. */
 .smv{margin-top:16px}
-.smv-h{margin:0 0 4px;font-family:var(--f-sans);color:var(--accent);font-weight:500}
+.smv-h{margin:0 0 4px;font-family:var(--f-sans);color:var(--ink);font-weight:600}
 .smv-h .src{margin-left:8px}
 .smv-item{display:flex;flex-direction:column;gap:2px;padding:7px 0;border-bottom:1px solid var(--hair)}
 .smv-top{margin:0;display:flex;flex-wrap:wrap;align-items:baseline;gap:2px 10px}
-.smv-co{color:var(--accent);font-weight:500}
+.smv-co{font-weight:500}
+span.smv-co{color:var(--ink)}
 .smv-tipo{font-family:var(--f-sans);font-size:.82rem;color:var(--muted)}
 .smv-text{margin:0;font-family:var(--f-sans);font-size:.92rem;line-height:1.45}
 .smv-when{font-family:var(--f-sans);font-size:.8rem;color:var(--muted)}
@@ -800,12 +815,12 @@ a.cta{display:inline-flex;align-items:center;gap:6px;border-radius:var(--r);text
    que tiene dirección (tendencia y ventas), siempre con ▲/▼. */
 .d-quick{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px;margin:0 0 12px}
 @container (max-width:620px){.d-quick{grid-template-columns:repeat(2,minmax(0,1fr))}}
-.dq{display:flex;flex-direction:column;gap:2px;min-width:0;padding:8px 10px;border:1px solid var(--line);border-radius:var(--r);background:var(--raise)}
-.dq-k{font-size:.8rem;color:var(--muted);text-transform:uppercase;letter-spacing:.05em}
-.dq-v{font-weight:600}
+.dq{display:flex;flex-direction:column;gap:2px;min-width:0;padding:10px 12px;border-radius:12px;background:var(--raise)}
+.dq-k{font-family:var(--f-sans);font-size:.82rem;color:var(--muted)}
+.dq-v{font-family:var(--f-sans);font-weight:600}
 .dq-s{font-family:var(--f-sans);font-size:.82rem;line-height:1.35;color:var(--muted)}
 /* Ratios y DCF: los supuestos en casillas y la tabla de sensibilidad (el caso base, resaltado). */
-.dcf-h{margin:14px 0 4px;color:var(--accent);font-size:.9rem;text-transform:uppercase;letter-spacing:.06em}
+.dcf-h{margin:14px 0 4px;color:var(--ink);font-family:var(--f-sans);font-weight:600;font-size:.95rem}
 .dcf-inputs{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:8px 12px;margin:8px 0}
 .dcf-inputs label{display:flex;flex-direction:column;gap:4px;font-family:var(--f-sans);font-size:.85rem;color:var(--muted)}
 .dcf-inputs .ps-target{width:100%}
@@ -815,7 +830,7 @@ a.cta{display:inline-flex;align-items:center;gap:6px;border-radius:var(--r);text
 .ps-peers{width:16ch}
 .ps-wrap{overflow-x:auto}
 .ps-table th small,.ps-table td small{display:block;color:var(--muted);font-family:var(--f-sans);font-size:.8rem;font-weight:400}
-.ps-table .ps-main th{color:var(--accent)}
+.ps-table .ps-main th{color:var(--ink);font-weight:600}
 .ps-table .ps-val{font-weight:600}
 .ps-price{width:9ch;font:inherit;font-family:var(--f-mono);color:var(--ink);background:var(--bg);border:1px solid var(--line);border-radius:var(--r);padding:3px 6px}
 .ps-calc{display:flex;flex-wrap:wrap;align-items:center;gap:6px 10px;margin:12px 0 4px}
@@ -898,7 +913,7 @@ a.cta{display:inline-flex;align-items:center;gap:6px;border-radius:var(--r);text
 .pp-list .pp-del{color:var(--muted)}
 .pp-list .pp-del:hover{color:var(--down);border-color:var(--down)}
 
-.foot{font-family:var(--f-sans);font-size:.82rem;color:var(--muted);border-top:1px solid var(--line);padding-top:10px}
+.foot{font-family:var(--f-sans);font-size:.82rem;color:var(--muted);border-top:1px solid var(--hair);padding-top:12px}
 .foot p{margin:0 0 4px}
 
 /* ---------- más fácil de usar (5 nov): secciones plegables, ficha a pantalla completa y botones grandes ---------- */
@@ -923,15 +938,6 @@ a.cta{display:inline-flex;align-items:center;gap:6px;border-radius:var(--r);text
   .ficha-abierta #detail > .screen-head > div{min-width:0}
   .ficha-abierta #d-title{overflow:hidden;text-overflow:ellipsis}
   .ficha-abierta #d-close{order:-1;flex:none;margin:0 2px 0 0;border-color:transparent;background:none;padding-left:4px}
-  /* El gráfico apenas después de los rangos; los indicadores y los botones, debajo. */
-  .ficha-abierta #detail{display:flex;flex-direction:column}
-  .ficha-abierta #detail > *{order:20}
-  .ficha-abierta #detail > .screen-head{order:0}
-  .ficha-abierta #d-look{order:1} .ficha-abierta #d-quick{order:2} .ficha-abierta #d-earn{order:3}
-  .ficha-abierta #detail > .d-tools{display:contents}
-  .ficha-abierta #d-ranges{order:4;margin-bottom:8px}
-  .ficha-abierta #d-chart{order:5} .ficha-abierta #d-vol-wrap{order:6} .ficha-abierta #d-rsi-wrap{order:7} .ficha-abierta #d-macd-wrap{order:8}
-  .ficha-abierta #d-ind{order:9;margin:10px 0 8px} .ficha-abierta .d-acts{order:10;margin-bottom:12px}
 }
 
 /* Botones grandes en el celular y en pantallas táctiles (pedido del usuario el 5 nov): unos 40 px de alto, lo cómodo para
@@ -951,3 +957,44 @@ a.cta{display:inline-flex;align-items:center;gap:6px;border-radius:var(--r);text
   .queued .linkish,.end .linkish{min-height:32px}
   .lg-all > summary,.pr-how > summary{display:flex;align-items:center;min-height:36px}
 }
+
+/* ---------- «A · Limpio» (5 nov): «Tu día», tu lista en «Hoy», el precio y las pestañas de la ficha ---------- */
+/* Tu día: cuatro números grandes (S&P 500, dólar, cobre y bitcoin), cada uno abre lo suyo. */
+.dia-tiles{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px}
+@container (max-width:560px){.dia-tiles{grid-template-columns:repeat(2,minmax(0,1fr))}}
+.dia-tile{all:unset;box-sizing:border-box;cursor:pointer;display:flex;flex-direction:column;gap:2px;min-width:0;padding:12px 14px;border-radius:12px;background:var(--panel)}
+.dia-tile:hover{background:var(--raise)}
+.dia-tile:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.dia-k{font-family:var(--f-sans);font-size:.82rem;color:var(--muted)}
+.dia-v{font-size:1.35rem;font-weight:500;line-height:1.25;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.dia-c{font-size:.85rem;white-space:nowrap}
+.dia-s{font-family:var(--f-sans);font-size:.78rem;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+/* Tu lista en «Hoy»: símbolo y nombre | minigráfico | precio y variación. */
+.ml-rows{display:flex;flex-direction:column}
+.ml-row{all:unset;box-sizing:border-box;cursor:pointer;display:grid;grid-template-columns:minmax(0,1fr) 72px auto;gap:2px 12px;align-items:center;
+  padding:9px 6px;border-top:1px solid var(--hair);border-radius:6px}
+.ml-row:first-child{border-top:0}
+.ml-row:hover{background:var(--raise)}
+.ml-row:focus-visible{outline:2px solid var(--accent);outline-offset:-2px}
+.ml-sym{display:block;font-weight:600}
+.ml-name{display:block;font-family:var(--f-sans);font-size:.82rem;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.ml-spark{display:block;height:24px}
+.ml-px{text-align:right;white-space:nowrap}
+.ml-px small{display:block;font-size:.82rem}
+/* La ficha: el precio en grande, el selector de periodos a lo ancho y lo largo en pestañas. */
+.d-price{display:flex;flex-wrap:wrap;align-items:baseline;gap:2px 8px;margin:0 0 12px}
+.d-px{font-size:2rem;font-weight:500;line-height:1.15}
+.d-cur{font-family:var(--f-sans);font-size:.9rem;color:var(--muted)}
+.d-chg{flex-basis:100%;font-size:.92rem}
+#d-ranges{display:flex;margin:0 0 10px}
+#d-ranges button{flex:1 1 0;justify-content:center}
+#detail .d-tools{margin:10px 0 0}
+#detail .d-quick{margin:14px 0 0}
+.d-tabs{display:flex;gap:4px 20px;margin:18px 0 0;border-bottom:1px solid var(--hair);overflow-x:auto;scrollbar-width:none}
+.d-tabs [role="tab"]{flex:none;background:none;border:0;border-radius:0;padding:8px 0 9px;color:var(--muted);font-size:.95rem;font-weight:500}
+.d-tabs [role="tab"]:hover{background:none;color:var(--ink)}
+.d-tabs [role="tab"][aria-selected="true"]{color:var(--ink);box-shadow:inset 0 -2px 0 var(--accent)}
+.d-panel{padding-top:2px}
+.d-panel > .d-earn{margin-top:12px}
+.d-panel > .d-co,.d-panel > .d-news{margin-top:12px}
+.d-panel > .d-co + .d-news{margin-top:18px}

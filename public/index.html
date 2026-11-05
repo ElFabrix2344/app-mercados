@@ -151,6 +151,18 @@
           <p class="hint">Rueda no puede compartirte sus precios (la licencia gratis de su proveedor no lo permite), pero sí traerte los de tu propia clave. <a href="/terminos.html">Términos y privacidad</a>.</p>
         </section>
 
+        <!-- «Tu día» (5 nov, «A · Limpio»): S&P 500, dólar, cobre y bitcoin de un vistazo, con lo que ya cargó el panel. -->
+        <section class="screen bare" id="dia" aria-labelledby="dia-h" hidden>
+          <div class="screen-head"><h2 id="dia-h">Tu día</h2><span class="src" id="dia-when"></span></div>
+          <div class="dia-tiles" id="dia-tiles"></div>
+        </section>
+
+        <!-- Tu lista en «Hoy»: lo que más se movió hoy (la lista completa está en «Acciones»). -->
+        <section class="screen keyed" id="milista" aria-labelledby="ml-h" hidden>
+          <div class="screen-head"><h2 id="ml-h">Tu lista</h2><button type="button" class="linkish" id="ml-all">Ver toda ›</button></div>
+          <div class="ml-rows" id="ml-rows"></div>
+        </section>
+
         <!-- Resumen del día: lo escribe Claude cada mañana (tarea programada del dueño) con titulares y datos públicos. Lo ven todos. -->
         <section class="screen summary" id="summary" aria-labelledby="sum-h" hidden>
           <div class="screen-head">
@@ -333,18 +345,12 @@
             <button type="button" id="d-add" hidden>+ Agregar a mi lista</button>
             <button type="button" id="d-retry" hidden>Reintentar</button>
           </div>
-          <!-- Resumen rápido (4 nov): tendencia, riesgo, valoración y fundamentales en una mirada, con lo que ya trae la ficha. -->
-          <div class="d-quick" id="d-quick" hidden></div>
-          <p class="d-earn" id="d-earn" hidden></p>
-          <div class="d-tools">
-            <div class="ranges" id="d-ranges" role="group" aria-label="Periodo del gráfico"></div>
-            <div class="legend" id="d-ind" role="group" aria-label="Indicadores técnicos"></div>
-            <div class="d-acts">
-              <button type="button" id="d-csv" class="csv-btn" title="Cierres, rendimientos diarios e indicadores del periodo, para Excel">⤓ CSV</button>
-              <a id="d-hapi" class="csv-btn hapi-btn" target="_blank" rel="noopener noreferrer" title="Página de esta acción en Hapi (no abre la app)" hidden>Ver en Hapi ↗</a>
-              <a id="d-claude" class="csv-btn hapi-btn" target="_blank" rel="noopener noreferrer" title="Abre Claude con la pregunta y los números de Rueda ya escritos, con tu cuenta">Analizar con Claude ↗</a>
-            </div>
+          <!-- El precio en grande (5 nov, «A · Limpio»): el de la lista, el de la lista diaria (cierre) o el de una buscada. -->
+          <div class="d-price" id="d-price" hidden>
+            <span class="d-px" id="d-px"></span><span class="d-cur" id="d-cur"></span>
+            <span class="d-chg" id="d-chg"></span>
           </div>
+          <div class="ranges" id="d-ranges" role="group" aria-label="Periodo del gráfico"></div>
           <div class="chart" id="d-chart"></div>
           <div id="d-vol-wrap" hidden>
             <p class="hint" id="d-vol-hint">Volumen diario</p>
@@ -363,58 +369,84 @@
             </div>
             <div class="chart" id="d-macd"></div>
           </div>
-          <dl class="stats" id="d-stats"></dl>
-          <details class="d-tool" id="d-season">
-            <summary>Estacionalidad: cómo le fue a cada mes (5 años)</summary>
-            <div id="d-season-body"></div>
-          </details>
-          <details class="d-tool" id="d-strat">
-            <summary>Probar una estrategia (5 años)</summary>
-            <div class="d-strat-pick">
-              <label for="d-strat-kind">Estrategia</label>
-              <select id="d-strat-kind">
-                <option value="ma50-200">Cruce de medias 50 / 200 días</option>
-                <option value="ma20-50">Cruce de medias 20 / 50 días</option>
-                <option value="rsi">RSI: compra bajo 30, vende sobre 70</option>
-              </select>
+          <div class="d-tools">
+            <div class="legend" id="d-ind" role="group" aria-label="Indicadores técnicos"></div>
+            <div class="d-acts">
+              <button type="button" id="d-csv" class="csv-btn" title="Cierres, rendimientos diarios e indicadores del periodo, para Excel">⤓ CSV</button>
+              <a id="d-hapi" class="csv-btn hapi-btn" target="_blank" rel="noopener noreferrer" title="Página de esta acción en Hapi (no abre la app)" hidden>Ver en Hapi ↗</a>
+              <a id="d-claude" class="csv-btn hapi-btn" target="_blank" rel="noopener noreferrer" title="Abre Claude con la pregunta y los números de Rueda ya escritos, con tu cuenta">Analizar con Claude ↗</a>
             </div>
-            <div id="d-strat-body"></div>
-          </details>
-          <details class="d-tool" id="d-fin">
-            <summary>Resultados anuales (SEC)</summary>
-            <div id="d-fin-body"></div>
-          </details>
-          <details class="d-tool" id="d-ps">
-            <summary>Valorar por P/S (precio / ventas)</summary>
-            <div id="d-ps-body"></div>
-          </details>
-          <details class="d-tool" id="d-val">
-            <summary>Ratios y DCF (SEC)</summary>
-            <div id="d-val-body"></div>
-          </details>
-          <div class="d-co" id="d-co" hidden>
-            <p class="hint">Datos de la empresa <span id="d-co-meta"></span></p>
-            <dl class="stats" id="d-co-stats"></dl>
-            <div id="d-co-grades"></div>
-            <div class="d-co-cols">
-              <div id="d-co-analysts"></div>
-              <div id="d-co-surprises"></div>
+          </div>
+          <!-- Resumen rápido (4 nov): tendencia, riesgo, valoración y fundamentales en una mirada, con lo que ya trae la ficha. -->
+          <div class="d-quick" id="d-quick" hidden></div>
+          <!-- Lo largo de la ficha, en pestañas (5 nov): se ve una a la vez y se recuerda la última. -->
+          <div class="d-tabs" id="d-tabs" role="tablist" aria-label="Partes de la ficha">
+            <button type="button" role="tab" id="dt-resumen" aria-controls="dp-resumen" aria-selected="true">Resumen</button>
+            <button type="button" role="tab" id="dt-valor" aria-controls="dp-valor" aria-selected="false" tabindex="-1">Valor</button>
+            <button type="button" role="tab" id="dt-empresa" aria-controls="dp-empresa" aria-selected="false" tabindex="-1">Empresa</button>
+            <button type="button" role="tab" id="dt-noticias" aria-controls="dp-noticias" aria-selected="false" tabindex="-1">Noticias</button>
+          </div>
+          <div class="d-panel" id="dp-resumen" role="tabpanel" aria-labelledby="dt-resumen">
+            <p class="d-earn" id="d-earn" hidden></p>
+            <dl class="stats" id="d-stats"></dl>
+            <details class="table-view">
+              <summary>Ver tabla (cierre de cada mes)</summary>
+              <table id="d-table"><thead><tr><th scope="col">Mes</th><th scope="col">Cierre</th><th scope="col">Variación</th></tr></thead><tbody></tbody></table>
+            </details>
+            <details class="d-tool" id="d-season">
+              <summary>Estacionalidad: cómo le fue a cada mes (5 años)</summary>
+              <div id="d-season-body"></div>
+            </details>
+            <details class="d-tool" id="d-strat">
+              <summary>Probar una estrategia (5 años)</summary>
+              <div class="d-strat-pick">
+                <label for="d-strat-kind">Estrategia</label>
+                <select id="d-strat-kind">
+                  <option value="ma50-200">Cruce de medias 50 / 200 días</option>
+                  <option value="ma20-50">Cruce de medias 20 / 50 días</option>
+                  <option value="rsi">RSI: compra bajo 30, vende sobre 70</option>
+                </select>
+              </div>
+              <div id="d-strat-body"></div>
+            </details>
+          </div>
+          <div class="d-panel" id="dp-valor" role="tabpanel" aria-labelledby="dt-valor" hidden>
+            <details class="d-tool" id="d-fin">
+              <summary>Resultados anuales (SEC)</summary>
+              <div id="d-fin-body"></div>
+            </details>
+            <details class="d-tool" id="d-ps">
+              <summary>Valorar por P/S (precio / ventas)</summary>
+              <div id="d-ps-body"></div>
+            </details>
+            <details class="d-tool" id="d-val">
+              <summary>Ratios y DCF (SEC)</summary>
+              <div id="d-val-body"></div>
+            </details>
+          </div>
+          <div class="d-panel" id="dp-empresa" role="tabpanel" aria-labelledby="dt-empresa" hidden>
+            <div class="d-co" id="d-co" hidden>
+              <p class="hint">Datos de la empresa <span id="d-co-meta"></span></p>
+              <dl class="stats" id="d-co-stats"></dl>
+              <div id="d-co-grades"></div>
+              <div class="d-co-cols">
+                <div id="d-co-analysts"></div>
+                <div id="d-co-surprises"></div>
+              </div>
+              <p class="hint" id="d-co-note"></p>
             </div>
-            <p class="hint" id="d-co-note"></p>
+            <!-- Empresas peruanas que cotizan en EE. UU.: sus hechos de importancia de los últimos 60 días (SMV, públicos). -->
+            <div class="d-news" id="d-smv" hidden>
+              <p class="hint">Hechos de importancia de <span id="d-smv-name"></span> (SMV, últimos 60 días)</p>
+              <ol class="news" id="d-smv-list"></ol>
+            </div>
           </div>
-          <div class="d-news" id="d-news" hidden>
-            <p class="hint">Noticias de <span id="d-news-sym"></span> (Yahoo Finance y Google News)</p>
-            <ol class="news" id="d-news-list"></ol>
+          <div class="d-panel" id="dp-noticias" role="tabpanel" aria-labelledby="dt-noticias" hidden>
+            <div class="d-news" id="d-news" hidden>
+              <p class="hint">Noticias de <span id="d-news-sym"></span> (Yahoo Finance y Google News)</p>
+              <ol class="news" id="d-news-list"></ol>
+            </div>
           </div>
-          <!-- Empresas peruanas que cotizan en EE. UU.: sus hechos de importancia de los últimos 60 días (SMV, públicos). -->
-          <div class="d-news" id="d-smv" hidden>
-            <p class="hint">Hechos de importancia de <span id="d-smv-name"></span> (SMV, últimos 60 días)</p>
-            <ol class="news" id="d-smv-list"></ol>
-          </div>
-          <details class="table-view">
-            <summary>Ver tabla (cierre de cada mes)</summary>
-            <table id="d-table"><thead><tr><th scope="col">Mes</th><th scope="col">Cierre</th><th scope="col">Variación</th></tr></thead><tbody></tbody></table>
-          </details>
         </section>
 
         <section class="screen keyed" id="compare" aria-labelledby="cmp-h">

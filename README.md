@@ -113,6 +113,8 @@ Claude ─► Worker «mercados-mcp» (OAuth propio) ─────────
   - **KV:** los últimos 7 días en un solo registro (`resumen`): una escritura por resumen.
   - **Panel:** el titular y el texto; debajo, en una sola línea, las fuentes, los días anteriores y «Profundiza en Claude» (abre claude.ai con la pregunta escrita, con la cuenta de quien lo usa). Sin resumen guardado, la sección no aparece.
 - **Hojas por tema (5 nov, «que la UI sea lo más fácil de usar posible, en PC y celular»):** el panel se partió en «Hoy» (resumen, noticias, agenda y Polymarket), «Acciones» (tu lista, la ficha, comparar, cartera, Hapi, SEC y P/S) y «Mercados» (termómetro, materias primas, cripto, Perú y EE. UU.), más «Juego». La hoja va en la dirección (`#acciones`, `#mercados`, `#juego`) y se recuerda en el equipo, cada una con hasta dónde bajaste. En el celular, cada hoja mide de 5 a 8 pantallas, contra unas 17 del panel entero.
+  - **«Hoy» arriba:** «Tu día» (S&P 500, dólar, cobre y bitcoin en grande; cada uno abre lo suyo) y «Tu lista» (las tres que más se movieron). En «Hoy» no va la cinta.
+  - **La ficha:** el precio en grande, el selector de periodos, el gráfico y lo largo en pestañas (Resumen, Valor, Empresa y Noticias).
   - **Celular:** una barra fija arriba (logo, ↻, ↓ y la lupa, con la hora y «Actualizado» en chico) y las hojas abajo, como en una app. La ficha se abre a pantalla completa, con el gráfico apenas después de los rangos; «← Volver» y el botón atrás del teléfono dejan la hoja donde estaba.
   - **Botones grandes:** en el celular y en pantallas táctiles, unos 40 px de alto (rangos, filtros, «?», campos).
   - **Secciones plegables:** tocar el título de una sección la pliega, y queda así en ese equipo.
@@ -122,7 +124,10 @@ Claude ─► Worker «mercados-mcp» (OAuth propio) ─────────
   - **Celular:** una sola columna por hoja, en el orden de `styles.css` (`order`).
   - **Cada sección mide su propio ancho** (container queries): en una columna angosta, la lista y el calendario se ven como en el celular.
   - **Calendario y pronósticos** muestran primero lo más cercano (6 eventos, 3 preguntas) y el resto con «Ver más».
-- **Tipografía (legibilidad, 22 oct):** números, títulos y datos en IBM Plex Mono; frases, etiquetas y ayudas en IBM Plex Sans. Base de 15 px y nada por debajo de 12 px. Las explicaciones de uso van en un «?» por sección (`<details class="help">`) en vez de quedar siempre a la vista.
+- **Estilo «A · Limpio» (5 nov, elegido entre tres maquetas):**
+  - **Letra:** títulos, etiquetas y botones en IBM Plex Sans y en letra normal; números, precios y símbolos en IBM Plex Mono. Base de 15 px y nada por debajo de 12 px.
+  - **Tarjetas y color:** tarjetas sin bordes, separadas por el fondo. El cian queda para lo que se toca, la marca y los gráficos.
+  - Las explicaciones de uso van en un «?» por sección (`<details class="help">`) en vez de quedar siempre a la vista.
 - **Cartera en los gráficos y señales:** la ficha marca tus compras (▲) y ventas (▼) de la cartera simulada a su precio, y el tooltip las detalla. En la lista, junto al nombre, se ve si el último cierre está sobre o bajo su media de 200 días y, solo en zona extrema (70 o más, 30 o menos), el RSI. Sale del `latest` que `/api/history` devuelve siempre.
 - **Medir entre dos días:** en cualquier gráfico interactivo, arrastrar con el mouse (en el celular, dos dedos; con el teclado, Mayús + flechas) muestra las fechas, la duración y la variación entre ambos días: en % y en precio en la ficha, por símbolo en Comparar y en puntos porcentuales en las tasas. Queda fija hasta un clic fuera o Esc.
 - **Colores de los gráficos con varias líneas:** `--s1` a `--s4` en `styles.css` (cian, magenta, violeta, amarillo), validados para daltonismo sobre el fondo del panel. Cada símbolo conserva su color mientras está elegido. Las líneas solas usan el cian de marca.

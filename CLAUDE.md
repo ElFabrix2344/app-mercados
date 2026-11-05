@@ -29,7 +29,12 @@ App de mercados (Cloudflare Worker + panel web + conector MCP para Claude). El R
 - El BCRP pega un aviso HTML de PHP después del JSON. `extractJson` lo resuelve: no vuelvas a `res.json()`.
 - La API del BCRP devuelve las series **ordenadas por código**, no en el orden pedido. `getBcrp` las pide ordenadas y las reacomoda; no mezcles prefijos (PD/PN) en un mismo pedido.
 - Noticias: algunos RSS (Gestión, Bloomberg Línea) traen la nota completa y pesan ~1 MB. `fetchRss` lee el stream y corta apenas tiene los titulares; no lo cambies por `res.text()`, porque el plan gratis da 10 ms de procesador por pedido. Nunca guardes ni muestres el texto completo de las notas.
-- Tipografía: números, títulos y datos en IBM Plex Mono; frases, etiquetas y ayudas en IBM Plex Sans (`--f-sans`). Nada por debajo de 12 px. Las explicaciones de uso van en el «?» de cada sección, no como texto suelto.
+- **Estilo «A · Limpio»** (5 nov, elegido por el usuario entre tres maquetas: «siento que puede mejorar bastante»):
+  - **Tipografía:** títulos, etiquetas, botones y frases en IBM Plex Sans (`--f-sans`) y en letra normal, sin mayúsculas. Números, precios, símbolos y periodos (1M, 1A) en IBM Plex Mono. Nada por debajo de 12 px.
+  - **Tarjetas sin bordes:** las separa el fondo (`.screen` en `--panel`, radio `--r-card`; adentro, `--raise`). Las filas, con líneas finas (`--hair`).
+  - **El cian**, para lo que se toca (enlaces, la pestaña y la opción elegidas, el botón principal `.cta`), la marca, los gráficos y «tú» en la liga. No para títulos ni símbolos.
+  - **Botones:** sin borde y con fondo `--raise`. Los grupos de opciones (`.ranges`) son un selector de una pieza.
+  - Las explicaciones de uso van en el «?» de cada sección, no como texto suelto.
 - **Columnas** (29 oct, pedido del usuario: «datos en los costados y en el medio, para no scrollear tanto»): las secciones van dentro de `.col-left`, `.col-center` o `.col-right` de su hoja (`#sheet-hoy`, `#sheet-acciones` o `#sheet-mercados`) en `index.html`.
   - **Al agregar una sección:** ponla en la hoja y la columna que le toca, y dale su `order` del celular en `styles.css` (cada hoja tiene su propia lista de `order`).
   - **Columna vacía:** si en una hoja una columna no tiene nada a la vista (un amigo sin clave no ve el termómetro), `fitColumns` en `app.js` la cierra con `.sin-left` o `.sin-right`. Mira la regla de cada sección (`display`), no la columna.
@@ -49,6 +54,12 @@ App de mercados (Cloudflare Worker + panel web + conector MCP para Claude). El R
   - **Abajo**, las hojas, como en una app (el mismo `nav.sheets`, fijo).
   - **Sin `transform`, `filter` ni `backdrop-filter` en `.top`:** lo fijo de adentro (la barra de hojas y el buscador abierto) se ubicaría respecto de ella y no de la pantalla.
   - **La ficha** se abre a pantalla completa (`body.ficha-abierta`, `openDetail` y `closeDetail`): «← Volver» y el botón atrás del teléfono (`history.pushState`) dejan la hoja donde estaba. Si agregas algo que abra la ficha, usa `openDetail`.
+- **«Hoy» empieza con «Tu día» y «Tu lista»** (`renderDia` y `renderMiLista`, con lo que el panel ya cargó: no piden nada nuevo).
+  - **Tu día:** S&P 500, dólar, cobre y bitcoin. Si el SPY no está en tu lista, se usa su último cierre del termómetro (`state.thermo`). El dólar sale del BCRP y bitcoin de CoinGecko.
+  - **Tu lista:** las tres que más se movieron. En «Hoy» no va la cinta.
+- **La ficha** (5 nov): el precio en grande (`#d-price`), el selector de periodos a lo ancho, el gráfico y lo largo en pestañas: Resumen, Valor, Empresa y Noticias (`D_TABS`, se recuerda la última).
+  - Una pestaña sin nada se esconde (`renderDetailTabs`). «Valor» abre solos sus tres bloques de la SEC.
+  - **Si agregas un bloque a la ficha,** ponlo en el panel de su pestaña (`dp-…`).
 - **Más fácil de usar** (5 nov, elegido por el usuario):
   - **Botones de unos 40 px** en el celular y en pantallas táctiles (`pointer:coarse`). Los enlaces dentro de una frase quedan como están.
   - **Secciones plegables:** tocar el título las pliega (`setupFolds`, se recuerda en `mercados.plegadas`). No se pliegan las de `NO_FOLD`: la ficha, la bienvenida, el aviso de la clave y la liga.

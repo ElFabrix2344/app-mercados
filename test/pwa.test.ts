@@ -49,7 +49,7 @@ describe('index.html', () => {
   it('tiene las hojas por tema («Hoy», «Acciones», «Mercados» y «Juego»), cada sección en la suya', () => {
     expect(html).toContain('role="tablist"');
     const sheets = [
-      ['hoy', 'sheet-hoy', ['summary', 'news', 'cal', 'pmk', 'people', 'welcome']],
+      ['hoy', 'sheet-hoy', ['dia', 'milista', 'summary', 'news', 'cal', 'pmk', 'people', 'welcome']],
       ['acciones', 'sheet-acciones', ['keycard', 'watchlist', 'eod', 'detail', 'compare', 'portfolio', 'hapi', 'fin', 'ps']],
       ['mercados', 'sheet-mercados', ['thermo', 'cmd', 'cg', 'macro', 'pm']],
       ['juego', 'game', ['league', 'forecasts', 'fc-rank']],

@@ -56,6 +56,7 @@
     peopleNew: null, // correo recién agregado (se marca en la lista)
     peopleBusy: false,
     notes: new Map(), // clave → { text, kind }
+    thermo: null, // lo último del termómetro (SPY): «Tu día» usa su último cierre si el SPY no está en tu lista
   };
 
   // Preferencias de este navegador (indicadores y comparación). Si no hay almacenamiento, se usan las de fábrica.
@@ -778,6 +779,7 @@
       }
     }
     renderMarket();
+    renderMiLista();
   }
 
   /** Señales rápidas del último cierre: precio frente a la media de 200 días y, solo en zona extrema, el RSI. */
@@ -859,6 +861,7 @@
   }
 
   function renderTape() {
+    renderDia();
     const items = tapeItems();
     $('tape').hidden = !items.length;
     if (!items.length) return;
@@ -876,6 +879,86 @@
     // Dos copias seguidas: al correr media cinta vuelve a empezar sin que se note el corte.
     track.replaceChildren(half(), half());
     track.style.animationDuration = `${Math.max(30, items.length * 6)}s`;
+  }
+
+  // ---------- «Hoy»: tu día y tu lista ----------
+  // «A · Limpio» (5 nov, elegida por el usuario): arriba de «Hoy», cuatro números grandes y lo que más se movió de tu
+  // lista. Solo con lo que el panel ya cargó: no piden nada nuevo.
+  const pctOf = (f) => (f == null ? null : `${arrowOf(f)} ${pctFrac(f, 2)}`);
+
+  /** Las cuatro miradas de «Tu día»: S&P 500, dólar, cobre y bitcoin. Lo que no hay (sin clave, sin datos) no va. */
+  function diaItems() {
+    const items = [];
+    const live = (sym) => (hasPrices() ? state.quotes?.data?.quotes?.find((x) => x.symbol === sym) ?? null : null);
+    const toDetail = (sym) => () => openDetail(sym);
+    const toSection = (sheet, id) => () => {
+      showSheet(sheet);
+      $(id).scrollIntoView({ behavior: 'smooth', block: 'start' });
+    };
+    const spy = live('SPY');
+    if (spy?.price != null) items.push({ k: 'S&P 500 (SPY)', v: fmtPrice(spy.price), ch: spy.changePct != null ? spy.changePct / 100 : null, s: 'de tu lista', go: toDetail('SPY') });
+    else if (state.thermo?.last) items.push({ k: 'S&P 500 (SPY)', v: pctFrac(state.thermo.last.ret, 2), s: `al cierre del ${calDay(state.thermo.last.date)}`, go: toSection('mercados', 'thermo') });
+    const usdpen = live('USD/PEN');
+    const fx = state.peruData?.fx;
+    if (usdpen?.price != null) items.push({ k: 'Dólar', v: `S/ ${nf(3).format(usdpen.price)}`, ch: usdpen.changePct != null ? usdpen.changePct / 100 : null, s: 'de tu lista', go: toDetail('USD/PEN') });
+    else if (fx?.length) items.push({ k: 'Dólar (BCRP)', v: `S/ ${nf(3).format(fx.at(-1).sell)}`, ch: fx.length > 1 ? fx.at(-1).sell / fx.at(-2).sell - 1 : null, s: `venta del ${calDay(fx.at(-1).date)}`, go: toSection('mercados', 'macro') });
+    const cu = state.peruMarkets?.copper?.points;
+    if (cu?.length) items.push({ k: 'Cobre (libra)', v: `US$ ${nf(2).format(cu.at(-1)[1])}`, ch: lastChange(cu), s: `BCRP · ${calDay(cu.at(-1)[0])}`, go: toSection('mercados', 'cmd') });
+    const btcq = live('BTC/USD');
+    const btc = state.crypto?.coins?.bitcoin;
+    if (btcq?.price != null) items.push({ k: 'Bitcoin', v: nf(0).format(btcq.price), ch: btcq.changePct != null ? btcq.changePct / 100 : null, s: 'de tu lista', go: toDetail('BTC/USD') });
+    else if (btc?.summary?.last) items.push({ k: 'Bitcoin', v: nf(0).format(btc.summary.last.value), ch: btc.change24h, s: 'CoinGecko · 24 h', go: toSection('mercados', 'cg') });
+    return items;
+  }
+
+  function renderDia() {
+    const items = diaItems();
+    const sec = $('dia');
+    sec.hidden = !items.length;
+    if (sec.hidden) return;
+    $('dia-when').textContent = hasPrices() && state.quotes?.fetchedAt ? `precios ${ago(state.quotes.fetchedAt)}` : '';
+    $('dia-tiles').replaceChildren(
+      ...items.map((it) => {
+        const b = h(
+          'button',
+          { type: 'button', class: 'dia-tile' },
+          h('span', { class: 'dia-k' }, it.k),
+          h('span', { class: 'dia-v' }, it.v),
+          it.ch != null ? h('span', { class: `dia-c ${trend(it.ch)}` }, pctOf(it.ch)) : null,
+          h('span', { class: 'dia-s' }, it.s),
+        );
+        b.addEventListener('click', it.go);
+        return b;
+      }),
+    );
+  }
+
+  /** Tu lista en «Hoy»: las tres que más se movieron hoy, con su minigráfico del año. */
+  function renderMiLista() {
+    const sec = $('milista');
+    const rows = hasPrices() ? state.symbols.map((sym) => ({ sym, q: quoteFor(sym) })).filter((r) => r.q?.price != null && r.q.changePct != null) : [];
+    sec.hidden = !rows.length;
+    if (sec.hidden) return;
+    rows.sort((a, b) => Math.abs(b.q.changePct) - Math.abs(a.q.changePct));
+    const draws = [];
+    $('ml-rows').replaceChildren(
+      ...rows.slice(0, 3).map(({ sym, q }) => {
+        const spark = h('span', { class: 'ml-spark chart', 'aria-hidden': 'true' });
+        const pts = state.hist.get(sym)?.points;
+        if (pts) draws.push(() => drawLine(spark, pts.map(([date, v]) => ({ date, v })), { axis: false, fmt: fmtPrice }));
+        const row = h(
+          'button',
+          { type: 'button', class: 'ml-row' },
+          h('span', { class: 'ml-id' }, h('span', { class: 'ml-sym' }, sym), h('span', { class: 'ml-name' }, q.name && q.name !== sym ? q.name : '')),
+          spark,
+          h('span', { class: 'ml-px' }, fmtPrice(q.price), h('small', { class: trend(q.changePct) }, pctOf(q.changePct / 100))),
+        );
+        row.addEventListener('click', () => openDetail(sym));
+        return row;
+      }),
+    );
+    // Los minigráficos miden su ancho: se dibujan ya en la página.
+    for (const draw of draws) draw();
   }
 
   // ---------- cumpleaños del dueño (OWNER_BIRTHDAY) ----------
@@ -1118,6 +1201,80 @@
     else $('detail').scrollIntoView({ behavior: 'smooth', block: 'nearest' });
   }
 
+  /** El precio en grande: el de hoy (lista o buscada) o, en la lista diaria, el último cierre. */
+  function renderPrice(q, eodRow) {
+    const box = $('d-price');
+    const price = q?.price ?? eodRow?.close ?? null;
+    box.hidden = price == null;
+    if (price == null) return;
+    $('d-px').textContent = fmtPrice(price);
+    $('d-cur').textContent = q?.currency ?? '';
+    const pct = q ? q.changePct : eodRow?.changePct;
+    const abs = q ? q.change : eodRow?.change;
+    const when = q ? (q.isMarketOpen === false ? 'en la última sesión' : 'hoy') : `al cierre del ${calDay(eodRow.date)}`;
+    const chg = $('d-chg');
+    chg.className = `d-chg ${pct == null ? 'flat' : trend(pct)}`;
+    chg.textContent =
+      pct == null
+        ? when
+        : `${arrowOf(pct)} ${abs != null ? `${sign(abs)}${nf(priceDec(price)).format(Math.abs(abs))} (${sign(pct)}${nf(2).format(Math.abs(pct))}%)` : `${sign(pct)}${nf(2).format(Math.abs(pct))}%`} ${when}`;
+  }
+
+  // Lo largo de la ficha en pestañas (5 nov, «A · Limpio»): Resumen, Valor, Empresa y Noticias. Se recuerda la última.
+  const D_TABS = ['resumen', 'valor', 'empresa', 'noticias'];
+  const D_TAB_KEY = 'mercados.ficha-pestana';
+  let dTab = prefs.get(D_TAB_KEY, 'resumen');
+  let dTabShown = null;
+
+  /** Solo las pestañas con algo: «Valor», las acciones (SEC); «Empresa», si hay datos de Finnhub o de la SMV; «Noticias», si hay titulares. */
+  function renderDetailTabs() {
+    const sym = state.selected;
+    if (!sym) return;
+    $('dt-valor').hidden = sym.includes('/');
+    $('dt-empresa').hidden = $('d-co').hidden && $('d-smv').hidden;
+    $('dt-noticias').hidden = $('d-news').hidden;
+    showDetailTab(dTab, false);
+  }
+
+  function showDetailTab(name, chosen = true, focus = false) {
+    const shown = D_TABS.filter((t) => !$(`dt-${t}`).hidden);
+    const tab = shown.includes(name) ? name : shown[0] ?? 'resumen';
+    if (chosen) {
+      dTab = tab;
+      prefs.set(D_TAB_KEY, tab);
+    }
+    for (const t of D_TABS) {
+      const b = $(`dt-${t}`);
+      b.setAttribute('aria-selected', String(t === tab));
+      b.tabIndex = t === tab ? 0 : -1;
+      $(`dp-${t}`).hidden = t !== tab;
+    }
+    if (focus) $(`dt-${tab}`).focus();
+    // «Valor»: cada bloque se pide al abrirlo; en su pestaña se abren solos.
+    if (tab === 'valor') {
+      for (const id of ['d-fin', 'd-ps', 'd-val']) {
+        const d = $(id);
+        if (!d.hidden && !d.open) d.open = true;
+      }
+    }
+    // Lo que se dibujó con la pestaña oculta quedó sin ancho.
+    if (tab !== dTabShown) {
+      dTabShown = tab;
+      redrawCharts();
+    }
+  }
+
+  function setupDetailTabs() {
+    for (const t of D_TABS) $(`dt-${t}`).addEventListener('click', () => showDetailTab(t));
+    $('d-tabs').addEventListener('keydown', (e) => {
+      if (e.key !== 'ArrowRight' && e.key !== 'ArrowLeft') return;
+      const shown = D_TABS.filter((t) => !$(`dt-${t}`).hidden);
+      const i = shown.indexOf(dTabShown ?? dTab);
+      showDetailTab(shown[(i + (e.key === 'ArrowRight' ? 1 : shown.length - 1)) % shown.length], true, true);
+      e.preventDefault();
+    });
+  }
+
   /** Cierra la ficha. En el celular vuelve a la hoja y al lugar de antes (`fromHistory`: el teléfono ya fue atrás). */
   function closeDetail(fromHistory = false) {
     state.selected = null;
@@ -1268,11 +1425,13 @@
     renderDetailVal();
     renderQuick();
     renderLook(sym);
+    renderDetailTabs();
     $('d-claude').href = detailClaudeHref(sym);
     const q = quoteFor(sym);
     const hist = detailHistory(sym, state.range);
     renderIndicatorToggles(hist);
     const eodRow = q ? null : eodRowFor(sym);
+    renderPrice(q, eodRow);
     const name = (q?.name && q.name !== sym ? q.name : null) ?? eodRow?.name ?? state.lookups.get(sym)?.name ?? q?.name;
     $('d-title').textContent = name ? `${sym} · ${name}` : sym;
     $('d-sub').textContent = q ? [q.exchange, q.currency].filter(Boolean).join(' · ') : eodRow ? `Lista diaria · cierre del ${fDayYear.format(day(eodRow.date))}` : '';
@@ -2135,7 +2294,9 @@
       .then((r) => state.symbolNews.set(sym, { items: r.items }))
       .catch((e) => state.symbolNews.set(sym, { error: e.message }))
       .finally(() => {
-        if (state.selected === sym) renderSymbolNews();
+        if (state.selected !== sym) return;
+        renderSymbolNews();
+        renderDetailTabs();
       });
     return undefined;
   }
@@ -2165,7 +2326,9 @@
       .then((r) => state.company.set(sym, r))
       .catch((e) => state.company.set(sym, { error: e.message }))
       .finally(() => {
-        if (state.selected === sym) renderCompany();
+        if (state.selected !== sym) return;
+        renderCompany();
+        renderDetailTabs();
       });
     return undefined;
   }
@@ -4410,7 +4573,9 @@
         .then((x) => smv.by.set(sym, x))
         .catch((e) => smv.by.set(sym, { error: e.message }))
         .finally(() => {
-          if (state.selected === sym) renderDetailSmv();
+          if (state.selected !== sym) return;
+          renderDetailSmv();
+          renderDetailTabs();
         });
     }
     if (!r || r === 'cargando') {
@@ -4485,6 +4650,8 @@
         host.replaceChildren(h('p', { class: 'muted' }, 'Todavía no hay historia suficiente del SPY.'));
         return;
       }
+      state.thermo = t;
+      renderDia();
       const p = Math.round(t.percentile * 100);
       const mark = h('b', { class: 'th-mark' });
       mark.style.left = `${Math.min(100, Math.max(0, t.percentile * 100))}%`;
@@ -6430,6 +6597,11 @@
       if (sym && state.lookups.get(sym)?.quote && !inLists(sym)) loadLookup(sym, null, true);
     });
     $('d-add').addEventListener('click', () => addSearched(state.selected));
+    setupDetailTabs();
+    $('ml-all').addEventListener('click', () => {
+      showSheet('acciones');
+      $('watchlist').scrollIntoView({ behavior: 'smooth', block: 'start' });
+    });
     $('d-retry').addEventListener('click', () => state.selected && loadLookup(state.selected));
     setupSearch();
     $('edit-btn').addEventListener('click', () => openEditor($('wl-form').hidden));
