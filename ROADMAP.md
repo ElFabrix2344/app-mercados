@@ -91,6 +91,11 @@ Las tres preguntas pendientes las respondió Claude con la opción más simple, 
   - **Sugerencias de la SEC** (gratis y públicas) por nombre o símbolo. Las divisas y la cripto (USD/PEN, BTC/USD) y lo que la SEC no tiene (VOO) se abren escribiendo el símbolo.
   - **Sin clave**, un amigo ve los resultados de la SEC de lo que busca.
   - **No se eligió:** solo datos públicos (sin precio) ni buscar solo para agregar a la lista.
+- [x] **Más fácil de usar, en PC y celular** (5 nov). El usuario pidió «que la UI sea lo más fácil de usar posible». Se midió antes: en el celular el panel medía unas 17 pantallas (18 secciones en una columna) y tenía 101 botones de menos de 32 px. Eligió:
+  - **Hojas por tema:** «Hoy», «Acciones» y «Mercados», más «Juego»; en el celular, abajo, como en una app. Cada hoja mide de 5 a 8 pantallas.
+  - **La ficha a pantalla completa en el celular,** con «← Volver» (y el botón atrás) que deja la hoja donde estaba.
+  - **Arreglos:** botones más grandes, barra de arriba compacta y fija, y secciones plegables.
+  - **No eligió:** una guía la primera vez. Tampoco las otras dos formas de ordenar: una sola hoja con atajos, o un inicio que cada uno arma.
 - [ ] **Otras opciones de análisis de la misma lista** (sin elegir):
   - un filtro de acciones con los datos de todas las empresas de la SEC (`frames`);
   - el análisis de la cuenta Hapi (frente al SPY, Sharpe y beta; en el navegador, porque está cifrada);

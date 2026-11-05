@@ -29,16 +29,16 @@ body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--f-mono);fo
 .rol-amigo:not(.con-clave) .keyed{display:none!important}
 .rol-amigo .friend-only{display:block}
 .wrap{max-width:1180px;margin:0 auto;padding:16px 16px 40px;display:flex;flex-direction:column;gap:24px}
-/* Columnas (index.html), para no bajar tanto. En el celular, una sola. En tablet, lo principal y una columna al costado.
-   En computadora, como Google Finance: tus listas | lo principal | lo de hoy. */
-.cols,.col{display:contents}
+/* Hojas por tema (5 nov): «Hoy», «Acciones» y «Mercados», más «Juego». Se ve una a la vez (las demás llevan `hidden`).
+   Cada una en columnas, para no bajar tanto: en computadora, izquierda | lo principal | derecha; en tablet, lo
+   principal y una columna al costado; en el celular, una sola. */
+.hojas,.cols,.col{display:contents}
 @media (max-width:899px){
-  /* En una columna, el orden de siempre: en el HTML las secciones están repartidas por columna. */
-  .bar,.sheetbar,.teaser,#install-panel,.tape,.banner{order:-2}
-  #summary{order:-1}
-  #welcome{order:1} #keycard{order:2} #watchlist{order:2} #eod{order:3} #thermo{order:4} #detail{order:5} #news{order:6} #compare{order:7}
-  #portfolio{order:8} #hapi{order:9} #cmd{order:10} #cg{order:11} #macro{order:12} #pm{order:13} #fin{order:14} #ps{order:15} #cal{order:16}
-  #pmk{order:17} #people{order:18}
+  /* En una columna, este orden: en el HTML las secciones están repartidas por columna. */
+  .top,.teaser,#install-panel,.tape,.banner{order:-2}
+  #welcome{order:1} #summary{order:2} #news{order:3} #cal{order:4} #pmk{order:5} #people{order:6}
+  #keycard{order:1} #watchlist{order:2} #detail{order:3} #eod{order:4} #compare{order:5} #portfolio{order:6} #hapi{order:7} #fin{order:8} #ps{order:9}
+  #thermo{order:1} #cmd{order:2} #cg{order:3} #macro{order:4} #pm{order:5}
   .foot{order:20}
 }
 @media (min-width:900px){
@@ -48,32 +48,37 @@ body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--f-mono);fo
   .col-left{grid-area:left}
   .col-center{grid-area:center}
   .col-right{grid-area:right}
+  /* Una columna sin nada a la vista se cierra (app.js, fitColumns): un amigo sin clave no ve el termómetro, por ejemplo. */
+  .cols.sin-left .col-left,.cols.sin-right .col-right{display:none}
+  .cols.sin-left.sin-right{grid-template-columns:minmax(0,1fr);grid-template-areas:"center";grid-template-rows:auto}
 }
 @media (min-width:1280px){
   .wrap{max-width:1560px}
   .cols{grid-template-columns:minmax(260px,310px) minmax(0,1fr) minmax(280px,340px);grid-template-areas:"left center right";grid-template-rows:auto}
+  .cols.sin-left{grid-template-columns:minmax(0,1fr) minmax(280px,340px);grid-template-areas:"center right"}
+  .cols.sin-right{grid-template-columns:minmax(260px,310px) minmax(0,1fr);grid-template-areas:"left center"}
 }
-/* Hojas (pestañas bajo el encabezado): «Mercados» y «Juego». La activa, en cian y subrayada sobre la línea. */
+/* Pestañas de las hojas, bajo la barra (en el celular, abajo: ver «barra de arriba»). La activa, en cian y subrayada. */
 /* La fila de las hojas lleva a la derecha el buscador; las pestañas se apoyan en su línea de abajo. */
-.sheetbar{display:flex;align-items:flex-end;gap:8px 16px;margin-top:-20px;border-bottom:1px solid var(--line)}
+.sheetbar{display:flex;align-items:flex-end;gap:8px 16px;border-bottom:1px solid var(--line)}
 .sheets{display:flex;gap:4px}
 .sheets [role="tab"]{border:0;border-bottom:2px solid transparent;border-radius:0;background:none;margin-bottom:-1px;padding:8px 14px 7px;
   color:var(--muted);font-size:.85rem;text-transform:uppercase;letter-spacing:.08em}
 .sheets [role="tab"]:hover{color:var(--ink);border-color:transparent;border-bottom-color:var(--line)}
 .sheets [role="tab"][aria-selected="true"]{color:var(--accent);border-bottom-color:var(--accent)}
+.tab-ico{display:none;width:22px;height:22px;fill:none;stroke:currentColor;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round}
 /* Pronósticos que te faltan en las preguntas abiertas. */
-.sheet-badge{margin-left:2px;min-width:1.5em;padding:0 5px;border-radius:9px;background:var(--accent);color:var(--bg);font-size:.72rem;
+.sheet-badge{margin-left:2px;min-width:1.5em;padding:0 5px;border-radius:9px;background:var(--accent);color:var(--bg);font-size:.75rem;
   font-weight:600;letter-spacing:0;line-height:1.5;text-align:center}
-/* Hoja «Juego»: la otra hoja (el panel y la cinta) se oculta. Pronósticos a lo ancho; ranking y lo resuelto al costado. */
-.game{display:none;flex-direction:column;gap:24px}
-.en-juego .game{display:flex}
-.en-juego .cols,.en-juego .tape{display:none!important}
+/* Hoja «Juego»: sin la cinta ni el aviso de la liga. Pronósticos a lo ancho; ranking y lo resuelto al costado. */
+.game{display:flex;flex-direction:column;gap:24px}
+[data-hoja="juego"] .tape,[data-hoja="juego"] .teaser{display:none!important}
 .game-main,.game-side{display:flex;flex-direction:column;gap:24px;min-width:0}
 /* El nombre con que juegas, arriba de los dos juegos. */
 .game-me:empty{display:none}
 .game-me > *{margin:0}
 @media (min-width:900px){
-  .en-juego .game{display:grid;grid-template-columns:minmax(0,1fr) minmax(300px,400px);align-items:start}
+  .game{display:grid;grid-template-columns:minmax(0,1fr) minmax(300px,400px);align-items:start}
 }
 .wrap.simple{max-width:40rem;padding-top:3rem}
 .wrap.simple h1{color:var(--accent);text-transform:uppercase;letter-spacing:.08em;font-size:1.1rem}
@@ -113,14 +118,18 @@ button[disabled]{opacity:.6;cursor:default}
 .help-body p:last-child{margin:0}
 
 /* ---------- barra superior ---------- */
-/* La línea de abajo la pone la fila de hojas (.sheetbar). */
+/* La marca y las acciones; debajo, la fila de hojas (.sheetbar), que pone la línea. */
+.top{display:flex;flex-direction:column;gap:4px}
 .bar{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:8px 16px}
 .brand{display:flex;align-items:baseline;gap:14px;flex-wrap:wrap;min-width:0}
+/* La hora, la bolsa y «Actualizado»: en computadora, en la misma fila que la marca; en el celular, una línea chica. */
+.status-line{display:contents;margin:0}
 .logo{color:var(--accent);font-weight:600;font-size:1.35rem;letter-spacing:.1em;text-transform:uppercase}
 /* La rueda del logo (el mismo dibujo que icon.svg). */
 .logo-mark{width:24px;height:24px;flex:none;align-self:center;margin-right:-4px;fill:none;stroke:var(--accent);stroke-width:1.8;stroke-linecap:round}
 .logo-mark .hub{fill:var(--bg)}
 .brand .mkt:empty{display:none}
+.mkt-cel{display:none}
 .brand .mkt::before{content:"●";margin-right:6px}
 .brand .mkt:not(.open)::before{content:"○"}
 .clock{color:var(--muted);text-transform:uppercase;letter-spacing:.04em}
@@ -142,17 +151,46 @@ button[disabled]{opacity:.6;cursor:default}
 /* Instalar como app: el panel con los pasos se enfoca por código al abrirlo (sin anillo). */
 .install:focus{outline:none}
 #refresh-btn .ico{display:inline-block}
+/* Hasta 1279 px, ↻ y ↓ sin texto y la hora sin «Lima»: así la barra entra en una fila también en una laptop chica. */
+@media (max-width:1279px){
+  .hactions .btn-text,.clock-tz{display:none}
+  #refresh-btn,#install-btn{min-width:40px;justify-content:center}
+}
 #refresh-btn[disabled] .ico{animation:spin 1s linear infinite}
 @keyframes spin{to{transform:rotate(360deg)}}
-/* En el celular la barra ocupa menos: sin el contador de créditos y con «Actualizar» solo como ↻. */
+/* Celular (pedido del usuario el 5 nov: «barra de arriba compacta»): una sola barra fija al bajar, con el logo, ↻, ↓ y la
+   lupa, y debajo una línea chica con la hora, la bolsa y «Actualizado». Sin el contador de créditos. Las hojas pasan a una
+   barra abajo, como en una app. Sin `transform` ni `backdrop-filter` en .top: harían que lo fijo de adentro (la barra
+   de hojas y el buscador abierto) se ubique respecto de ella y no de la pantalla. */
 @media (max-width:720px){
-  .bar{gap:6px 12px}
-  .brand{gap:2px 12px}
-  .clock,.brand .mkt{font-size:.8rem}
+  body{padding-top:0;padding-bottom:calc(62px + env(safe-area-inset-bottom,0px))}
+  .top{position:sticky;top:0;z-index:40;display:flex;flex-direction:row;flex-wrap:wrap;align-items:center;gap:0 4px;
+    margin:-16px -16px 0;padding:calc(env(safe-area-inset-top,0px) + 6px) 8px 6px 16px;background:var(--bg);border-bottom:1px solid var(--line)}
+  .bar,.brand,.hactions,.sheetbar{display:contents}
+  .logo-mark{order:1;margin-right:8px}
+  .logo{order:2;font-size:1.15rem;margin-right:auto}
+  .cumple{order:3;min-height:0!important;margin-right:4px}
   #credits{display:none}
-  #refresh-btn .btn-text{display:none}
-  .hactions{gap:8px;width:100%}
-  .hactions .status{margin-right:auto}
+  #refresh-btn{order:4}
+  #install-btn{order:5}
+  .search{order:6}
+  #refresh-btn,#install-btn,.search-toggle{min-width:44px;min-height:40px;justify-content:center;padding:6px 10px;border-color:transparent;background:none}
+  .hactions .btn-text{display:none}
+  .status-line{order:7;flex-basis:100%;display:flex;align-items:baseline;gap:10px;min-width:0;margin-top:-2px;overflow:hidden;white-space:nowrap}
+  .status-line .clock,.status-line .mkt{flex:none;font-size:.75rem}
+  .status-line .status{flex:1 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis;font-size:.75rem}
+  .clock-tz,.mkt-x{display:none}
+  .mkt-cel{display:inline}
+  .status-line .mkt{text-transform:none;letter-spacing:0;font-family:var(--f-sans)}
+  /* Las hojas, abajo: ícono y nombre, la activa en cian con una raya arriba. */
+  .sheets{position:fixed;left:0;right:0;bottom:0;z-index:42;display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:0;
+    padding:0 4px env(safe-area-inset-bottom,0px);background:var(--bg);border-top:1px solid var(--line)}
+  .sheets [role="tab"]{position:relative;flex-direction:column;justify-content:center;gap:3px;min-height:56px;margin:0;padding:6px 2px 5px;
+    border:0;font-size:.75rem;letter-spacing:.05em}
+  .sheets [role="tab"]:hover{border:0}
+  .sheets [role="tab"][aria-selected="true"]{border:0;box-shadow:inset 0 2px 0 var(--accent)}
+  .tab-ico{display:block}
+  .sheets .sheet-badge{position:absolute;top:5px;left:calc(50% + 7px);margin:0}
 }
 
 /* ---------- buscador de acciones ---------- */
@@ -188,7 +226,7 @@ button[disabled]{opacity:.6;cursor:default}
 .search-msg.err{color:var(--down)}
 .search-foot{margin:0;padding:7px 12px 9px;border-top:1px solid var(--line);font-family:var(--f-sans);font-size:.8rem;line-height:1.4;color:var(--muted)}
 @media (max-width:720px){
-  .search{flex:none;position:static}
+  .search{flex:none;position:static;margin:0}
   .search-toggle{display:inline-flex;padding:7px 10px;margin-bottom:1px;border-color:transparent;background:none}
   .search-box{display:none}
   .search.open::before{content:"";position:fixed;inset:0;z-index:49;background:rgba(0,0,0,.6)}
@@ -293,6 +331,7 @@ button[disabled]{opacity:.6;cursor:default}
 /* ---------- gráficos ---------- */
 /* Selector de periodo y botones de descarga */
 .d-tools{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:8px;margin-bottom:10px}
+.d-acts{display:flex;flex-wrap:wrap;align-items:center;gap:8px}
 .ranges{display:flex;flex-wrap:wrap;gap:4px}
 .ranges button,.csv-btn{padding:3px 9px;font-size:.82rem;color:var(--muted)}
 .ranges button[aria-pressed="true"]{border-color:var(--accent);color:var(--accent)}
@@ -355,7 +394,7 @@ button[disabled]{opacity:.6;cursor:default}
 /* Mientras llegan otros datos, el gráfico anterior queda atenuado (sin saltos). */
 .is-loading .chart,.is-loading .stats,.is-loading .cmp-grid{opacity:.45;transition:opacity .2s}
 
-.tooltip{position:fixed;z-index:10;pointer-events:none;background:var(--raise);color:var(--muted);border:1px solid var(--line);
+.tooltip{position:fixed;z-index:55;pointer-events:none;background:var(--raise);color:var(--muted);border:1px solid var(--line);
   border-radius:var(--r);padding:6px 10px;font-family:var(--f-sans);font-size:.85rem;line-height:1.4;max-width:320px}
 .tooltip strong{display:block;font-family:var(--f-mono);font-weight:500;color:var(--ink);font-size:.95rem}
 .tooltip .tt-date{display:block;margin-bottom:3px}
@@ -812,7 +851,6 @@ a.cta{display:inline-flex;align-items:center;gap:6px;border-radius:var(--r);text
 .teaser p{flex:1 1 240px;margin:0;font-family:var(--f-sans)}
 .teaser strong{color:var(--accent);font-weight:600}
 .teaser-x{border:0;background:none;color:var(--muted);font-size:1.2rem;padding:0 4px}
-.en-juego .teaser{display:none!important}
 
 /* Tutorial para entrar a la liga: una ventana aparte, paso a paso (en el celular, a pantalla completa). */
 .tutorial{width:min(520px,calc(100% - 32px));padding:18px 20px 20px;border:1px solid var(--accent);border-radius:8px;
@@ -862,3 +900,54 @@ a.cta{display:inline-flex;align-items:center;gap:6px;border-radius:var(--r);text
 
 .foot{font-family:var(--f-sans);font-size:.82rem;color:var(--muted);border-top:1px solid var(--line);padding-top:10px}
 .foot p{margin:0 0 4px}
+
+/* ---------- más fácil de usar (5 nov): secciones plegables, ficha a pantalla completa y botones grandes ---------- */
+/* Secciones plegables: tocar el título la pliega o la abre (app.js, setupFolds) y queda así en ese equipo. */
+.fold{all:unset;box-sizing:border-box;display:inline-flex;align-items:center;gap:8px;cursor:pointer;border-radius:var(--r)}
+.fold:focus-visible{outline:2px solid var(--accent);outline-offset:3px}
+.fold::after{content:"";flex:none;width:6px;height:6px;margin-top:-3px;border-right:2px solid var(--muted);border-bottom:2px solid var(--muted);
+  transform:rotate(45deg);transition:transform .15s}
+.fold:hover::after{border-color:var(--accent)}
+.plegada .fold::after{margin-top:1px;transform:rotate(-45deg)}
+.screen.plegada > :not(.screen-head){display:none!important}
+.screen.plegada > .screen-head{margin-bottom:0}
+@media (prefers-reduced-motion:reduce){.fold::after{transition:none}}
+
+/* La ficha en el celular: a pantalla completa, con «← Volver» arriba, que deja la hoja donde estaba (app.js, openDetail). */
+@media (max-width:720px){
+  body.ficha-abierta{overflow:hidden}
+  .ficha-abierta #detail{position:fixed;inset:0;z-index:45;overflow-y:auto;overscroll-behavior:contain;margin:0;border:0;border-radius:0;
+    padding:0 16px calc(env(safe-area-inset-bottom,0px) + 24px)}
+  .ficha-abierta #detail > .screen-head{position:sticky;top:0;z-index:3;flex-wrap:nowrap;margin:0 -16px 12px;
+    padding:calc(env(safe-area-inset-top,0px) + 8px) 12px 8px;background:var(--panel);border-bottom:1px solid var(--line)}
+  .ficha-abierta #detail > .screen-head > div{min-width:0}
+  .ficha-abierta #d-title{overflow:hidden;text-overflow:ellipsis}
+  .ficha-abierta #d-close{order:-1;flex:none;margin:0 2px 0 0;border-color:transparent;background:none;padding-left:4px}
+  /* El gráfico apenas después de los rangos; los indicadores y los botones, debajo. */
+  .ficha-abierta #detail{display:flex;flex-direction:column}
+  .ficha-abierta #detail > *{order:20}
+  .ficha-abierta #detail > .screen-head{order:0}
+  .ficha-abierta #d-look{order:1} .ficha-abierta #d-quick{order:2} .ficha-abierta #d-earn{order:3}
+  .ficha-abierta #detail > .d-tools{display:contents}
+  .ficha-abierta #d-ranges{order:4;margin-bottom:8px}
+  .ficha-abierta #d-chart{order:5} .ficha-abierta #d-vol-wrap{order:6} .ficha-abierta #d-rsi-wrap{order:7} .ficha-abierta #d-macd-wrap{order:8}
+  .ficha-abierta #d-ind{order:9;margin:10px 0 8px} .ficha-abierta .d-acts{order:10;margin-bottom:12px}
+}
+
+/* Botones grandes en el celular y en pantallas táctiles (pedido del usuario el 5 nov): unos 40 px de alto, lo cómodo para
+   el dedo. Los enlaces dentro de una frase quedan como están. */
+@media (max-width:720px),(pointer:coarse){
+  button:not(.linkish):not(.cumple):not(.fold),.csv-btn,a.hapi-btn,select{min-height:40px}
+  input:not([type="checkbox"]):not([type="radio"]):not([type="range"]){min-height:44px}
+  input[type="checkbox"]{width:20px;height:20px}
+  .help > summary{width:32px;height:32px}
+  .sum-more > summary,.table-view > summary,.d-tool > summary,.pm-fold > summary{display:flex;align-items:center;min-height:40px}
+  .pmk-actions .linkish{min-height:36px}
+  .cal-src.sym{display:inline-flex;align-items:center;justify-content:center;min-height:34px}
+  .pmk-title{display:inline-block;padding:3px 0}
+  .sum-deeper{display:inline-block;padding:8px 0}
+  /* Los títulos que se pliegan, «cancelar» de una orden, invitar y lo que se despliega en «Juego». */
+  .fold{min-height:32px}
+  .queued .linkish,.end .linkish{min-height:32px}
+  .lg-all > summary,.pr-how > summary{display:flex;align-items:center;min-height:36px}
+}

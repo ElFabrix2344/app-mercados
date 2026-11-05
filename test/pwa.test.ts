@@ -46,14 +46,25 @@ describe('index.html', () => {
     expect(pngSize(touch!)).toBe('180x180');
   });
 
-  it('tiene las hojas «Mercados» y «Juego», y los pronósticos van en «Juego», fuera de las columnas', () => {
+  it('tiene las hojas por tema («Hoy», «Acciones», «Mercados» y «Juego»), cada sección en la suya', () => {
     expect(html).toContain('role="tablist"');
-    expect(html).toMatch(/id="tab-mercados"[^>]*aria-controls="cols"/);
-    expect(html).toMatch(/id="tab-juego"[^>]*aria-controls="game"/);
-    const game = html.indexOf('id="game"');
-    expect(game).toBeGreaterThan(html.indexOf('id="cols"'));
-    expect(html.indexOf('id="forecasts"')).toBeGreaterThan(game);
-    expect(html.indexOf('id="fc-rank"')).toBeGreaterThan(game);
+    const sheets = [
+      ['hoy', 'sheet-hoy', ['summary', 'news', 'cal', 'pmk', 'people', 'welcome']],
+      ['acciones', 'sheet-acciones', ['keycard', 'watchlist', 'eod', 'detail', 'compare', 'portfolio', 'hapi', 'fin', 'ps']],
+      ['mercados', 'sheet-mercados', ['thermo', 'cmd', 'cg', 'macro', 'pm']],
+      ['juego', 'game', ['league', 'forecasts', 'fc-rank']],
+    ] as const;
+    const starts = sheets.map(([, panel]) => html.indexOf(`id="${panel}"`));
+    expect([...starts].sort((a, b) => a - b)).toEqual(starts);
+    sheets.forEach(([tab, panel, ids], i) => {
+      expect(html).toMatch(new RegExp(`id="tab-${tab}"[^>]*aria-controls="${panel}"`));
+      expect(html).toMatch(new RegExp(`id="${panel}"[^>]*role="tabpanel"[^>]*aria-labelledby="tab-${tab}"`));
+      for (const id of ids) {
+        const at = html.indexOf(`id="${id}"`);
+        expect(at, id).toBeGreaterThan(starts[i]!);
+        if (i + 1 < starts.length) expect(at, id).toBeLessThan(starts[i + 1]!);
+      }
+    });
   });
 
   it('la liga de acciones es lo primero de «Juego», con su tutorial aparte; el mercado de predicciones ya no está', () => {

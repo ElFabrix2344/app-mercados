@@ -796,7 +796,9 @@
   function renderMarket() {
     const el = $('mkt');
     const open = state.quotes?.market?.open ?? state.marketOpen;
-    el.textContent = open == null ? '' : open ? 'Rueda abierta · NYSE' : 'Rueda cerrada · NYSE';
+    // En computadora, «Rueda abierta · NYSE»; en el celular, más corto (styles.css, .mkt-x y .mkt-cel).
+    if (open == null) el.replaceChildren();
+    else el.replaceChildren(h('span', { class: 'mkt-x' }, `Rueda ${open ? 'abierta' : 'cerrada'} · NYSE`), h('span', { class: 'mkt-cel' }, `NYSE ${open ? 'abierta' : 'cerrada'}`));
     el.className = open ? 'mkt open' : 'mkt';
     el.title = open == null ? '' : open ? 'La bolsa de Nueva York está en sesión.' : 'Fuera del horario de la bolsa de Nueva York: las acciones muestran su último cierre.';
   }
@@ -963,7 +965,8 @@
   }
 
   function renderClock() {
-    $('today').textContent = `${fClock.format(new Date()).replace(/\./g, '')} Lima`;
+    // En el celular no va «Lima» (styles.css, .clock-tz): la línea de arriba es chica.
+    $('today').replaceChildren(fClock.format(new Date()).replace(/\./g, ''), h('span', { class: 'clock-tz' }, ' Lima'));
   }
 
   function renderFresh() {
@@ -1032,12 +1035,49 @@
   }
 
   // ---------- ficha ----------
+  // En computadora va en «Acciones», al lado de tu lista. En el celular (pedido del usuario el 5 nov) se abre a pantalla
+  // completa, con «← Volver», que deja la hoja donde estaba; el botón atrás del teléfono hace lo mismo.
+  let fichaBack = null; // { sheet, y, focus }: dónde estabas al abrirla en el celular
+  const fichaFull = () => document.body.classList.contains('ficha-abierta');
+
+  /** Una fila de la lista: abre su ficha o, si ya está abierta, la cierra. */
   function select(sym) {
-    state.selected = state.selected === sym ? null : sym;
+    if (state.selected === sym) closeDetail();
+    else openDetail(sym);
+  }
+
+  function openDetail(sym) {
+    state.selected = sym;
+    if (isPhone() && !fichaFull()) {
+      fichaBack = { sheet: currentSheet(), y: scrollY, focus: document.activeElement };
+      document.body.classList.add('ficha-abierta');
+      history.pushState({ ficha: true }, '');
+    }
+    $('d-close').textContent = fichaFull() ? '← Volver' : 'Cerrar';
+    showSheet('acciones');
     renderTiles();
     renderEod();
     renderDetail();
-    if (state.selected) $('detail').scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    if (fichaFull()) $('detail').scrollTop = 0;
+    else $('detail').scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+  }
+
+  /** Cierra la ficha. En el celular vuelve a la hoja y al lugar de antes (`fromHistory`: el teléfono ya fue atrás). */
+  function closeDetail(fromHistory = false) {
+    state.selected = null;
+    renderTiles();
+    renderEod();
+    renderDetail();
+    if (!fichaFull()) return;
+    document.body.classList.remove('ficha-abierta');
+    const back = fichaBack;
+    fichaBack = null;
+    if (back) {
+      showSheet(back.sheet);
+      window.scrollTo(0, back.y);
+      if (back.focus?.isConnected) back.focus.focus({ preventScroll: true });
+    }
+    if (!fromHistory && history.state?.ficha) history.back();
   }
 
   function stat(label, value, sub) {
@@ -2585,6 +2625,11 @@
     toPeers.addEventListener('click', () => {
       $('ps-sym').value = sym;
       $('ps-peers').value = '';
+      // En el celular la ficha tapa la hoja: se cierra y queda «Acciones», donde está el comparador.
+      if (fichaFull()) {
+        closeDetail();
+        showSheet('acciones');
+      }
       $('ps').scrollIntoView({ behavior: 'smooth', block: 'start' });
       $('ps-peers').focus();
     });
@@ -4216,10 +4261,7 @@
       const opens = x.symbol && hasPrices() && state.symbols.includes(x.symbol);
       name = opens ? h('button', { type: 'button', class: 'linkish smv-co', title: `Abrir la ficha de ${x.symbol}` }, x.nombre) : h('span', { class: 'smv-co' }, x.nombre);
       if (opens) {
-        name.addEventListener('click', () => {
-          if (state.selected !== x.symbol) select(x.symbol);
-          else $('detail').scrollIntoView({ behavior: 'smooth', block: 'nearest' });
-        });
+        name.addEventListener('click', () => openDetail(x.symbol));
       }
     }
     return h(
@@ -4490,10 +4532,7 @@
             ? h('button', { type: 'button', class: 'cal-src sym', title: `Abrir la ficha de ${c.symbol}` }, c.symbol)
             : h('span', { class: 'cal-src' }, KIND_LABEL[e.kind]);
           if (c) {
-            src.addEventListener('click', () => {
-              if (state.selected !== c.symbol) select(c.symbol);
-              else $('detail').scrollIntoView({ behavior: 'smooth', block: 'nearest' });
-            });
+            src.addEventListener('click', () => openDetail(c.symbol));
           }
           return h(
             'li',
@@ -5227,12 +5266,12 @@
     } else if (tut.from === 'panel') {
       const toPrices = () => {
         d.close();
-        showSheet('mercados');
+        showSheet('acciones');
         $('watchlist').scrollIntoView({ block: 'start' });
       };
       body = [
         h('h3', { id: 'lt-h' }, '¡Listo! Ya ves tus precios'),
-        h('p', {}, 'En «Mercados» tienes tu lista de seguimiento con precios, los gráficos de 5 años, comparar y el termómetro del S&P 500. Con «Editar» eliges tus símbolos (hasta 8).'),
+        h('p', {}, 'En «Acciones» tienes tu lista de seguimiento con precios, los gráficos de 5 años, comparar y el termómetro del S&P 500. Con «Editar» eliges tus símbolos (hasta 8).'),
         h('p', { class: 'hint' }, 'Con la misma clave ya estás en la liga de acciones: tienes US$ 10 000 para jugar cuando quieras, en la hoja «Juego».'),
       ];
       next = button('Ver mis precios', toPrices, 'cta');
@@ -5761,10 +5800,10 @@
 
   /** Abre lo elegido: su ficha (de tus listas, o una nueva con su precio) o, sin precios, sus resultados de la SEC. */
   function openSearched(sym, name) {
-    showSheet('mercados');
     if (!hasPrices()) {
       // Divisas y cripto no están en la SEC: para sus precios hace falta la clave.
       if (sym.includes('/')) return openLeagueTutorial('panel');
+      showSheet('acciones');
       $('fin-sym').value = sym;
       pickFin(sym);
       $('fin').scrollIntoView({ behavior: 'smooth', block: 'start' });
@@ -5772,11 +5811,7 @@
     }
     const l = state.lookups.get(sym);
     if (!inLists(sym) && (!l || (!l.quote && !l.pending))) loadLookup(sym, name);
-    state.selected = sym;
-    renderTiles();
-    renderEod();
-    renderDetail();
-    $('detail').scrollIntoView({ behavior: 'smooth', block: 'start' });
+    openDetail(sym);
     // Para el teclado y los lectores de pantalla, el foco va al título de la ficha.
     const title = $('d-title');
     title.tabIndex = -1;
@@ -5924,37 +5959,50 @@
   }
 
   // ---------- hojas ----------
-  // «Mercados» (el panel) y «Juego» (lo que se juega en grupo). La hoja va en la dirección (#juego), así se puede
-  // compartir, y se recuerda en este equipo.
-  const SHEETS = ['mercados', 'juego'];
-  const currentSheet = () => (document.body.classList.contains('en-juego') ? 'juego' : 'mercados');
+  // Por tema (5 nov, pedido del usuario: «que la UI sea lo más fácil de usar posible, en PC y celular»): «Hoy», «Acciones»
+  // y «Mercados», más «Juego». La hoja va en la dirección (#acciones, #mercados, #juego), así se puede compartir, y se
+  // recuerda en este equipo. Cada una recuerda hasta dónde bajaste.
+  const SHEETS = ['hoy', 'acciones', 'mercados', 'juego'];
+  const SHEET_PANEL = { hoy: 'sheet-hoy', acciones: 'sheet-acciones', mercados: 'sheet-mercados', juego: 'game' };
+  const SHEET_KEY = 'mercados.hoja2';
+  const sheetScroll = {}; // hoja → scrollY al dejarla
+  const currentSheet = () => document.body.dataset.hoja || 'hoy';
+
+  /** La de la última visita. Antes había dos, «mercados» (el panel entero) y «juego»: el panel ahora empieza en «Hoy». */
+  function savedSheet() {
+    const v = prefs.get(SHEET_KEY, null);
+    if (SHEETS.includes(v)) return v;
+    return prefs.get('mercados.hoja', null) === 'juego' ? 'juego' : 'hoy';
+  }
 
   function showSheet(name, focus = false) {
-    const sheet = SHEETS.includes(name) ? name : 'mercados';
-    const changed = sheet !== currentSheet();
-    document.body.classList.toggle('en-juego', sheet === 'juego');
+    const sheet = SHEETS.includes(name) ? name : 'hoy';
+    const prev = document.body.dataset.hoja;
+    const changed = sheet !== prev;
+    if (changed && prev) sheetScroll[prev] = scrollY;
+    document.body.dataset.hoja = sheet;
     for (const s of SHEETS) {
       const tab = $(`tab-${s}`);
       tab.setAttribute('aria-selected', String(s === sheet));
       tab.tabIndex = s === sheet ? 0 : -1;
+      $(SHEET_PANEL[s]).hidden = s !== sheet;
     }
     if (focus) $(`tab-${sheet}`).focus();
-    prefs.set('mercados.hoja', sheet);
-    const url = sheet === 'juego' ? '#juego' : location.pathname + location.search;
-    if ((sheet === 'juego') !== (location.hash === '#juego')) history.replaceState(null, '', url);
-    // Los gráficos que se dibujaron con la hoja oculta quedan con el ancho de reserva: se rehacen al volver.
-    if (changed && sheet === 'mercados') redrawCharts();
+    prefs.set(SHEET_KEY, sheet);
+    const hash = sheet === 'hoy' ? '' : `#${sheet}`;
+    if (location.hash !== hash) history.replaceState(history.state, '', hash || location.pathname + location.search);
+    if (!changed) return;
+    fitColumns();
+    // Los gráficos que se dibujaron con la hoja oculta quedan con el ancho de reserva: se rehacen al mostrarla.
+    if (sheet !== 'juego') redrawCharts();
     // Al entrar a «Juego», lo último que jugaron los demás.
-    if (changed && sheet === 'juego' && state.games) loadGames();
+    if (sheet === 'juego' && state.games) loadGames();
+    // Cada hoja vuelve a donde estabas (la primera vez, arriba). Con la ficha a pantalla completa, la hoja de abajo no se mueve.
+    if (prev && !fichaFull()) window.scrollTo(0, sheetScroll[sheet] ?? 0);
   }
 
   function setupSheets() {
-    for (const s of SHEETS) {
-      $(`tab-${s}`).addEventListener('click', () => {
-        showSheet(s);
-        if ($('sheets').getBoundingClientRect().top < 0) $('sheets').scrollIntoView();
-      });
-    }
+    for (const s of SHEETS) $(`tab-${s}`).addEventListener('click', () => showSheet(s));
     // Flechas entre pestañas, como en cualquier lista de pestañas.
     $('sheets').addEventListener('keydown', (e) => {
       if (e.key !== 'ArrowRight' && e.key !== 'ArrowLeft') return;
@@ -5968,15 +6016,94 @@
       showSheet('juego');
       if (state.games) renderGames();
     };
-    window.addEventListener('hashchange', () => (location.hash === '#liga' ? toLeague() : showSheet(location.hash === '#juego' ? 'juego' : 'mercados')));
-    if (location.hash === '#liga') toLeague();
-    else showSheet(location.hash === '#juego' ? 'juego' : prefs.get('mercados.hoja', 'mercados'));
-    // El aviso de la liga en «Mercados»: entrar abre el tutorial; la × lo cierra para siempre en este equipo.
+    const fromHash = () => {
+      const want = location.hash.slice(1);
+      if (want === 'liga') toLeague();
+      else showSheet(SHEETS.includes(want) ? want : 'hoy');
+    };
+    window.addEventListener('hashchange', fromHash);
+    if (location.hash === '#liga' || SHEETS.includes(location.hash.slice(1))) fromHash();
+    else showSheet(savedSheet());
+    // Atrás en el teléfono con la ficha a pantalla completa: se cierra la ficha y no se sale de Rueda.
+    window.addEventListener('popstate', () => {
+      if (fichaFull()) closeDetail(true);
+    });
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape' && fichaFull() && !search.open && !document.querySelector('dialog[open]')) closeDetail();
+    });
+    // El aviso de la liga: entrar abre el tutorial; la × lo cierra para siempre en este equipo.
     $('lg-teaser-go').addEventListener('click', toLeague);
     $('lg-teaser-x').addEventListener('click', () => {
       prefs.set('mercados.liga-aviso', 'cerrado');
       $('lg-teaser').hidden = true;
     });
+  }
+
+  /**
+   * En computadora, una columna sin nada a la vista se cierra (styles.css, .sin-left y .sin-right): un amigo sin clave no
+   * ve el termómetro, y sin la clave de CoinGecko no hay cripto, por ejemplo. Se mira cada sección, no la columna.
+   */
+  function fitColumns() {
+    for (const sheet of document.querySelectorAll('.cols.sheet')) {
+      if (sheet.hidden) continue;
+      for (const side of ['left', 'right']) {
+        const col = sheet.querySelector(`:scope > .col-${side}`);
+        const shown = !!col && [...col.children].some((el) => getComputedStyle(el).display !== 'none');
+        sheet.classList.toggle(`sin-${side}`, !shown);
+      }
+    }
+  }
+
+  /** Las secciones aparecen y desaparecen según los datos y el rol: las columnas se rehacen al cambiar. */
+  function watchColumns() {
+    let queued = false;
+    const later = () => {
+      if (queued) return;
+      queued = true;
+      // Con un temporizador y no con requestAnimationFrame, que se detiene con la pestaña en segundo plano.
+      setTimeout(() => {
+        queued = false;
+        fitColumns();
+      }, 30);
+    };
+    const mo = new MutationObserver(later);
+    for (const el of document.querySelectorAll('.cols.sheet > .col > *')) mo.observe(el, { attributes: true, attributeFilter: ['hidden'] });
+    mo.observe(document.body, { attributes: true, attributeFilter: ['class'] });
+    fitColumns();
+  }
+
+  // ---------- secciones plegables ----------
+  // Pedido del usuario el 5 nov: tocar el título de una sección la pliega o la abre, y queda así en este equipo.
+  const FOLD_KEY = 'mercados.plegadas';
+  /** Las que tienen su propio «Cerrar» o «Entendido», o son lo principal de su hoja. */
+  const NO_FOLD = new Set(['detail', 'welcome', 'keycard', 'install-panel', 'league']);
+
+  function setupFolds() {
+    const saved = prefs.get(FOLD_KEY, []);
+    const folded = new Set(Array.isArray(saved) ? saved : []);
+    for (const sec of document.querySelectorAll('.hojas section.screen[id]')) {
+      if (NO_FOLD.has(sec.id)) continue;
+      const title = sec.querySelector(':scope > .screen-head h2');
+      if (!title || title.querySelector('.fold')) continue;
+      const btn = h('button', { type: 'button', class: 'fold' });
+      btn.append(...title.childNodes);
+      title.append(btn);
+      const apply = (on) => {
+        sec.classList.toggle('plegada', on);
+        btn.setAttribute('aria-expanded', String(!on));
+        btn.title = on ? 'Mostrar la sección' : 'Plegar la sección';
+      };
+      apply(folded.has(sec.id));
+      btn.addEventListener('click', () => {
+        const on = !sec.classList.contains('plegada');
+        apply(on);
+        if (on) folded.add(sec.id);
+        else folded.delete(sec.id);
+        prefs.set(FOLD_KEY, [...folded]);
+        // Lo que se dibujó plegado quedó sin ancho.
+        if (!on) redrawCharts();
+      });
+    }
   }
 
   // ---------- personas (solo el dueño) ----------
@@ -6184,7 +6311,9 @@
   // ---------- inicio ----------
   async function init() {
     renderClock();
+    setupFolds();
     setupSheets();
+    watchColumns();
     setupPeruFold();
     setupInstall();
     $('refresh-btn').addEventListener('click', () => {
@@ -6369,6 +6498,7 @@
 
   /** Quitó su clave en la liga: se cierran sus precios y se olvida lo que se veía (el servidor ya borró su caché). */
   function lockPanel() {
+    if (fichaFull()) closeDetail();
     state.keyed = false;
     document.body.classList.remove('con-clave');
     state.symbols = [];

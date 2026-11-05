@@ -27,13 +27,29 @@ App de mercados (Cloudflare Worker + panel web + conector MCP para Claude). El R
 - La API del BCRP devuelve las series **ordenadas por código**, no en el orden pedido. `getBcrp` las pide ordenadas y las reacomoda; no mezcles prefijos (PD/PN) en un mismo pedido.
 - Noticias: algunos RSS (Gestión, Bloomberg Línea) traen la nota completa y pesan ~1 MB. `fetchRss` lee el stream y corta apenas tiene los titulares; no lo cambies por `res.text()`, porque el plan gratis da 10 ms de procesador por pedido. Nunca guardes ni muestres el texto completo de las notas.
 - Tipografía: números, títulos y datos en IBM Plex Mono; frases, etiquetas y ayudas en IBM Plex Sans (`--f-sans`). Nada por debajo de 12 px. Las explicaciones de uso van en el «?» de cada sección, no como texto suelto.
-- **Columnas** (29 oct, pedido del usuario: «datos en los costados y en el medio, para no scrollear tanto»): las secciones van dentro de `.col-left`, `.col-center` o `.col-right` en `index.html`.
-  - **Al agregar una sección:** ponla en una columna y dale su `order` del celular en `styles.css` (en una columna se muestran en el orden de siempre).
+- **Columnas** (29 oct, pedido del usuario: «datos en los costados y en el medio, para no scrollear tanto»): las secciones van dentro de `.col-left`, `.col-center` o `.col-right` de su hoja (`#sheet-hoy`, `#sheet-acciones` o `#sheet-mercados`) en `index.html`.
+  - **Al agregar una sección:** ponla en la hoja y la columna que le toca, y dale su `order` del celular en `styles.css` (cada hoja tiene su propia lista de `order`).
+  - **Columna vacía:** si en una hoja una columna no tiene nada a la vista (un amigo sin clave no ve el termómetro), `fitColumns` en `app.js` la cierra con `.sin-left` o `.sin-right`. Mira la regla de cada sección (`display`), no la columna.
   - **Diseño que depende del ancho de la sección:** `.screen` es un contenedor, así que va con `@container`, no con `@media` (una sección puede ser angosta en una pantalla ancha).
   - **Columnas parejas:** si una crece mucho, la página entera se alarga. Mira la altura de cada una antes de mover algo.
 - **Termómetro del S&P 500** (`services/thermometer.ts`, 4 nov): describe la volatilidad del SPY frente a sus últimas 500 sesiones. **No agregues predicciones de dirección** sin que el usuario lo pida: la evaluación con esos 500 movimientos mostró que no hay un patrón aprovechable, y el panel lo dice en su «?». Con la clave de Rueda lo ve solo el dueño (`OWNER_ONLY`); un amigo lo ve con su propia clave (`FRIEND_KEYED`, ver «Precios con la clave de cada uno»).
 - **Materias primas y «Más del Perú»** (4 nov, pedido del usuario: «los datos de Perú muévelos a un espacio un poco más escondido y pon en su lugar datos de commodities»): `#cmd` (cobre, oro, plata, zinc y petróleo WTI del BCRP) va en la columna izquierda donde estaba lo del Perú; BVL, reservas, bonos y riesgo país quedaron en `#pm`, plegado (`#pm-fold`) debajo de Perú y EE. UU., y sus gráficos se dibujan recién al abrirlo. Todo sale del mismo pedido (`peruMarkets`, KV `peru-markets3`). Para sumar materias primas a la vista de los amigos usa solo fuentes públicas (BCRP o series de dominio público de FRED, como las de la EIA); las de Twelve Data no.
-- **Hojas** (2 nov, pedido del usuario: que lo cooperativo o competitivo tenga su propia hoja): pestañas «Mercados» (`.cols`) y «Juego» (`#game`, dirección `#juego`) bajo el encabezado. Lo que se juega en grupo va en «Juego», no en las columnas. La hoja se recuerda en cada equipo (`mercados.hoja`); al volver a «Mercados» se redibujan los gráficos, porque con la hoja oculta se dibujan con el ancho de reserva.
+- **Hojas** (2 nov: que lo cooperativo o competitivo tenga su propia hoja; 5 nov: «que la UI sea lo más fácil de usar posible, en PC y celular»). Son cuatro, por tema:
+  - **Hoy:** resumen, noticias, agenda y Polymarket.
+  - **Acciones:** tu lista, la ficha, comparar, cartera, Hapi, SEC y P/S.
+  - **Mercados:** termómetro, materias primas, cripto, Perú y EE. UU.
+  - **Juego** (`#game`): lo que se juega en grupo va aquí, no en las columnas.
+  - **Cómo cambian:** cada panel lleva `hidden` cuando no se ve (`showSheet`, `body[data-hoja]`), y la dirección es `#acciones`, `#mercados` o `#juego` («Hoy» no lleva nada). Se recuerda en cada equipo (`mercados.hoja2`; la clave vieja `mercados.hoja` solo se lee para «juego») y cada hoja vuelve a donde bajaste.
+  - **Gráficos:** al cambiar de hoja se redibujan, porque con la hoja oculta se dibujan con el ancho de reserva.
+- **Celular** (5 nov, elegido por el usuario):
+  - **Arriba**, una sola barra fija (`.top`): logo, ↻, ↓ y la lupa, con la hora y «Actualizado» en una línea chica.
+  - **Abajo**, las hojas, como en una app (el mismo `nav.sheets`, fijo).
+  - **Sin `transform`, `filter` ni `backdrop-filter` en `.top`:** lo fijo de adentro (la barra de hojas y el buscador abierto) se ubicaría respecto de ella y no de la pantalla.
+  - **La ficha** se abre a pantalla completa (`body.ficha-abierta`, `openDetail` y `closeDetail`): «← Volver» y el botón atrás del teléfono (`history.pushState`) dejan la hoja donde estaba. Si agregas algo que abra la ficha, usa `openDetail`.
+- **Más fácil de usar** (5 nov, elegido por el usuario):
+  - **Botones de unos 40 px** en el celular y en pantallas táctiles (`pointer:coarse`). Los enlaces dentro de una frase quedan como están.
+  - **Secciones plegables:** tocar el título las pliega (`setupFolds`, se recuerda en `mercados.plegadas`). No se pliegan las de `NO_FOLD`: la ficha, la bienvenida, el aviso de la clave y la liga.
+  - **Títulos de sección:** no les cambies el texto por código, porque se borraría el botón que los pliega.
 - **Juegos que no son de pronosticar** (`game/minijuegos.ts`): gráfico del día, 2/3 del promedio y liga de acciones, en el mismo Durable Object que el mercado. El usuario pidió el 2 nov «separarse de la idea de pronósticos solamente». Reglas:
   - **Liga de acciones** (`game/acciones.ts`): el usuario pidió carteras «de verdad» y que entrar fuera «lo más fácil posible».
     - Cada amigo juega con su propia clave gratis de Twelve Data. **Nunca uses la clave de Rueda para los amigos:** su licencia no permite mostrarles esos datos.
