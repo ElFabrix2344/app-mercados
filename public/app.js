@@ -3757,6 +3757,139 @@
     }
   }
 
+  // ---------- lo que espera el mercado (Polymarket, para todos) ----------
+  // Tarjetas con el diseño de Rueda (src/services/polymarket.ts) y, al tocar «Ver en vivo», el widget oficial de
+  // Polymarket debajo, sin botones de compra. El dueño fija eventos pegando su enlace.
+  const pmk = { reply: null, tab: prefs.get('mercados.pmk', 'bolsa') };
+
+  /** 0,045 → «4.5%»; 0,62 → «62%»; casi 0 o casi 1 → «<1%» o «>99%». */
+  const probText = (p) => (p < 0.01 ? '<1%' : p > 0.99 ? '>99%' : `${nf(p < 0.1 ? 1 : 0).format(p * 100)}%`);
+
+  function pmkLive(e, host, btn) {
+    if (!host.hidden) {
+      host.hidden = true;
+      host.replaceChildren();
+      btn.textContent = 'Ver en vivo';
+      return;
+    }
+    const q = new URLSearchParams('market' in e.embed ? { market: e.embed.market } : { event: e.embed.event, rotate: 'true' });
+    q.set('theme', 'dark');
+    q.set('buttons', 'false');
+    q.set('fit', 'true');
+    const frame = h('iframe', {
+      class: 'pmk-frame',
+      title: `Polymarket: ${e.title}`,
+      src: `https://embed.polymarket.com/market?${q}`,
+      loading: 'lazy',
+      referrerpolicy: 'no-referrer',
+      sandbox: 'allow-scripts allow-same-origin allow-popups allow-popups-to-escape-sandbox',
+    });
+    host.replaceChildren(frame);
+    host.hidden = false;
+    btn.textContent = 'Cerrar el gráfico';
+  }
+
+  function pmkCard(e, pinned) {
+    const rows = e.outcomes.map((o) => {
+      const fill = h('i');
+      fill.style.width = `${Math.max(1, Math.min(100, o.p * 100))}%`;
+      const moved = o.d1 != null && Math.abs(o.d1) >= 0.005;
+      return h(
+        'div',
+        { class: 'pmk-row' },
+        h('span', { class: 'pmk-label', title: o.label }, o.label),
+        h('span', { class: 'pmk-bar', 'aria-hidden': 'true' }, fill),
+        h('span', { class: 'pmk-p' }, probText(o.p)),
+        h('span', { class: `pmk-d ${moved ? trend(o.d1) : ''}`, title: moved ? 'Cambio en 24 horas, en puntos' : null }, moved ? `${arrowOf(o.d1)} ${sign(o.d1)}${nf(0).format(Math.abs(o.d1 * 100))} pp` : ''),
+      );
+    });
+    const meta = [
+      e.kind === 'varias' && e.total > e.outcomes.length ? `${e.total - e.outcomes.length} opciones más` : null,
+      e.kind === 'escalera' ? `${e.total} preguntas: las más parejas` : null,
+      `US$ ${compact.format(e.volume1wk)} en la semana`,
+      e.end ? `se resuelve el ${calDay(e.end.slice(0, 10))}` : null,
+    ].filter(Boolean);
+    const live = h('button', { type: 'button', class: 'linkish' }, 'Ver en vivo');
+    const host = h('div', { class: 'pmk-live', hidden: true });
+    live.addEventListener('click', () => pmkLive(e, host, live));
+    const actions = [live];
+    if (pinned && state.role === 'owner') {
+      const off = h('button', { type: 'button', class: 'linkish' }, 'quitar');
+      off.addEventListener('click', () => pmkSend('DELETE', { slug: e.slug }));
+      actions.push(' · ', off);
+    }
+    return h(
+      'article',
+      { class: 'pmk-card' },
+      h('a', { class: 'pmk-title', href: `https://polymarket.com/event/${encodeURIComponent(e.slug)}`, target: '_blank', rel: 'noopener noreferrer' }, e.title),
+      ...rows,
+      h('p', { class: 'hint pmk-meta' }, meta.join(' · ')),
+      h('p', { class: 'pmk-actions' }, ...actions),
+      host,
+    );
+  }
+
+  function renderPmk() {
+    const r = pmk.reply;
+    if (!r) return;
+    const d = r.data;
+    const owner = state.role === 'owner';
+    const tabs = [...(d.pinned.length || owner ? [{ id: 'fijados', label: d.pinned.length ? `Fijados (${d.pinned.length})` : 'Fijados' }] : []), ...d.topics.map((t) => ({ id: t.id, label: t.label }))];
+    if (!tabs.some((t) => t.id === pmk.tab)) pmk.tab = d.topics[0]?.id ?? tabs[0]?.id;
+    $('pmk-tabs').replaceChildren(
+      ...tabs.map((t) => {
+        const b = h('button', { type: 'button', 'aria-pressed': String(t.id === pmk.tab) }, t.label);
+        b.addEventListener('click', () => {
+          pmk.tab = t.id;
+          prefs.set('mercados.pmk', t.id);
+          renderPmk();
+        });
+        return b;
+      }),
+    );
+    const pinnedTab = pmk.tab === 'fijados';
+    $('pmk-pin').hidden = !(owner && pinnedTab);
+    const events = pinnedTab ? d.pinned : (d.topics.find((t) => t.id === pmk.tab)?.events ?? []);
+    $('pmk-body').replaceChildren(
+      ...(events.length
+        ? events.map((e) => pmkCard(e, pinnedTab))
+        : [h('p', { class: 'muted' }, pinnedTab ? 'Pega arriba el enlace de un evento de Polymarket para fijarlo aquí (lo ven todos).' : 'No hay eventos abiertos en este tema ahora.')]),
+    );
+    $('pmk-note').textContent = `Probabilidades de Polymarket: lo que pagan sus apostadores por «sí». ${r.stale ? 'Guardadas' : 'Actualizadas'} ${ago(r.fetchedAt)}.`;
+  }
+
+  async function loadPmk() {
+    try {
+      pmk.reply = await api('/api/polymarket');
+      renderPmk();
+    } catch (e) {
+      $('pmk-body').replaceChildren(h('p', { class: 'err' }, e.message));
+    }
+  }
+
+  async function pmkSend(method, body) {
+    const err = $('pmk-err');
+    err.hidden = true;
+    try {
+      pmk.reply = await api('/api/polymarket/pins', { method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+      pmk.tab = 'fijados';
+      renderPmk();
+      return true;
+    } catch (e) {
+      err.textContent = e.message;
+      err.hidden = false;
+      return false;
+    }
+  }
+
+  function setupPmk() {
+    $('pmk-pin').addEventListener('submit', async (ev) => {
+      ev.preventDefault();
+      if (await pmkSend('POST', { url: $('pmk-url').value })) $('pmk-url').value = '';
+    });
+    loadPmk();
+  }
+
   // ---------- hechos de importancia (SMV, para todos) ----------
   // La lista general va plegada en «Más del Perú»; en la ficha, los de las empresas peruanas que cotizan en EE. UU.
   /** Las de SMV_ISSUERS (src/services/smv.ts): solo para ellas se piden hechos en la ficha. */
@@ -5401,6 +5534,7 @@
       if (document.visibilityState !== 'visible') return;
       loadNews();
       loadSummary();
+      loadPmk();
     }, 30 * 60_000);
 
     // Amigos: solo datos públicos (BCRP y FRED). El servidor igual les niega los precios de Twelve Data.
@@ -5422,6 +5556,8 @@
     state.role = role;
     renderBirthday();
     $('cumple').addEventListener('click', confetti);
+    // Lo que espera el mercado (Polymarket): para todos; el dueño, además, fija eventos.
+    setupPmk();
     // Cuenta de Hapi: cada uno la suya, cifrada (también los amigos).
     setupHapi();
     if (role !== 'owner') {

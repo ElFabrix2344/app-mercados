@@ -89,6 +89,7 @@
           <li><strong>Mi cuenta Hapi:</strong> importa tu estado de cuenta en PDF o anota tus operaciones. Se cifra con tu frase: nadie más la puede ver, tampoco el dueño de la app.</li>
           <li><strong>Resultados de empresas y P/S:</strong> ingresos y utilidades de los últimos años de cualquier acción que reporte a la SEC, y un comparador por P/S (precio / ventas) con empresas parecidas.</li>
           <li><strong>Materias primas:</strong> cobre, oro, plata, zinc y petróleo.</li>
+          <li><strong>Lo que espera el mercado:</strong> las probabilidades de Polymarket sobre empresas, la Fed y eventos del mundo.</li>
           <li><strong>Perú y EE. UU.:</strong> dólar, tasas, inflación, BVL, bonos y la curva del Tesoro, con el calendario de anuncios y las noticias.</li>
           <li id="welcome-install"><strong>Como app:</strong> con «Instalar app», arriba, Rueda queda en tu celular o computadora con su ícono y se abre a pantalla completa.</li>
         </ul>
@@ -580,6 +581,31 @@
         <ol class="cal" id="calendar"><li class="muted">Cargando…</li></ol>
         <button type="button" id="cal-more" class="csv-btn more-btn" hidden>Ver más</button>
         <p class="hint" id="cal-note"></p>
+      </section>
+
+      <!-- Lo que espera el mercado (Polymarket, pedido del usuario el 4 nov): las probabilidades de sus mercados de predicción
+           en tarjetas propias; su widget oficial se carga recién al tocar «Ver en vivo». Kalshi no: sus términos no lo permiten. -->
+      <section class="screen" id="pmk" aria-labelledby="pmk-h">
+        <div class="screen-head">
+          <h2 id="pmk-h">Lo que espera el mercado</h2>
+          <span class="src">Polymarket</span>
+          <details class="help">
+            <summary aria-label="Qué son estas probabilidades">?</summary>
+            <div class="help-body">
+              <p>Polymarket es un mercado de predicciones: la gente compra «sí» o «no» sobre un evento, y el precio, de 0 a 100, se lee como la probabilidad que le da el mercado. No es una predicción de Rueda ni una recomendación, y aquí no se apuesta nada.</p>
+              <p>En cada tema van los eventos abiertos con más dinero apostado en la semana. Las opciones que se excluyen (quién gana, cuántos recortes) suman cerca de 100 %. En una escalera de umbrales o de fechas cada pregunta va por su cuenta, y se muestran las que están más cerca del 50 %.</p>
+              <p>«Ver en vivo» carga el gráfico oficial desde el sitio de Polymarket, que recibe tu conexión como cualquier página. Lo demás se renueva cada 30 minutos.</p>
+            </div>
+          </details>
+        </div>
+        <div class="ranges" id="pmk-tabs" role="group" aria-label="Temas"></div>
+        <form class="pmk-pin owner-only" id="pmk-pin" autocomplete="off" hidden>
+          <input id="pmk-url" type="url" placeholder="Enlace de un evento de Polymarket" aria-label="Enlace de un evento de Polymarket" required>
+          <button type="submit">Fijar</button>
+        </form>
+        <p class="err" id="pmk-err" hidden></p>
+        <div id="pmk-body"><p class="muted">Cargando…</p></div>
+        <p class="hint" id="pmk-note"></p>
       </section>
 
       <section class="screen" id="news" aria-labelledby="news-h">

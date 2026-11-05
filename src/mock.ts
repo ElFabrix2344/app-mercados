@@ -16,6 +16,8 @@ import { getEodList, shapeEod, summarizeHistory, type EodRow, type EodView } fro
 import { computeThermometer, THERMO_SYMBOL, type Thermometer } from './services/thermometer';
 import type { CryptoReply, CryptoSeries } from './services/crypto';
 import { shapeSmv, type SmvView } from './services/smv';
+import type { PmData } from './services/polymarket';
+import type { PmEvent } from './lib/polymarket';
 import type { Entry, Results } from './services/forecasts';
 import { EARNINGS_AHEAD_DAYS, shapeCompanies, type CompanyCalendar } from './services/earnings';
 import type { NewsData, NewsGroup, NewsItem } from './services/news';
@@ -150,6 +152,33 @@ export function mockCrypto(now: Date): CryptoReply {
     coins[id] = { points, summary: summarize(points), symbol, name, change24h, marketCap: null, updated: now.toISOString() };
   }
   return { enabled: true, ...fresh({ coins }, now) };
+}
+
+/** «Lo que espera el mercado» de prueba (eventos inventados con las tres formas: sí o no, varias opciones y escalera). */
+export function mockPolymarket(now: Date, pins: string[] = []): Fresh<PmData> {
+  const inDays = (d: number) => new Date(now.getTime() + d * 86_400_000).toISOString();
+  const ev = (slug: string, title: string, kind: PmEvent['kind'], outcomes: [string, number, number | null][], total: number, volume1wk: number, days: number): PmEvent => ({
+    slug,
+    title,
+    end: inDays(days),
+    volume: volume1wk * 9,
+    volume1wk,
+    kind,
+    outcomes: outcomes.map(([label, p, d1]) => ({ label, p, d1 })),
+    total,
+    embed: kind === 'si-no' ? { market: slug } : { event: slug },
+  });
+  const bolsa = [
+    ev('prueba-empresa-mas-grande', 'Prueba: Largest company end of December?', 'varias', [['NVIDIA', 0.81, 0.02], ['Apple', 0.1, -0.01], ['Microsoft', 0.06, 0], ['Alphabet', 0.02, null]], 28, 590_000, 57),
+    ev('prueba-recortes-fed', 'Prueba: How many Fed rate cuts in 2026?', 'varias', [['3 (75 bps)', 0.62, 0.04], ['2 (50 bps)', 0.3, -0.03], ['4 (100 bps)', 0.06, 0]], 13, 410_000, 57),
+    ev('prueba-sp500-fin-de-ano', 'Prueba: What will S&P 500 close at end of 2026?', 'escalera', [['↑ 7,000', 0.71, 0.05], ['↑ 7,250', 0.48, 0.03], ['↑ 7,500', 0.22, -0.02]], 11, 55_000, 57),
+  ];
+  const mundo = [
+    ev('prueba-alto-el-fuego', 'Prueba: US-Iran ceasefire continues through December?', 'si-no', [['Sí', 0.87, -0.01]], 1, 6_400_000, 57),
+    ev('prueba-francia-2027', 'Prueba: Next French Presidential Election', 'varias', [['Candidato A', 0.34, 0.01], ['Candidata B', 0.29, -0.02], ['Candidato C', 0.12, 0]], 40, 6_800_000, 166),
+  ];
+  const pinned = pins.map((slug) => ev(slug, `Fijado de prueba: ${slug}`, 'si-no', [['Sí', 0.42, 0.03]], 1, 120_000, 30));
+  return fresh({ pinned, topics: [{ id: 'bolsa', label: 'Bolsa y empresas', events: bolsa }, { id: 'mundo', label: 'Política y mundo', events: mundo }], pins }, now);
 }
 
 /** «2026-11-04T17:02» en Lima, `hours` horas antes de `now`. */

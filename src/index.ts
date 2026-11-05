@@ -22,6 +22,7 @@ import {
   mockPeruMarkets,
   mockThermometer,
   mockPriceSource,
+  mockPolymarket,
   mockQuotes,
   mockSmv,
   mockSummary,
@@ -30,6 +31,8 @@ import {
 } from './mock';
 import { crypto } from './services/crypto';
 import { refreshSmv, smvView } from './services/smv';
+import { pinEvent, polymarket, readPins, unpinEvent } from './services/polymarket';
+import { slugFromUrl } from './lib/polymarket';
 import { companyData } from './services/company';
 import { readSummaries } from './services/summary';
 import { portfolioXray, type ProfileOf } from './services/xray';
@@ -83,6 +86,8 @@ const CSP = [
   'font-src https://fonts.gstatic.com',
   "img-src 'self' data:",
   "connect-src 'self'",
+  // El widget oficial de Polymarket («Ver en vivo» en «Lo que espera el mercado»): se carga recién al tocarlo.
+  'frame-src https://embed.polymarket.com',
   "manifest-src 'self'",
   "frame-ancestors 'none'",
   "base-uri 'none'",
@@ -322,6 +327,10 @@ async function route(req: Request, env: Env, url: URL, role: Role, email: string
       case '/api/crypto':
         return json(mock ? mockCrypto(now) : await crypto(deps));
 
+      // Lo que espera el mercado (Polymarket): para todos. Los fijados los elige el dueño.
+      case '/api/polymarket':
+        return json(mock ? mockPolymarket(now, await readPins(env.CACHE)) : await polymarket(deps));
+
       // Hechos de importancia de la SMV (públicos): la lista general o, con ?symbol=, los de esa empresa.
       case '/api/smv': {
         const raw = url.searchParams.get('symbol');
@@ -435,6 +444,23 @@ async function route(req: Request, env: Env, url: URL, role: Role, email: string
     if (p === '/api/people/sync') return json(await syncPeople(env, now));
     const body = await req.json().catch(() => null);
     return json(req.method === 'POST' ? await addPerson(env, body, now) : await removePerson(env, body, now));
+  }
+
+  // Polymarket: el dueño fija (POST {url}) o quita (DELETE {slug}) un evento de «Lo que espera el mercado».
+  if (p === '/api/polymarket/pins' && (req.method === 'POST' || req.method === 'DELETE')) {
+    if (role !== 'owner') throw new ApiError('forbidden', 403, 'Solo el dueño de la app elige los mercados fijados.');
+    sameOrigin(req, url);
+    const body = await req.json().catch(() => null);
+    if (mock) {
+      // En local no se consulta Polymarket: solo se guarda la lista.
+      const pins = await readPins(env.CACHE);
+      const slug = req.method === 'POST' ? slugFromUrl(String((body as { url?: unknown } | null)?.url ?? '')) : String((body as { slug?: unknown } | null)?.slug ?? '');
+      if (!slug) throw new ApiError('bad_request', 400, 'Pega el enlace de un evento de Polymarket (polymarket.com/event/…).');
+      const next = req.method === 'POST' ? [...pins.filter((s) => s !== slug), slug] : pins.filter((s) => s !== slug);
+      await env.CACHE.put('polymarket-fijados', JSON.stringify(next));
+      return json(mockPolymarket(now, next));
+    }
+    return json(req.method === 'POST' ? await pinEvent(deps, body) : await unpinEvent(deps, body));
   }
 
   // Guarda la lista diaria y pide ya los cierres de hasta 4 símbolos nuevos (el resto, la tarea programada).

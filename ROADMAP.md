@@ -76,6 +76,11 @@ Las tres preguntas pendientes las respondió Claude con la opción más simple, 
   - **Hechos de importancia de la SMV:** en «Más del Perú» y en la ficha de BAP, BVN, SCCO, CPAC e IFS.
   - **Evaluadas y no elegidas:** Brent y gas natural (EIA vía FRED, de dominio público), monedas del BCE (Frankfurter) y Banco Mundial (CC BY 4.0).
   - **Descartadas:** Alpha Vantage (25 consultas al día), FMP (mostrar a otros es pagado), Tiingo (uso personal), Massive/ex Polygon (repite Twelve Data) y la SBS (no tiene API; el BCRP ya publica sus tasas).
+- [x] **Lo que espera el mercado** (4 nov). El usuario preguntó por agregar «cosas como Polymarket o Kalshi» sobre acciones y eventos en general. Eligió:
+  - **Tarjetas con el diseño de Rueda y el widget oficial de Polymarket** (al tocar «Ver en vivo»).
+  - **Temas de partida:** «Bolsa y empresas» y «Política y mundo». El dueño fija otros pegando su enlace.
+  - **Kalshi quedó fuera:** sus términos de datos prohíben mostrarlos a otros, guardarlos y usarlos con IA.
+  - **No se eligió:** la herramienta del conector ni los enlaces en los pronósticos del grupo.
 - [ ] **Cargar `COINGECKO_API_KEY`** (lo hace el dueño): crear la clave Demo en el panel de desarrolladores de CoinGecko y cargarla en Cloudflare, tipo Secret. Sin ella, «Cripto» no aparece.
 - [x] **Valorar por P/S** (4 nov). El usuario pidió «facilita con alguna herramienta el método P/S» y eligió las tres opciones:
   - **Calculadora en la ficha:** P/S de hoy, el de cada cierre fiscal y un P/S objetivo.
