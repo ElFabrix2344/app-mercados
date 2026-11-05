@@ -18,6 +18,7 @@ import {
   mockNews,
   mockPeru,
   mockPeruMarkets,
+  mockThermometer,
   mockPriceSource,
   mockQuotes,
   mockSummary,
@@ -67,6 +68,7 @@ import {
   type Range,
   type Stored,
 } from './services/market';
+import { thermometer } from './services/thermometer';
 
 const CSP = [
   "default-src 'self'",
@@ -139,7 +141,7 @@ export default {
 } satisfies ExportedHandler<Env>;
 
 /** Precios de Twelve Data: su licencia gratis no permite mostrarlos a otras personas. */
-const OWNER_ONLY = new Set(['/api/watchlist', '/api/eod', '/api/quotes', '/api/history', '/api/compare', '/api/portfolio', '/api/portfolio/xray', '/api/news/symbol', '/api/company', '/api/company/factors']);
+const OWNER_ONLY = new Set(['/api/watchlist', '/api/eod', '/api/quotes', '/api/history', '/api/compare', '/api/portfolio', '/api/portfolio/xray', '/api/news/symbol', '/api/company', '/api/company/factors', '/api/thermometer']);
 
 async function route(req: Request, env: Env, url: URL, role: Role, email: string | null): Promise<Response | null> {
   const p = url.pathname;
@@ -283,6 +285,10 @@ async function route(req: Request, env: Env, url: URL, role: Role, email: string
 
       case '/api/peru-markets':
         return json(mock ? mockPeruMarkets(now) : await peruMarkets(deps));
+
+      // Termómetro del S&P 500 (SPY de Twelve Data): solo el dueño, como los precios.
+      case '/api/thermometer':
+        return json(mock ? mockThermometer(now) : await thermometer(deps));
 
       case '/api/usa':
         return json(mock ? mockUsa(now) : await usa(deps));

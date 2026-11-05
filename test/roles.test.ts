@@ -54,7 +54,7 @@ describe('rutas según el rol (local, con datos de prueba)', () => {
   });
 
   it('un amigo no puede ver precios, historial, comparaciones, la cartera ni la lista', async () => {
-    for (const path of ['/api/quotes', '/api/history?symbol=BAP', '/api/compare?symbols=BAP,SPY', '/api/portfolio', '/api/watchlist', '/api/company?symbol=BAP', '/api/eod']) {
+    for (const path of ['/api/quotes', '/api/history?symbol=BAP', '/api/compare?symbols=BAP,SPY', '/api/portfolio', '/api/watchlist', '/api/company?symbol=BAP', '/api/eod', '/api/thermometer']) {
       const res = await get(path, 'friend');
       expect(res.status).toBe(403);
       expect(await res.text()).toContain('Twelve Data');

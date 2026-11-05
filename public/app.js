@@ -3343,6 +3343,73 @@
     for (const draw of draws) draw();
   }
 
+  // ---------- termómetro del S&P 500 (solo el dueño: SPY de Twelve Data) ----------
+  // Cuánto se mueve el mercado, no hacia dónde (src/services/thermometer.ts): la volatilidad de 20 días frente a las
+  // últimas 500 sesiones, el tamaño de un día normal, los días extremos, la distancia al máximo y la racha.
+  const REGIMES = ['tranquilo', 'normal', 'agitado'];
+  const pctAbs = (f, dec = 2) => `${nf(dec).format(Math.abs(f) * 100)}%`;
+
+  async function loadThermometer() {
+    const host = $('thermo-body');
+    try {
+      const r = await api('/api/thermometer');
+      const t = r.data;
+      if (!t) {
+        host.replaceChildren(h('p', { class: 'muted' }, 'Todavía no hay historia suficiente del SPY.'));
+        return;
+      }
+      const p = Math.round(t.percentile * 100);
+      const mark = h('b', { class: 'th-mark' });
+      mark.style.left = `${Math.min(100, Math.max(0, t.percentile * 100))}%`;
+      const gauge = h(
+        'div',
+        { class: 'th-gauge', role: 'img', 'aria-label': `Volatilidad ${t.regime}: más alta que la del ${p} % de las últimas ${t.sessions} sesiones` },
+        h('div', { class: 'th-bar' }, h('i'), h('i'), h('i'), mark),
+        h('div', { class: 'th-zones', 'aria-hidden': 'true' }, ...REGIMES.map((z) => h('span', { class: z === t.regime ? 'on' : null }, z))),
+      );
+      const big = h('p', { class: 'th-big' }, t.regime[0].toUpperCase() + t.regime.slice(1), h('span', { class: 'muted' }, ` · ${pctAbs(t.vol20, 1)} al año`));
+      const versus = p >= 50 ? `Más movido que el ${p} %` : `Más tranquilo que el ${100 - p} %`;
+      const sub = h(
+        'p',
+        { class: 'hint th-sub' },
+        `${versus} de las últimas ${t.sessions} sesiones. Último cierre (${fDay.format(day(t.last.date))}): `,
+        h('span', { class: trend(t.last.ret) }, `${arrowOf(t.last.ret)} ${pctFrac(t.last.ret, 2)}`),
+      );
+      const ex = t.extremes;
+      const fromHigh = t.fromHigh.pct > -0.0005 ? 'En su máximo' : h('span', { class: 'down' }, `▼ ${pctFrac(t.fromHigh.pct, 1)}`);
+      // El valor corto (cabe en la columna angosta); la dirección y cuánto suma, debajo.
+      const streak = t.streak ? `${t.streak.days} ${t.streak.days === 1 ? 'día' : 'días'}` : 'Sin racha';
+      const streakSub = t.streak
+        ? h('span', {}, t.streak.dir === 'up' ? 'al alza · ' : 'a la baja · ', h('span', { class: trend(t.streak.ret) }, `${arrowOf(t.streak.ret)} ${pctFrac(t.streak.ret, 1)}`))
+        : null;
+      const lastBig = ex.last3 ? ` · el último, ${fDayYear.format(day(ex.last3.date))} (${pctFrac(ex.last3.ret, 1)})` : '';
+      const metrics = h(
+        'div',
+        { class: 'metric-row th-metrics' },
+        metric('Un día normal', `±${pctAbs(t.typical.recent)}`, `en ${t.sessions} sesiones: ±${pctAbs(t.typical.sample)}`),
+        metric('2 de cada 3 días', `±${pctAbs(t.oneSd)}`, 'o menos, con la volatilidad de hoy'),
+        metric('Desde el máximo', fromHigh, `máximo del ${fDayYear.format(day(t.fromHigh.date))}`),
+        metric('Racha', streak, streakSub),
+        metric('Días de más de ±3 %', String(ex.over3), `una curva normal esperaría ${nf(1).format(ex.expected3)}${lastBig}`),
+      );
+      const block = chartBlock(
+        'Volatilidad de 20 días, últimas 500 sesiones (% al año)',
+        t.series.map(([date, v]) => ({ date, v: v * 100 })),
+        {
+          fmt: (v) => `${nf(1).format(v)}%`,
+          refs: [t.bands.low * 100, t.bands.high * 100],
+          height: 120,
+          aria: `Volatilidad de 20 días del SPY en las últimas ${t.sessions} sesiones; las líneas marcan los tercios`,
+        },
+        { filename: `spy_volatilidad_20_dias_${today()}.csv`, header: ['fecha', 'volatilidad_20_dias_pct_anual'], rows: t.series.map(([d, v]) => [d, round6(v * 100)]) },
+      );
+      host.replaceChildren(gauge, big, sub, metrics, block.wrap, h('p', { class: 'hint' }, `Al cierre del ${fDayYear.format(day(t.asOf))}. Mide cuánto se mueve, no hacia dónde (detalle en el «?»).`), ...[staleHint(r)].filter(Boolean));
+      block.draw();
+    } catch (e) {
+      host.replaceChildren(h('p', { class: 'err' }, e.message));
+    }
+  }
+
   // ---------- calendario ----------
   const KIND_LABEL = { bcrp: 'BCRP', fed: 'Fed', inei: 'INEI', bls: 'BLS', empresa: 'Empresa' };
   const CAL_FIRST = 6; // eventos a la vista antes de «Ver más»
@@ -4824,6 +4891,7 @@
     state.cmp = cmpPrefs();
     renderTiles();
     loadEod();
+    loadThermometer();
     renderCompare();
     loadPeru();
     loadUsa();

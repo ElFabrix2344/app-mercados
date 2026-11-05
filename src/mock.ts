@@ -13,6 +13,7 @@ import type { CompanyResult } from './services/company';
 import { gradeFactors, type FactorsResult } from './services/factors';
 import { SEC_YEARS, type FinancialsData } from './services/financials';
 import { getEodList, shapeEod, summarizeHistory, type EodRow, type EodView } from './services/eod';
+import { computeThermometer, THERMO_SYMBOL, type Thermometer } from './services/thermometer';
 import type { Entry, Results } from './services/forecasts';
 import { EARNINGS_AHEAD_DAYS, shapeCompanies, type CompanyCalendar } from './services/earnings';
 import type { NewsData, NewsGroup, NewsItem } from './services/news';
@@ -121,6 +122,11 @@ const mockPoints = (symbol: string, now: Date) => walk(symbol, now).map((p) => [
 
 function fresh<T>(data: T, now: Date): Fresh<T> {
   return { data, fetchedAt: now.toISOString(), stale: false, note: 'Datos de prueba' };
+}
+
+/** Termómetro de prueba: con los 5 años inventados del SPY. */
+export function mockThermometer(now: Date): Fresh<Thermometer | null> {
+  return fresh(computeThermometer(mockPoints(THERMO_SYMBOL, now)), now);
 }
 
 export function mockQuotes(symbols: string[], now: Date): Fresh<QuotesData> & { market: { open: boolean } } {

@@ -34,8 +34,8 @@ body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--f-mono);fo
   /* En una columna, el orden de siempre: en el HTML las secciones están repartidas por columna. */
   .bar,.sheets,.teaser,#install-panel,.tape,.banner{order:-2}
   #summary{order:-1}
-  #welcome{order:1} #watchlist{order:2} #eod{order:3} #detail{order:4} #news{order:5} #compare{order:6} #portfolio{order:7}
-  #hapi{order:8} #cmd{order:9} #macro{order:10} #pm{order:11} #fin{order:12} #cal{order:13} #people{order:14}
+  #welcome{order:1} #watchlist{order:2} #eod{order:3} #thermo{order:4} #detail{order:5} #news{order:6} #compare{order:7}
+  #portfolio{order:8} #hapi{order:9} #cmd{order:10} #macro{order:11} #pm{order:12} #fin{order:13} #cal{order:14} #people{order:15}
   .foot{order:20}
 }
 @media (min-width:900px){
@@ -348,6 +348,22 @@ button[disabled]{opacity:.6;cursor:default}
 .metric .label{font-family:var(--f-sans);font-size:.85rem;color:var(--muted)}
 .metric .value{font-size:1.4rem;font-weight:500}
 .metric .sub{font-family:var(--f-sans);font-size:.82rem;color:var(--muted)}
+
+/* ---------- termómetro del S&P 500: tres tercios de volatilidad y una marca en cian (sin verde ni rojo: no es una
+   subida ni una bajada) ---------- */
+.th-gauge{margin:2px 0 10px}
+.th-bar{position:relative;display:flex;gap:2px;height:10px}
+.th-bar i{flex:1;background:#1E1E1E}
+.th-bar i:first-child{border-radius:999px 0 0 999px}
+.th-bar i:nth-child(2){background:#2C2C2C}
+.th-bar i:nth-child(3){background:#3D3D3D;border-radius:0 999px 999px 0}
+.th-mark{position:absolute;top:-4px;width:4px;height:18px;margin-left:-2px;border-radius:2px;background:var(--accent);box-shadow:0 0 0 2px var(--panel)}
+.th-zones{display:grid;grid-template-columns:repeat(3,1fr);margin-top:6px;font-family:var(--f-sans);font-size:.8rem;color:var(--muted);text-align:center}
+.th-zones .on{color:var(--ink);font-weight:600}
+.th-big{margin:0;font-size:1.4rem;font-weight:600}
+.th-big .muted{font-size:1rem;font-weight:400}
+.th-sub{margin:2px 0 12px}
+.th-metrics{margin-bottom:12px}
 
 /* ---------- materias primas y «Más del Perú» (las mismas tarjetas) ---------- */
 .pm-fold > summary{cursor:pointer;font-family:var(--f-sans);color:var(--accent);margin:0 0 4px}

@@ -471,7 +471,24 @@
       </section>
     </main>
 
-    <aside class="col col-right" id="col-right" aria-label="Agenda y noticias">
+    <aside class="col col-right" id="col-right" aria-label="Termómetro, agenda y noticias">
+      <!-- Termómetro del S&P 500 (solo el dueño: SPY de Twelve Data). Cuánto se mueve el mercado, no hacia dónde. -->
+      <section class="screen owner-only" id="thermo" aria-labelledby="th-h">
+        <div class="screen-head">
+          <h2 id="th-h">Termómetro del S&amp;P 500</h2>
+          <span class="src">SPY · 500 sesiones</span>
+          <details class="help">
+            <summary aria-label="Qué mide el termómetro">?</summary>
+            <div class="help-body">
+              <p>Mide cuánto se mueve el mercado, no hacia dónde. La volatilidad de 20 días (cuánto varió el SPY de un día a otro en el último mes, llevado a un año) se compara con la de las últimas 500 sesiones: el tercio de abajo es «tranquilo», el del medio «normal» y el de arriba «agitado».</p>
+              <p>«Un día normal» es la mediana del movimiento diario, suba o baje. «2 de cada 3 días» sería el rango si los movimientos siguieran una curva normal; en la práctica hay más días extremos que eso, y por eso se cuentan aparte.</p>
+              <p>No predice la dirección: en esas 500 sesiones, un modelo que miraba cómo había cerrado el día anterior acertaba lo mismo que decir siempre «sube». No es una recomendación de inversión.</p>
+            </div>
+          </details>
+        </div>
+        <div id="thermo-body"><p class="muted">Cargando…</p></div>
+      </section>
+
       <section class="screen" id="cal" aria-labelledby="cal-h" hidden>
         <div class="screen-head">
           <h2 id="cal-h">Calendario</h2>
