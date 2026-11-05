@@ -36,6 +36,12 @@ export interface DailyPoint {
 
 type Fetch = typeof fetch;
 
+/**
+ * Segundos hasta el próximo minuto, con uno de margen: Twelve Data repone el cupo por minuto (8 créditos en el plan
+ * gratis) al empezar cada minuto, así que el panel puede esperar en vez de mostrar el error.
+ */
+export const secondsToNextMinute = (now = new Date()) => 61 - now.getUTCSeconds();
+
 async function call(path: string, params: Record<string, string>, apiKey: string, f: Fetch): Promise<unknown> {
   const url = new URL(path, BASE);
   for (const [k, v] of Object.entries(params)) url.searchParams.set(k, v);
@@ -50,7 +56,11 @@ async function call(path: string, params: Record<string, string>, apiKey: string
   // Errores globales (afectan a todos los símbolos). Un error de un solo símbolo
   // (p. ej. «symbol not found») lo decide quien llama.
   if (res.status === 429 || err?.code === 429) {
-    throw new ApiError('rate_limited', 429, 'Twelve Data: se alcanzó el límite de créditos por minuto.', 'twelvedata');
+    // También responde 429 cuando se acaban los 800 del día: ese no se arregla esperando un minuto.
+    if (/\bday\b|daily/i.test(err?.message ?? '')) {
+      throw new ApiError('rate_limited', 429, 'Twelve Data: se acabaron los créditos del día (800 en el plan gratis). Mañana se renuevan.', 'twelvedata');
+    }
+    throw new ApiError('rate_limited', 429, 'Twelve Data: se alcanzó el límite de créditos por minuto.', 'twelvedata', secondsToNextMinute());
   }
   if (res.status === 401 || err?.code === 401) {
     throw new ApiError('not_configured', 502, 'Twelve Data rechazó la clave (401). Revisa TWELVE_DATA_API_KEY.', 'twelvedata');

@@ -166,7 +166,11 @@
       /* respuesta sin JSON */
     }
     if (!res.ok) {
-      throw Object.assign(new Error(body?.error?.message || `HTTP ${res.status}`), { status: res.status, code: body?.error?.code });
+      throw Object.assign(new Error(body?.error?.message || `HTTP ${res.status}`), {
+        status: res.status,
+        code: body?.error?.code,
+        retryAfter: body?.error?.retryAfter ?? null,
+      });
     }
     return body;
   }
@@ -726,7 +730,7 @@
   function lookupGate(sym) {
     if (inLists(sym)) return null;
     const l = state.lookups.get(sym);
-    if (!l || l.pending) return 'cargando';
+    if (!l || l.pending || l.wait) return 'cargando';
     return l.quote ? null : { error: l.error ?? 'Sin precio.' };
   }
 
@@ -1015,7 +1019,7 @@
     for (const sym of state.symbols) {
       if (state.hist.has(sym)) continue;
       try {
-        const r = await api(`/api/history?symbol=${encodeURIComponent(sym)}`);
+        const r = await historyApi(sym, '');
         state.hist.set(sym, { points: r.data.points, stats: r.stats, latest: r.latest });
       } catch (e) {
         if (e.status === 429) {
@@ -1032,6 +1036,58 @@
     note.hidden = !waiting;
     note.textContent = waiting ? 'Algunos gráficos llegan en un minuto: el plan gratis permite 8 créditos por minuto.' : '';
     if (waiting) setTimeout(loadHistories, 65_000);
+  }
+
+  // ---------- historial y esperas ----------
+  /**
+   * Pedidos del historial de 5 años: hasta que uno sale bien, los de un mismo símbolo van de a uno. Si el gráfico y el
+   * resumen lo pedían a la vez con el servidor sin nada guardado, Twelve Data cobraba los dos (5 nov: una acción buscada
+   * gastaba 3 créditos en vez de 2). Después salen de lo guardado, sin créditos.
+   */
+  const histReady = new Set(); // símbolos con el historial ya guardado en el servidor
+  const histQueue = new Map(); // símbolo → último pedido en curso
+  function historyApi(sym, query) {
+    const url = `/api/history?symbol=${encodeURIComponent(sym)}${query}`;
+    if (histReady.has(sym)) return api(url);
+    const p = (histQueue.get(sym) ?? Promise.resolve())
+      .catch(() => {})
+      .then(() => api(url))
+      .then((r) => {
+        histReady.add(sym);
+        return r;
+      });
+    histQueue.set(sym, p);
+    return p;
+  }
+
+  /**
+   * Twelve Data da 8 créditos por minuto en el plan gratis y los repone al empezar cada minuto. Si se llenó, en vez del
+   * error se espera ese rato (el servidor dice cuánto, `retryAfter`) y se vuelve a pedir solo: `retry`. Devuelve lo que
+   * se guarda mientras tanto.
+   */
+  function waitMinute(e, retry) {
+    const ms = e.retryAfter * 1000;
+    setTimeout(retry, ms);
+    return { wait: Date.now() + ms };
+  }
+
+  /** Un aviso con cuenta regresiva: `msg` lleva {s}, que se cambia por los segundos que faltan cada segundo. */
+  let countdownTimer = 0;
+  function countdownEl(tag, msg, until) {
+    const left = () => String(Math.max(0, Math.ceil((until - Date.now()) / 1000)));
+    const el = h(tag, { class: 'muted', 'data-until': String(until), 'data-msg': msg }, msg.replace('{s}', left()));
+    if (!countdownTimer) {
+      countdownTimer = setInterval(() => {
+        const els = document.querySelectorAll('[data-until]');
+        if (!els.length) {
+          clearInterval(countdownTimer);
+          countdownTimer = 0;
+          return;
+        }
+        for (const x of els) x.textContent = x.dataset.msg.replace('{s}', String(Math.max(0, Math.ceil((Number(x.dataset.until) - Date.now()) / 1000))));
+      }, 1000);
+    }
+    return el;
   }
 
   // ---------- ficha ----------
@@ -1099,13 +1155,22 @@
       const gate = lookupGate(sym);
       if (gate) return gate === 'cargando' ? undefined : gate;
       state.rangeData.set(key, 'cargando');
-      api(`/api/history?symbol=${encodeURIComponent(sym)}&range=${range}&ind=1`)
+      historyApi(sym, `&range=${range}&ind=1`)
         .then((r) => {
           state.rangeData.set(key, { points: r.data.points, stats: r.stats, ind: r.indicators, bars: r.bars ?? null });
           // Una buscada no tiene fila en la lista: su año y su último cierre (resumen y señales) salen de aquí.
           if (range === '1A' && !state.hist.has(sym)) state.hist.set(sym, { points: r.data.points, stats: r.stats, latest: r.latest });
         })
-        .catch((e) => state.rangeData.set(key, { error: e.message }))
+        .catch((e) => {
+          if (!e.retryAfter) return state.rangeData.set(key, { error: e.message });
+          state.rangeData.set(
+            key,
+            waitMinute(e, () => {
+              if (state.rangeData.get(key)?.wait) state.rangeData.delete(key);
+              if (state.selected === sym) renderDetail();
+            }),
+          );
+        })
         .finally(() => {
           if (state.selected === sym && state.range === range) renderDetail();
         });
@@ -1222,15 +1287,35 @@
     const tbody = $('d-table').tBodies[0];
     const csvBtn = $('d-csv');
     csvBtn.disabled = !hist?.points;
-    // Mientras llega otro rango queda el gráfico anterior, atenuado: sin saltos ni parpadeos.
-    sec.classList.toggle('is-loading', !hist && chart.childElementCount > 0);
+    // Una buscada que todavía no tiene precio: su aviso reemplaza lo que hubiera.
+    const look = inLists(sym) ? null : state.lookups.get(sym);
+    const lookWaits = !!(look?.wait || (look?.pending && !look.quote));
+    // Mientras llega otro rango queda el gráfico anterior, atenuado: sin saltos ni parpadeos. Pero solo si es de esta
+    // misma acción: el gráfico y los números de otra no quedan debajo de este título.
+    const keep = !hist && !lookWaits && chart.childElementCount > 0 && chart.dataset.sym === sym;
+    sec.classList.toggle('is-loading', keep);
     if (!hist) {
-      const looking = state.lookups.get(sym)?.pending && !inLists(sym);
-      if (!chart.childElementCount) chart.replaceChildren(h('p', { class: 'muted' }, looking ? `Buscando el precio de ${sym}…` : 'Cargando historial…'));
+      if (!keep) {
+        const msg = look?.wait
+          ? countdownEl('p', 'Twelve Data da 8 consultas por minuto en el plan gratis: la ficha se abre sola en {s} s.', look.wait)
+          : h('p', { class: 'muted' }, lookWaits ? `Buscando el precio de ${sym}…` : 'Cargando historial…');
+        for (const host of [chart, rsiHost, volHost, macdHost]) charts.delete(host);
+        rsiWrap.hidden = volWrap.hidden = macdWrap.hidden = true;
+        stats.replaceChildren();
+        tbody.replaceChildren();
+        chart.replaceChildren(msg);
+        delete chart.dataset.sym;
+      }
       return;
     }
     stats.replaceChildren();
     tbody.replaceChildren();
+    if (hist.wait) {
+      for (const host of [chart, rsiHost, volHost, macdHost]) charts.delete(host);
+      rsiWrap.hidden = volWrap.hidden = macdWrap.hidden = true;
+      chart.replaceChildren(countdownEl('p', 'Twelve Data da 8 consultas por minuto en el plan gratis: el gráfico llega solo en {s} s.', hist.wait));
+      return;
+    }
     if (hist.error) {
       for (const host of [chart, rsiHost, volHost, macdHost]) charts.delete(host);
       rsiWrap.hidden = true;
@@ -1242,6 +1327,7 @@
     const dates = hist.points.map(([date]) => date);
     const pts = hist.points.map(([date, v]) => ({ date, v }));
     const ind = hist.ind; // falta mientras llegan los indicadores
+    chart.dataset.sym = sym; // de qué acción es lo que queda dibujado
     const on = (k) => !!(ind && state.ind[k]);
     const bars = hist.bars ?? null; // velas y volumen: llegan con los indicadores
     const candles = state.ind.candles && !unavailable('candles', hist.bars) && bars ? bars : null;
@@ -1416,14 +1502,25 @@
   /** Los 5 años de cierres de un símbolo, una vez por sesión. Al llegar se dibujan los dos bloques que estén abiertos. */
   function fullHistory(sym) {
     const c = state.full.get(sym);
+    // Esperando el próximo minuto de Twelve Data: para quien lo usa, todavía está cargando.
+    if (c?.wait) return undefined;
     if (c && c !== 'cargando') return c;
     if (!c) {
       const gate = lookupGate(sym);
       if (gate) return gate === 'cargando' ? undefined : gate;
       state.full.set(sym, 'cargando');
-      api(`/api/history?symbol=${encodeURIComponent(sym)}&range=5A`)
+      historyApi(sym, '&range=5A')
         .then((r) => state.full.set(sym, { points: r.data.points }))
-        .catch((e) => state.full.set(sym, { error: e.message }))
+        .catch((e) => {
+          if (!e.retryAfter) return state.full.set(sym, { error: e.message });
+          state.full.set(
+            sym,
+            waitMinute(e, () => {
+              if (state.full.get(sym)?.wait) state.full.delete(sym);
+              if (state.selected === sym) renderDetail();
+            }),
+          );
+        })
         .finally(() => {
           if (state.selected !== sym) return;
           renderSeason();
@@ -5834,9 +5931,16 @@
         }
       })
       .catch((e) => {
-        // Si ya tenía precio, queda ese; si no, el error (y «Reintentar», salvo con el tope del día).
+        // Si ya tenía precio, queda ese. Si se llenó el minuto de Twelve Data, se espera y se pide solo. Si no, el error
+        // (y «Reintentar», salvo con el tope del día).
+        const named = name ?? prev?.name ?? null;
         if (prev?.quote) state.lookups.set(sym, { ...prev, pending: false, stale: true, note: e.message });
-        else state.lookups.set(sym, { error: e.message, retry: e.code !== 'daily_limit', name: name ?? prev?.name ?? null });
+        else if (e.retryAfter) {
+          const w = waitMinute(e, () => {
+            if (state.lookups.get(sym)?.wait === w.wait) loadLookup(sym, named);
+          });
+          state.lookups.set(sym, { ...w, name: named });
+        } else state.lookups.set(sym, { error: e.message, retry: e.code !== 'daily_limit', name: named });
       })
       .finally(() => {
         if (state.selected === sym) renderDetail();
@@ -5866,8 +5970,9 @@
       if (done) text.textContent = state.lookAdded.where === 'eod' ? '✓ Agregada a tu lista diaria.' : '✓ Agregada a tu lista de seguimiento.';
       return;
     }
-    row.hidden = !l;
-    if (!l) return;
+    // Mientras espera el próximo minuto, el aviso va en el gráfico.
+    row.hidden = !l || !!l.wait;
+    if (!l || l.wait) return;
     if (l.pending && !l.quote) {
       text.textContent = 'Buscando su precio…';
       return;

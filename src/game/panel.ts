@@ -12,7 +12,7 @@
 // El buscador (services/lookup.ts) también abre la ficha de acciones que no están en su lista, con su clave, su tope del
 // día y su registro de buscadas, todo en esta misma caché.
 
-import { ApiError } from '../lib/http';
+import { ApiError, errorBody } from '../lib/http';
 import { mockSymbolNews } from '../mock';
 import {
   compare,
@@ -152,7 +152,7 @@ export async function panelReply(fn: () => Promise<unknown>): Promise<PanelReply
   try {
     return { status: 200, body: JSON.stringify(await fn()) };
   } catch (e) {
-    if (e instanceof ApiError) return { status: e.status, body: JSON.stringify({ error: { code: e.code, message: e.message, provider: e.provider ?? null } }) };
+    if (e instanceof ApiError) return { status: e.status, body: JSON.stringify(errorBody(e)) };
     throw e;
   }
 }

@@ -16,10 +16,17 @@ export class ApiError extends Error {
     readonly status: number,
     message: string,
     readonly provider?: Provider,
+    /** Segundos hasta poder intentar de nuevo: el límite por minuto de Twelve Data se repone al empezar cada minuto. */
+    readonly retryAfter?: number,
   ) {
     super(message);
     this.name = 'ApiError';
   }
+}
+
+/** El cuerpo de un error, igual en el Worker y en el Durable Object del juego (con `retryAfter` si se puede esperar). */
+export function errorBody(e: ApiError): { error: { code: ApiErrorCode; message: string; provider: Provider | null; retryAfter?: number } } {
+  return { error: { code: e.code, message: e.message, provider: e.provider ?? null, ...(e.retryAfter ? { retryAfter: e.retryAfter } : {}) } };
 }
 
 export function json(data: unknown, init: ResponseInit = {}): Response {
@@ -31,7 +38,7 @@ export function json(data: unknown, init: ResponseInit = {}): Response {
 
 export function errorResponse(e: unknown): Response {
   if (e instanceof ApiError) {
-    return json({ error: { code: e.code, message: e.message, provider: e.provider ?? null } }, { status: e.status });
+    return json(errorBody(e), { status: e.status, headers: e.retryAfter ? { 'Retry-After': String(e.retryAfter) } : undefined });
   }
   console.error('Error no controlado', e);
   return json({ error: { code: 'upstream_error', message: 'Error interno', provider: null } }, { status: 500 });

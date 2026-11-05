@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import { getBcrp, lastWithValue, parseBcrpDate } from '../src/lib/bcrp';
 import { getFred } from '../src/lib/fred';
-import { ApiError } from '../src/lib/http';
-import { getDailySeries, getQuotes } from '../src/lib/twelvedata';
+import { ApiError, errorResponse } from '../src/lib/http';
+import { getDailySeries, getQuotes, secondsToNextMinute } from '../src/lib/twelvedata';
 import { fakeFetch } from './helpers';
 
 const quoteBody = (symbol: string, close: string) => ({
@@ -38,8 +38,22 @@ describe('Twelve Data', () => {
   });
 
   it('distingue límite por minuto y clave rechazada', async () => {
-    const limited = fakeFetch(() => ({ status: 429, body: { code: 429, message: 'limit', status: 'error' } }));
-    await expect(getQuotes(['BAP'], 'k', limited.f)).rejects.toMatchObject({ code: 'rate_limited' });
+    const limited = fakeFetch(() => ({ status: 429, body: { code: 429, message: 'You have run out of API credits for the current minute.', status: 'error' } }));
+    const e = await getQuotes(['BAP'], 'k', limited.f).catch((x) => x);
+    expect(e).toMatchObject({ code: 'rate_limited', status: 429 });
+    // Se puede esperar: el cupo vuelve al empezar el próximo minuto.
+    expect(e.retryAfter).toBeGreaterThanOrEqual(2);
+    expect(e.retryAfter).toBeLessThanOrEqual(61);
+    expect(secondsToNextMinute(new Date('2026-11-05T15:00:58Z'))).toBe(3);
+    expect(secondsToNextMinute(new Date('2026-11-05T15:01:00Z'))).toBe(61);
+    // Sin créditos en el día no se espera un minuto.
+    const daily = fakeFetch(() => ({ status: 429, body: { code: 429, message: 'You have run out of API credits for the day.', status: 'error' } }));
+    const d = await getQuotes(['BAP'], 'k', daily.f).catch((x) => x);
+    expect(d.retryAfter).toBeUndefined();
+    expect(d.message).toMatch(/del día/);
+    const res = errorResponse(e);
+    expect(res.headers.get('Retry-After')).toBe(String(e.retryAfter));
+    expect(((await res.json()) as { error: { retryAfter: number } }).error.retryAfter).toBe(e.retryAfter);
     const badKey = fakeFetch(() => ({ body: { code: 401, message: 'invalid key', status: 'error' } }));
     await expect(getQuotes(['BAP'], 'k', badKey.f)).rejects.toMatchObject({ code: 'not_configured' });
   });

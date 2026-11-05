@@ -91,6 +91,10 @@ Las tres preguntas pendientes las respondió Claude con la opción más simple, 
   - **Sugerencias de la SEC** (gratis y públicas) por nombre o símbolo. Las divisas y la cripto (USD/PEN, BTC/USD) y lo que la SEC no tiene (VOO) se abren escribiendo el símbolo.
   - **Sin clave**, un amigo ve los resultados de la SEC de lo que busca.
   - **No se eligió:** solo datos públicos (sin precio) ni buscar solo para agregar a la lista.
+  - **Arreglo del 5 nov** (el usuario vio «se alcanzó el límite de créditos por minuto» al buscar):
+    - Una acción nueva gastaba 3 créditos, porque el historial se pedía dos veces a la vez. Ahora gasta 2.
+    - Si el minuto está lleno, la ficha espera y se abre sola.
+    - **Sin elegir, para el dueño:** el precio de las buscadas desde Finnhub (1 crédito por acción nueva) o Alpaca como segunda fuente.
 - [x] **Más fácil de usar, en PC y celular** (5 nov). El usuario pidió «que la UI sea lo más fácil de usar posible». Se midió antes: en el celular el panel medía unas 17 pantallas (18 secciones en una columna) y tenía 101 botones de menos de 32 px. Eligió:
   - **Hojas por tema:** «Hoy», «Acciones» y «Mercados», más «Juego»; en el celular, abajo, como en una app. Cada hoja mide de 5 a 8 pantallas.
   - **La ficha a pantalla completa en el celular,** con «← Volver» (y el botón atrás) que deja la hoja donde estaba.
