@@ -39,7 +39,7 @@ body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--f-mono);fo
   .top,.teaser,#install-panel,.tape,.banner{order:-2}
   #welcome{order:1} #dia{order:2} #milista{order:3} #summary{order:4} #news{order:5} #cal{order:6} #pmk{order:7} #people{order:8}
   #keycard{order:1} #watchlist{order:2} #detail{order:3} #eod{order:4} #compare{order:5} #portfolio{order:6} #hapi{order:7} #fin{order:8} #ps{order:9}
-  #thermo{order:1} #cmd{order:2} #cg{order:3} #macro{order:4} #pm{order:5}
+  #thermo{order:1} #cmd{order:2} #cot{order:3} #cg{order:4} #macro{order:5} #pm{order:6}
   .foot{order:20}
 }
 @media (min-width:900px){
@@ -497,6 +497,27 @@ button[disabled]{opacity:.6;cursor:default}
 .pm-chgs{display:flex;flex-wrap:wrap;gap:2px 14px;font-size:.85rem;color:var(--muted);padding-left:12px}
 .pm-chg{white-space:nowrap;font-family:var(--f-sans)}
 .pm-chg span{font-family:var(--f-mono)}
+
+/* ---------- posición de los fondos (CFTC): una fila por materia prima, con las semanas del año en barras ---------- */
+.cot{display:flex;flex-direction:column;gap:14px}
+.cot-row{display:flex;flex-direction:column;gap:2px;min-width:0}
+.cot-line{display:flex;align-items:baseline;justify-content:space-between;gap:10px;margin:0;font-family:var(--f-sans)}
+.cot-name{font-weight:500}
+.cot-week{font-size:.85rem;white-space:nowrap}
+.cot-state{margin:0 0 4px;color:var(--muted);font-size:.9rem;font-family:var(--f-sans)}
+.cot-chart{display:flex;align-items:center;gap:10px}
+/* Con lugar (celular echado, tablet), cada fila en una sola franja: el texto a la izquierda y las barras a la derecha. */
+@container (min-width:520px){
+  .cot-row{display:grid;grid-template-columns:minmax(0,1fr) minmax(180px,42%);grid-template-areas:"line chart" "state chart";column-gap:20px;align-items:center}
+  .cot-line{grid-area:line}
+  .cot-state{grid-area:state;margin:0}
+  .cot-chart{grid-area:chart}
+}
+.cot-bars{display:block;flex:1;min-width:0;height:24px}
+.cot-bars .week{fill:var(--muted);fill-opacity:.4}
+.cot-bars .now{fill:var(--accent)}
+.cot-bars .zero{stroke:var(--muted);stroke-opacity:.6;stroke-width:1;vector-effect:non-scaling-stroke}
+.cot-pct{min-width:6ch;text-align:right;font-size:.85rem;color:var(--muted)}
 
 /* ---------- noticias ---------- */
 .news{list-style:none;margin:0;padding:0;display:flex;flex-direction:column}

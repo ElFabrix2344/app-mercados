@@ -143,7 +143,7 @@
             <li><strong>Mi cuenta Hapi:</strong> importa tu estado de cuenta en PDF o anota tus operaciones. Se cifra con tu frase: nadie más la puede ver, tampoco el dueño de la app.</li>
             <li><strong>Buscador:</strong> arriba, cualquier acción por nombre o símbolo. Sin clave ves sus resultados de la SEC; con ella, su ficha completa.</li>
             <li><strong>Resultados de empresas y P/S:</strong> ingresos y utilidades de los últimos años de cualquier acción que reporte a la SEC, y un comparador por P/S (precio / ventas) con empresas parecidas.</li>
-            <li><strong>Materias primas:</strong> cobre, oro, plata, zinc y petróleo.</li>
+            <li><strong>Materias primas:</strong> cobre, oro, plata, zinc y petróleo, y si los grandes fondos están comprados o vendidos en cada una.</li>
             <li><strong>Lo que espera el mercado:</strong> las probabilidades de Polymarket sobre empresas, la Fed y eventos del mundo.</li>
             <li><strong>Perú y EE. UU.:</strong> dólar, tasas, inflación, BVL, bonos y la curva del Tesoro, con el calendario de anuncios y las noticias.</li>
             <li id="welcome-install"><strong>Como app:</strong> con «Instalar app», arriba, Rueda queda en tu celular o computadora con su ícono y se abre a pantalla completa.</li>
@@ -639,6 +639,24 @@
             </details>
           </div>
           <div id="cmd-grid" class="pm-grid"><p class="muted">Cargando…</p></div>
+        </section>
+
+        <!-- Posición de los fondos (CFTC, dominio público): para todos. Elegida el 6 nov, al revisar OpenBB. -->
+        <section class="screen" id="cot" aria-labelledby="cot-h">
+          <div class="screen-head">
+            <h2 id="cot-h">Posición de los fondos</h2>
+            <span class="src" id="cot-date">CFTC</span>
+            <details class="help">
+              <summary aria-label="Qué muestra esta sección">?</summary>
+              <div class="help-body">
+                <p>Cada viernes la CFTC, el regulador de los futuros en EE. UU., publica cuántos contratos tienen los fondos de inversión en cada mercado, con datos del martes. «Comprados» quiere decir que tienen más contratos que ganan si el precio sube que contratos que ganan si baja; «vendidos», al revés.</p>
+                <p>Cada barra es una semana del último año: arriba de la línea, comprados; abajo, vendidos. La cifra es lo que tienen de más hacia un lado, como parte de todos los contratos abiertos, y «de costumbre» compara esta semana con ese año.</p>
+                <p>Cobre, oro y plata son de la bolsa COMEX y el petróleo WTI, de NYMEX; el zinc no está porque se negocia en Londres. Muestra lo que hicieron los fondos, no lo que va a pasar con el precio.</p>
+              </div>
+            </details>
+          </div>
+          <div id="cot-body" class="cot"><p class="muted">Cargando…</p></div>
+          <p class="hint">Fuente: <a href="https://www.cftc.gov/MarketReports/CommitmentsofTraders/index.htm" target="_blank" rel="noopener noreferrer">CFTC, Commitments of Traders</a></p>
         </section>
 
       </div>

@@ -16,6 +16,8 @@ import { SEC_YEARS, type FinancialsData } from './services/financials';
 import { getEodList, shapeEod, summarizeHistory, type EodRow, type EodView } from './services/eod';
 import { computeThermometer, THERMO_SYMBOL, type Thermometer } from './services/thermometer';
 import type { CryptoReply, CryptoSeries } from './services/crypto';
+import { buildCot, COT_MARKETS, type CotData } from './services/cot';
+import type { CotRow } from './lib/cftc';
 import { shapeSmv, type SmvView } from './services/smv';
 import type { PmData } from './services/polymarket';
 import type { FundamentalsData } from './services/fundamentals';
@@ -181,6 +183,31 @@ export function mockCrypto(now: Date): CryptoReply {
     coins[id] = { points, summary: summarize(points), symbol, name, change24h, marketCap: null, updated: now.toISOString() };
   }
   return { enabled: true, ...fresh({ coins }, now) };
+}
+
+/** Posición de los fondos de prueba (sin la CFTC): un año de semanas inventadas, en rangos parecidos a los de nov 2026. */
+export function mockCot(now: Date): Fresh<CotData> {
+  // El martes del último informe que ya salió: sale el viernes, así que es el martes de por lo menos tres días antes.
+  const t = new Date(now.getTime() - 3 * 86_400_000);
+  const tuesday = addDays(isoDate(t), -((t.getUTCDay() + 5) % 7));
+  // Por mercado: neto mínimo y máximo (fracción de los contratos abiertos), contratos abiertos y la forma de la onda.
+  const shapes: Record<string, [number, number, number, number]> = {
+    copper: [0.1, 0.29, 330_000, 1.4],
+    gold: [0.2, 0.35, 400_000, 0.6],
+    silver: [0.03, 0.17, 115_000, 2.3],
+    oil: [-0.02, 0.06, 1_900_000, 3.1],
+  };
+  const rows: CotRow[] = [];
+  for (const m of COT_MARKETS) {
+    const [lo, hi, oi, phase] = shapes[m.key]!;
+    for (let i = 0; i < 53; i++) {
+      const wave = 0.5 + 0.35 * Math.sin(phase + i / 6) + 0.15 * Math.sin(phase * 3 + i / 1.7);
+      const net = Math.round(oi * (lo + (hi - lo) * wave));
+      const short = Math.round(oi * 0.1);
+      rows.push({ date: addDays(tuesday, -7 * (52 - i)), code: m.code, openInterest: oi, long: short + net, short });
+    }
+  }
+  return fresh(buildCot(rows), now);
 }
 
 /** «Lo que espera el mercado» de prueba (eventos inventados con las tres formas: sí o no, varias opciones y escalera). */

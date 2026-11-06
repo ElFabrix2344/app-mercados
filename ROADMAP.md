@@ -76,6 +76,9 @@ Las tres preguntas pendientes las respondió Claude con la opción más simple, 
   - **Hechos de importancia de la SMV:** en «Más del Perú» y en la ficha de BAP, BVN, SCCO, CPAC e IFS.
   - **Evaluadas y no elegidas:** Brent y gas natural (EIA vía FRED, de dominio público), monedas del BCE (Frankfurter) y Banco Mundial (CC BY 4.0).
   - **Descartadas:** Alpha Vantage (25 consultas al día), FMP (mostrar a otros es pagado), Tiingo (uso personal), Massive/ex Polygon (repite Twelve Data) y la SBS (no tiene API; el BCRP ya publica sus tasas).
+- [x] **Posición de los fondos (CFTC)** (6 nov). Salió de revisar OpenBB, que el usuario pasó: es el repositorio oficial, ahora en `github.com/openbq-org` (OpenBQ, sin fines de lucro, de BrightQuery), pero no conviene integrarlo, porque es Python con su propio servidor y no cambia los términos de cada fuente. De sus fuentes públicas se le ofrecieron la CFTC y el FMI, y eligió la CFTC.
+  - **Qué muestra:** en «Mercados», debajo de las materias primas, si los fondos están comprados o vendidos en cobre, oro, plata y petróleo WTI, frente al último año y con la flecha de la semana. Detalle en el README.
+  - **Queda para después:** el FMI (proyecciones de crecimiento e inflación del Perú frente a la región, dos veces al año; revisar sus términos) y pasar la posición de los fondos al conector de Claude.
 - [x] **Lo que espera el mercado** (4 nov). El usuario preguntó por agregar «cosas como Polymarket o Kalshi» sobre acciones y eventos en general. Eligió:
   - **Tarjetas con el diseño de Rueda y el widget oficial de Polymarket** (al tocar «Ver en vivo»).
   - **Temas de partida:** «Bolsa y empresas» y «Política y mundo». El dueño fija otros pegando su enlace.

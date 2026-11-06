@@ -4372,6 +4372,83 @@
     }
   }
 
+  // ---------- posición de los fondos en materias primas (CFTC, para todos) ----------
+  // El informe COT de cada viernes (src/services/cot.ts): si los fondos están comprados o vendidos en cobre, oro, plata y
+  // petróleo, y cómo está eso frente al último año. Describe lo que hicieron, no lo que va a pasar con el precio.
+  const COT_ORDER = ['copper', 'gold', 'silver', 'oil'];
+
+  /** Esta semana frente al año, dicho hacia el lado en que están: para los vendidos, un neto bajo es estar más vendidos. */
+  function cotYear(rank, long) {
+    if (rank == null) return null;
+    const [hi, lo] = long ? ['más', 'menos'] : ['menos', 'más'];
+    if (rank >= 1) return `lo ${hi} del año`;
+    if (rank <= 0) return `lo ${lo} del año`;
+    if (rank >= 0.8) return `${hi} que de costumbre`;
+    if (rank <= 0.2) return `${lo} que de costumbre`;
+    return 'como de costumbre';
+  }
+
+  /** Las semanas del año en barras (arriba de la línea, comprados; abajo, vendidos); la de esta semana, en cian. */
+  function cotBars(m) {
+    const vals = m.points.map(([, v]) => v);
+    const top = Math.max(0, ...vals);
+    const bottom = Math.min(0, ...vals);
+    const H = 24;
+    const y = (v) => ((top - v) / (top - bottom || 1)) * H;
+    const pct = (v) => `${nf(1).format(v * 100)}%`;
+    const svg = s('svg', {
+      class: 'cot-bars',
+      viewBox: `0 0 ${vals.length} ${H}`,
+      preserveAspectRatio: 'none',
+      role: 'img',
+      'aria-label': `${m.name}, neto de los fondos en el último año: entre ${pct(Math.min(...vals))} y ${pct(Math.max(...vals))} de los contratos; esta semana, ${pct(m.netPct)}`,
+    });
+    vals.forEach((v, i) => {
+      const [a, b] = [y(0), y(v)];
+      svg.append(s('rect', { class: i === vals.length - 1 ? 'now' : 'week', x: i + 0.15, width: 0.7, y: Math.min(a, b), height: Math.max(0.5, Math.abs(a - b)) }));
+    });
+    svg.append(s('line', { class: 'zero', x1: 0, x2: vals.length, y1: y(0), y2: y(0) }));
+    return svg;
+  }
+
+  function cotRow(m) {
+    const long = m.netPct >= 0;
+    const year = cotYear(m.rank, long);
+    const ch = m.prevNetPct == null ? 0 : m.netPct - m.prevNetPct;
+    // Menos de 0,05 puntos de un martes a otro cuenta como igual.
+    const moved = Math.abs(ch) >= 0.0005;
+    const weekSay = moved ? `${(ch > 0) === long ? 'Más' : 'Menos'} ${long ? 'comprados' : 'vendidos'} que la semana pasada` : 'Igual que la semana pasada';
+    return h(
+      'div',
+      { class: 'cot-row' },
+      h(
+        'p',
+        { class: 'cot-line' },
+        h('span', { class: 'cot-name' }, m.name),
+        m.prevNetPct == null ? null : h('span', { class: `cot-week ${moved ? trend(ch) : 'flat'}`, title: weekSay, 'aria-label': weekSay }, `${moved ? arrowOf(ch) : '■'} en la semana`),
+      ),
+      h('p', { class: 'cot-state' }, `${long ? 'Comprados' : 'Vendidos'}${year ? ` · ${year}` : ''}`),
+      h(
+        'div',
+        { class: 'cot-chart' },
+        cotBars(m),
+        h('span', { class: 'cot-pct', title: 'Neto de los fondos, como parte de los contratos abiertos' }, `${sign(m.netPct)}${nf(1).format(Math.abs(m.netPct * 100))}%`),
+      ),
+    );
+  }
+
+  async function loadCot() {
+    const host = $('cot-body');
+    try {
+      const r = await api('/api/cot');
+      const rows = COT_ORDER.map((k) => r.data.markets[k]).filter(Boolean);
+      if (r.data.date) $('cot-date').textContent = `CFTC · al ${fDay.format(day(r.data.date))}`;
+      host.replaceChildren(...(rows.length ? rows.map(cotRow) : [h('p', { class: 'muted' }, 'Sin datos de la CFTC')]), ...[staleHint(r)].filter(Boolean));
+    } catch (e) {
+      host.replaceChildren(h('p', { class: 'err' }, e.message));
+    }
+  }
+
   // ---------- lo que espera el mercado (Polymarket, para todos) ----------
   // Tarjetas con el diseño de Rueda (src/services/polymarket.ts) y, al tocar «Ver en vivo», el widget oficial de
   // Polymarket debajo, sin botones de compra. El dueño fija eventos pegando su enlace.
@@ -6685,6 +6762,7 @@
       loadCurve();
       loadPeruMarkets();
       loadCrypto();
+      loadCot();
       loadCalendar();
       loadForecasts();
       loadGames();
@@ -6711,6 +6789,7 @@
     loadCurve();
     loadPeruMarkets();
     loadCrypto();
+    loadCot();
     loadCalendar();
     loadForecasts();
     loadGames();

@@ -10,6 +10,7 @@ import {
   mockCompany,
   mockCompanyCalendar,
   mockCompare,
+  mockCot,
   mockCrypto,
   mockCurve,
   mockEodView,
@@ -33,6 +34,7 @@ import {
   mockSymbolNews,
   mockUsa,
 } from './mock';
+import { cot } from './services/cot';
 import { crypto } from './services/crypto';
 import { finnhubFirst, lookedUp, lookup, lookupStatus, searchQuery, suggest, twelveSource } from './services/lookup';
 import { refreshSmv, smvView } from './services/smv';
@@ -347,6 +349,10 @@ async function route(req: Request, env: Env, url: URL, role: Role, email: string
       // Cripto (CoinGecko, plan Demo con atribución): para todos. Sin COINGECKO_API_KEY, `enabled: false`.
       case '/api/crypto':
         return json(mock ? mockCrypto(now) : await crypto(deps));
+
+      // Posición de los fondos en materias primas (CFTC, dominio público): para todos.
+      case '/api/cot':
+        return json(mock ? mockCot(now) : await cot(deps));
 
       // Lo que espera el mercado (Polymarket): para todos. Los fijados los elige el dueño.
       case '/api/polymarket':
