@@ -331,7 +331,8 @@
                 <p>Los resultados vienen de los informes que la empresa presenta a la SEC: los anuales (10-K o 20-F) y, si los presenta, los trimestrales (10-Q). Con estos se arman los últimos 12 meses, para no depender de un informe anual de hace hasta un año. Son públicos y se guardan una semana.</p>
                 <p>«Calidad del negocio»: el ROIC es cuánto gana la empresa por cada dólar de capital puesto en el negocio. El puntaje de Piotroski suma nueve señales de salud financiera frente al año anterior; suele leerse así: de 7 a 9, finanzas sólidas; de 0 a 3, débiles. No sirve para bancos ni aseguradoras.</p>
                 <p>En «Empresa» están los reportes que presentó a la SEC, con enlace al documento (en inglés): informes, hechos (8-K) y la junta de accionistas.</p>
-                <p>El resumen de arriba describe lo que ya está en la ficha (tendencia, riesgo, valoración y fundamentales): no predice. «Ratios y DCF» usa los informes de la SEC y tu precio; el DCF es simple y sus supuestos se cambian a mano. Nada de esto es una recomendación de inversión.</p>
+                <p>«Valor» compara lo que pide el precio de hoy con la historia de la propia empresa: cada múltiplo (P/E, EV/EBITDA, P/S, P/B) frente a su mediana y su rango de 5 años. Un múltiplo alto no dice que esté cara: puede ser que se espere más crecimiento. El DCF es simple y sus supuestos se cambian a mano; al revés, dice qué crecimiento hace falta para justificar el precio de hoy.</p>
+                <p>El resumen de arriba describe lo que ya está en la ficha (tendencia, riesgo, valoración y fundamentales): no predice. Nada de esto es una recomendación de inversión.</p>
               </div>
             </details>
             <button type="button" id="d-close">Cerrar</button>
@@ -379,6 +380,7 @@
           <!-- Lo largo de la ficha, en pestañas (5 nov): se ve una a la vez y se recuerda la última. -->
           <div class="d-tabs" id="d-tabs" role="tablist" aria-label="Partes de la ficha">
             <button type="button" role="tab" id="dt-resumen" aria-controls="dp-resumen" aria-selected="true">Resumen</button>
+            <button type="button" role="tab" id="dt-negocio" aria-controls="dp-negocio" aria-selected="false" tabindex="-1">Negocio</button>
             <button type="button" role="tab" id="dt-valor" aria-controls="dp-valor" aria-selected="false" tabindex="-1">Valor</button>
             <button type="button" role="tab" id="dt-empresa" aria-controls="dp-empresa" aria-selected="false" tabindex="-1">Empresa</button>
             <button type="button" role="tab" id="dt-noticias" aria-controls="dp-noticias" aria-selected="false" tabindex="-1">Noticias</button>
@@ -407,22 +409,30 @@
               <div id="d-strat-body"></div>
             </details>
           </div>
-          <div class="d-panel" id="dp-valor" role="tabpanel" aria-labelledby="dt-valor" hidden>
+          <!-- «Negocio» (10 nov): ¿es buen negocio? Sus resultados y su calidad, con los informes de la SEC. No usa precios. -->
+          <div class="d-panel" id="dp-negocio" role="tabpanel" aria-labelledby="dt-negocio" hidden>
             <details class="d-tool" id="d-fin">
               <summary>Resultados: últimos 12 meses, por año y por trimestre (SEC)</summary>
               <div id="d-fin-body"></div>
             </details>
             <!-- Calidad del negocio (9 nov): ROIC, dividendos, recompras, acciones y el puntaje de Piotroski. -->
             <details class="d-tool" id="d-qual">
-              <summary>Calidad del negocio: rendimiento del capital y Piotroski (SEC)</summary>
+              <summary>Calidad del negocio: rentabilidad, deuda y Piotroski (SEC)</summary>
               <div id="d-qual-body"></div>
+            </details>
+          </div>
+          <!-- «Valor» (10 nov): ¿cara o barata? Lo que pide el precio de hoy frente a su historia, a sus ventas y a su caja. -->
+          <div class="d-panel" id="dp-valor" role="tabpanel" aria-labelledby="dt-valor" hidden>
+            <details class="d-tool" id="d-mult">
+              <summary>¿Cara o barata? Sus múltiplos frente a su historia</summary>
+              <div id="d-mult-body"></div>
             </details>
             <details class="d-tool" id="d-ps">
               <summary>Valorar por P/S (precio / ventas)</summary>
               <div id="d-ps-body"></div>
             </details>
             <details class="d-tool" id="d-val">
-              <summary>Ratios y DCF (SEC)</summary>
+              <summary>DCF: cuánto valdría y qué crecimiento descuenta el precio</summary>
               <div id="d-val-body"></div>
             </details>
           </div>
@@ -524,18 +534,20 @@
           </details>
         </section>
 
-        <!-- Valorar por P/S con comparables (pedido del usuario, 4 nov): ventas y acciones de la SEC (públicas), dólar del
-             BCRP; precios de tu lista o escritos a mano. La misma cuenta que la herramienta valorar_ps del conector. -->
+        <!-- Comparar con pares: el P/S con comparables (pedido del usuario, 4 nov) y, desde el 10 nov, sus números lado a
+             lado. Ventas, márgenes, deuda y acciones de la SEC (públicas), dólar del BCRP; precios de tu lista o escritos
+             a mano. El P/S es la misma cuenta que la herramienta valorar_ps del conector. -->
         <section class="screen" id="ps" aria-labelledby="ps-h">
           <div class="screen-head">
-            <h2 id="ps-h">Valorar por P/S</h2>
+            <h2 id="ps-h">Comparar con pares</h2>
             <span class="src">SEC EDGAR · BCRP</span>
             <details class="help">
-              <summary aria-label="Cómo se calcula el P/S">?</summary>
+              <summary aria-label="Cómo se comparan las empresas">?</summary>
               <div class="help-body">
-                <p>P/S (precio / ventas) = capitalización ÷ ventas del último año fiscal. La capitalización es el precio por las acciones en circulación: las de la portada del informe más nuevo a la SEC (en un ADR, entre las acciones que vale cada uno).</p>
+                <p>P/S (precio / ventas) = capitalización ÷ ventas de los últimos 12 meses (o del último año fiscal, si la empresa no presenta informes trimestrales). La capitalización es el precio por las acciones en circulación: las de la portada del informe más nuevo a la SEC (en un ADR, entre las acciones que vale cada uno).</p>
                 <p>Se compara con empresas parecidas: el precio implícito es el que tendría la acción con el P/S de sus comparables (la mediana) o con el que escribas. Si está por encima del precio de hoy, a esos múltiplos la acción se ve barata, y al revés.</p>
-                <p>Sirve para empresas con ventas, no para bancos ni aseguradoras. Las ventas en soles se pasan a dólares con el dólar de hoy del BCRP; las de otras monedas, todavía no. Es un cálculo, no una recomendación de inversión.</p>
+                <p>«Lado a lado» pone juntas la acción y sus comparables: cuánto crecen, sus márgenes, su rentabilidad, su deuda y, si hay precio, sus múltiplos.</p>
+                <p>El P/S sirve para empresas con ventas, no para bancos ni aseguradoras. Las ventas en soles se pasan a dólares con el dólar de hoy del BCRP; las de otras monedas, todavía no. Es un cálculo, no una recomendación de inversión.</p>
               </div>
             </details>
           </div>

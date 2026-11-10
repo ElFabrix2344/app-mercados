@@ -8,7 +8,7 @@ App de mercados (Cloudflare Worker + panel web + conector MCP para Claude). El R
 
 El usuario: «intentemos desviarnos del aspecto juego del app, parece que nadie lo está usando mucho, la idea es que rueda sea una herramienta completa para poder tomar las decisiones de inversión más informadas posibles».
 
-- **Lo que se construye ahora es análisis para decidir**, no juegos. El plan va en cuatro fases (ROADMAP.md, sección 8i): 1) la ficha al día; 2) ¿cara o barata?; 3) tu cartera real; 4) decidir y seguir.
+- **Lo que se construye ahora es análisis para decidir**, no juegos. El plan va en cuatro fases (ROADMAP.md, sección 8i): 1) la ficha al día (hecha el 9 nov); 2) ¿cara o barata? (hecha el 10 nov); 3) tu cartera real; 4) decidir y seguir.
 - **Datos públicos primero** (SEC, BCRP, FRED): así le sirve a todo el grupo, también a quien no conectó su clave. Lo que no necesita precio va también en «Resultados de empresas» (`#fin`), que ven todos.
 - **Rueda muestra datos y cuentas, no dice qué comprar o vender.** Un puntaje (Piotroski) o una etiqueta («sobre su historia») describe; no recomienda. Explica cada indicador en su «?».
 - **El juego quedó aparte, no borrado:** sin pestaña ni avisos; se entra por el enlace del pie (`#juego`). No propongas juegos nuevos ni le sumes cosas salvo que el usuario lo pida.
@@ -74,15 +74,28 @@ El usuario: «intentemos desviarnos del aspecto juego del app, parece que nadie 
 - **«Hoy» empieza con «Tu día» y «Tu lista»** (`renderDia` y `renderMiLista`, con lo que el panel ya cargó: no piden nada nuevo).
   - **Tu día:** S&P 500, dólar, cobre y bitcoin. Si el SPY no está en tu lista, se usa su último cierre del termómetro (`state.thermo`). El dólar sale del BCRP y bitcoin de CoinGecko.
   - **Tu lista:** las tres que más se movieron. En «Hoy» no va la cinta.
-- **La ficha** (5 nov): el precio en grande (`#d-price`), el selector de periodos a lo ancho, el gráfico y lo largo en pestañas: Resumen, Valor, Empresa y Noticias (`D_TABS`, se recuerda la última).
-  - Una pestaña sin nada se esconde (`renderDetailTabs`). «Valor» abre solos sus bloques de la SEC.
-  - **Si agregas un bloque a la ficha,** ponlo en el panel de su pestaña (`dp-…`).
+- **La ficha** (5 nov): el precio en grande (`#d-price`), el selector de periodos a lo ancho, el gráfico y lo largo en pestañas (`D_TABS`, se recuerda la última). Desde el 10 nov son cinco:
+  - **Resumen:** estadísticas del precio, estacionalidad y probar una estrategia.
+  - **Negocio** (¿es buen negocio?): resultados y calidad. No usa precios.
+  - **Valor** (¿cara o barata?): múltiplos frente a su historia, P/S y DCF. Necesita precio.
+  - **Empresa:** datos de Finnhub (solo el dueño), reportes de la SEC y hechos de la SMV.
+  - **Noticias.**
+  - Una pestaña sin nada se esconde (`renderDetailTabs`). Los bloques de «Negocio» y «Valor» se piden al abrirlos y en su pestaña se abren solos (`D_TAB_BLOCKS`).
+  - **Si agregas un bloque a la ficha,** ponlo en el panel de su pestaña (`dp-…`) y, si se pide al abrirlo, en `D_TAB_BLOCKS`.
 - **La ficha al día** (9 nov, fase 1 del rumbo nuevo). Todo de la SEC y público:
   - **Resultados** (`#d-fin`, `financialsView`): arriba, los últimos 12 meses y el último trimestre; el gráfico y la tabla, por año o por trimestre (`finMode`, se recuerda en `mercados.sec-vista`).
-  - **Ratios y DCF** (`renderDetailVal`): usan los últimos 12 meses y el balance del último 10-Q (`fundamentals.latest`) si su fecha coincide con la de los resultados (`fresh`); si no, el año fiscal. El texto dice siempre con qué periodo se calculó.
-  - **Calidad del negocio** (`#d-qual`, `services/quality.ts`): ROIC, margen bruto, acciones, dividendos y recompras, y Piotroski. Las cuentas las hace el servidor; el panel solo las muestra.
+  - **Lo más nuevo** (`latestOf` en `valuation-core.js`): los últimos 12 meses y el balance del último 10-Q (`fundamentals.latest`) si su fecha coincide con la de los resultados; si no, el año fiscal para todo. Úsalo siempre que mezcles resultados y balance, y di en el texto con qué periodo se calculó.
+  - **Calidad del negocio** (`#d-qual`, `services/quality.ts`), en tres grupos: rentabilidad (ROIC, ROE, márgenes, flujo libre), deuda, y lo que devuelve o diluye; después, Piotroski. Lo anual lo calcula el servidor; ROE, márgenes y deuda con lo más nuevo los saca el panel de `peerMetrics`.
   - **Reportes a la SEC** (`#d-filings`, en «Empresa»; `services/filings.ts`): los que importan, con su tema en castellano (`ITEMS_8K`) y enlace al documento.
   - **Sin clave:** resultados, calidad y reportes están también en `#fin` (`renderFinExtras`), sin lo que necesita precio. Si sumas un bloque de datos públicos a la ficha, ponlo ahí también.
+- **¿Cara o barata?** (10 nov, fase 2 del rumbo nuevo):
+  - **Las cuentas de valoración viven en `public/valuation-core.js`**: un módulo sin DOM, con pruebas (`test/valuation-core.test.ts`). Lo importan el panel (`V`, cargado al empezar) y el servidor (`services/valuation.ts`). **Una cuenta nueva de valoración va ahí, con su prueba,** no escrita dos veces.
+  - **Múltiplos frente a su historia** (`#d-mult`, `renderDetailMult`): P/E, EV/EBITDA, P/S, P/B y rendimiento del flujo libre de hoy, frente a los de cada cierre fiscal de los 5 años con precio guardado (`multiplesHistory`, `standing`). Con menos de 3 años no se compara.
+  - **Splits:** los precios guardados vienen ajustados y las portadas viejas de la SEC no. `splitAdjusted` lleva las acciones de antes a las de hoy cuando el salto entre dos portadas es de 2, 3, 10… (comprobado con NVDA, AMZN, TSLA y WMT). Úsalo siempre que multipliques un precio histórico por acciones de entonces.
+  - **Sin verde ni rojo:** estar sobre la mediana no es bueno ni malo. Se dice «sobre», «bajo» o «cerca de su mediana», nunca «cara» o «barata» como veredicto.
+  - **DCF** (`#d-val`, `renderDetailVal`): el DCF simple y, al revés, el crecimiento que ya descuenta el precio (`impliedGrowth`, entre −30 % y 60 %).
+  - **Pares lado a lado** (`peersSide`, dentro de «Comparar con pares», `#ps`): para todos; se pide al abrirlo y los múltiplos salen si hay precio.
+  - **Pedidos a la SEC de a uno** (`secQueue`): resultados, fundamentales, calidad y reportes pasan por una sola cola en el panel. Un pedido nuevo que termine en la SEC va por ahí.
 - **Más fácil de usar** (5 nov, elegido por el usuario):
   - **Botones de unos 40 px** en el celular y en pantallas táctiles (`pointer:coarse`). Los enlaces dentro de una frase quedan como están.
   - **Secciones plegables:** tocar el título las pliega (`setupFolds`, se recuerda en `mercados.plegadas`). No se pliegan las de `NO_FOLD`: la ficha, la bienvenida, el aviso de la clave y la liga.
@@ -145,7 +158,7 @@ El usuario: «intentemos desviarnos del aspecto juego del app, parece que nadie 
   - **Frecuencia:** sale los viernes a las 15:30 de Nueva York, con las posiciones del martes. Un registro en KV (`cot`), cada 3 horas como mucho.
   - **Sin clave:** la API (Socrata) no la pide. Si algún día responde 429 seguido, se puede sumar un *app token* gratis como secreto, en el encabezado `X-App-Token`.
   - **Describe, no predice:** como el termómetro, no le agregues señales de compra o venta.
-- **P/S** (4 nov, pedido del usuario: «facilita con alguna herramienta el método P/S»; eligió la calculadora de la ficha, el comparador y `valorar_ps`). Las cuentas están **dos veces, a propósito**: en `services/valuation.ts` (conector) y en el bloque «P/S» de `app.js` (panel). Si cambias una, cambia la otra. Las acciones salen de la portada de la SEC (`shareCounts` suma las clases de un mismo informe); en los ADR se divide por `ADR_RATIO` (solo cargar proporciones verificadas en la SEC). `valorar_ps` acepta hasta 3 comparables: cada empresa nueva son unas 8 consultas a la SEC, y el plan gratis de Workers permite 50 por pedido.
+- **P/S** (4 nov, pedido del usuario: «facilita con alguna herramienta el método P/S»; eligió la calculadora de la ficha, el comparador y `valorar_ps`). Las cuentas del P/S de hoy están **dos veces**: en `services/valuation.ts` (conector) y en el bloque «P/S» de `app.js` (panel). Si cambias una, cambia la otra. Desde el 10 nov usan las ventas de los últimos 12 meses si la empresa presenta trimestres (`psBase`, `psRow`), y el ajuste por splits de la historia es compartido (`valuation-core.js`). Las acciones salen de la portada de la SEC (`shareCounts` suma las clases de un mismo informe); en los ADR se divide por `ADR_RATIO` (solo cargar proporciones verificadas en la SEC). `valorar_ps` acepta hasta 3 comparables: cada empresa nueva son unas 8 consultas a la SEC, y el plan gratis de Workers permite 50 por pedido.
 - Finnhub (resultados de empresas en `services/earnings.ts` y datos de empresa en `services/company.ts`): sus términos no permiten mostrar los datos a terceros, así que **solo el dueño** los recibe: `/api/calendar` suma `companies` y los eventos `empresa` solo con rol owner, y el conector solo en el `calendario` y la herramienta `empresa` del dueño; `/api/company` es solo del dueño. Sin `FINNHUB_API_KEY` queda apagado sin error. Plan gratis: 60 pedidos por minuto y 1 mes de historia.
 - Los feriados y cierres anticipados de la NYSE están cargados hasta 2027 en `lib/market-hours.ts` (`NYSE_CALENDAR_UNTIL`). **Cada año hay que agregar el siguiente** desde nyse.com/markets/hours-calendars; si no, la app gasta créditos en los feriados.
 - El historial guarda 5 años (`hist5:<símbolo>` en KV) por 1 crédito; los rangos se recortan de ahí con `sliceRange`, que empieza en el cierre **anterior** al inicio del rango.

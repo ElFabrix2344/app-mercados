@@ -80,13 +80,16 @@ describe('servidor MCP', () => {
     const { data } = await callTool(mock, 'valorar_ps', { simbolo: 'scco', comparables: ['NVDA', 'BAP'] });
     expect(data.accion).toMatchObject({ simbolo: 'SCCO', fuente_precio: expect.any(String) });
     expect(data.accion.ps).toBeGreaterThan(0);
-    // Con los datos de prueba, el P/S es la capitalización entre las ventas del último año fiscal.
+    // Con los datos de prueba, el P/S es la capitalización entre las ventas de los últimos 12 meses.
     expect(data.accion.ps).toBeCloseTo(data.accion.capitalizacion_usd / data.accion.ventas_usd, 1);
+    expect(data.accion).toMatchObject({ ventas_de: 'últimos 12 meses', ventas_hasta: expect.stringMatching(/^\d{4}-\d{2}-\d{2}$/) });
+    expect(data.accion.anio_fiscal_ventas).toBeUndefined();
     // Un banco no tiene ventas: se dice por qué.
     expect(data.comparables.find((x: { simbolo: string }) => x.simbolo === 'BAP').error).toMatch(/bancos/);
     expect(data.ps_mediana_comparables).toBe(data.comparables.find((x: { simbolo: string }) => x.simbolo === 'NVDA').ps);
     expect(data.valoracion.origen).toBe('mediana de los comparables');
-    expect(data.valoracion.precio_implicito).toBeCloseTo((data.accion.precio * data.ps_mediana_comparables) / data.accion.ps, 0);
+    // El P/S va redondeado a dos decimales: se compara con un margen de 1 %.
+    expect(data.valoracion.precio_implicito / ((data.accion.precio * data.ps_mediana_comparables) / data.accion.ps)).toBeCloseTo(1, 2);
     const fixed = await callTool(mock, 'valorar_ps', { simbolo: 'SCCO', ps_objetivo: 2 });
     expect(fixed.data.valoracion).toMatchObject({ ps_usado: 2, origen: 'ps_objetivo' });
     expect((await callTool(mock, 'valorar_ps', { simbolo: 'USD/PEN' })).isError).toBe(true);

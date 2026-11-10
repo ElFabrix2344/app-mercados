@@ -464,12 +464,19 @@ Eligió empezar por la fase 1 y apartar el juego. Las cuatro fases:
   - Sin clave, lo mismo (menos lo que necesita precio) en «Resultados de empresas».
   - Comprobado con la SEC de verdad: Southern Copper vendió US$ 17 100 millones en los 12 meses a setiembre de 2026, frente a los 13 400 de su informe anual de 2025.
 - [x] **«Cartera» en lugar de «Juego»** (9 nov). La cuenta Hapi y la cartera simulada pasaron de «Acciones» a su propia hoja. El juego no se borró: perdió su pestaña, el contador y el aviso de la liga, y se entra por el enlace del pie. La clave de un amigo ahora se quita desde su lista.
-- [ ] **Fase 2 · ¿Cara o barata?**
-  - Historia del P/E y del EV/EBITDA, como ya la tiene el P/S.
-  - DCF inverso: qué crecimiento ya descuenta el precio.
-  - Pares lado a lado: crecimiento, márgenes, ROE, deuda y múltiplos (ampliar el comparador por P/S).
-  - Rendimiento de las utilidades frente al bono a 10 años.
-  - El P/S con las ventas de los últimos 12 meses (hoy usa el año fiscal, igual que `valorar_ps`).
+- [x] **Fase 2 · ¿Cara o barata?** (10 nov; el usuario: «hazlo» y «pushealo cuando termines»).
+  - **Múltiplos frente a su historia:** P/E, EV/EBITDA, P/S, P/B y rendimiento del flujo libre de hoy, con su mediana y su rango de 5 años en una barra.
+  - **Frente al bono:** el rendimiento de las utilidades contra el Tesoro a 10 años.
+  - **DCF al revés:** qué crecimiento ya descuenta el precio.
+  - **Pares lado a lado** en «Comparar con pares» (antes «Valorar por P/S»), para todos.
+  - **El P/S** usa las ventas de los últimos 12 meses, también en `valorar_ps`.
+  - **De paso:**
+    - La historia del P/S salía mal en las acciones con split (NVDA, AMZN, TSLA, WMT…): ahora las acciones de antes se llevan a las de hoy.
+    - La ficha pasó a cinco pestañas: «Negocio» (resultados y calidad) y «Valor» (lo que necesita precio).
+    - ROE, márgenes y deuda pasaron de «Ratios» a «Calidad del negocio», que también ven quienes no tienen clave.
+  - **Pendiente:**
+    - Las empresas con varias clases de acciones que no informan un total en la portada (Alphabet) quedan sin acciones en circulación, así que no tienen P/S ni múltiplos.
+    - El conector todavía no trae los múltiplos con historia ni los pares lado a lado.
 - [ ] **Fase 3 · Tu cartera real** (en el navegador, porque la cuenta Hapi está cifrada).
   - Rayos X de la cuenta: concentración, sector y correlación.
   - Rendimiento que no se infla con los depósitos, y la peor caída.

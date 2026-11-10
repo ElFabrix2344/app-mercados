@@ -68,10 +68,16 @@ describe('index.html', () => {
     });
   });
 
-  it('la ficha de una acción: resultados, calidad y valoración en «Valor»; los reportes de la SEC, en «Empresa»', () => {
-    const [valor, empresa, noticias] = ['dp-valor', 'dp-empresa', 'dp-noticias'].map((id) => html.indexOf(`id="${id}"`)) as [number, number, number];
-    for (const id of ['d-fin', 'd-qual', 'd-ps', 'd-val']) expect(html.slice(valor, empresa), id).toContain(`id="${id}"`);
+  it('la ficha de una acción: resultados y calidad en «Negocio»; múltiplos, P/S y DCF en «Valor»; los reportes de la SEC, en «Empresa»', () => {
+    const [negocio, valor, empresa, noticias] = ['dp-negocio', 'dp-valor', 'dp-empresa', 'dp-noticias'].map((id) => html.indexOf(`id="${id}"`)) as [number, number, number, number];
+    for (const id of ['d-fin', 'd-qual']) expect(html.slice(negocio, valor), id).toContain(`id="${id}"`);
+    for (const id of ['d-mult', 'd-ps', 'd-val']) expect(html.slice(valor, empresa), id).toContain(`id="${id}"`);
     for (const id of ['d-co', 'd-filings', 'd-smv']) expect(html.slice(empresa, noticias), id).toContain(`id="${id}"`);
+    // Cada pestaña de la ficha tiene su panel.
+    for (const t of ['resumen', 'negocio', 'valor', 'empresa', 'noticias']) expect(html, t).toMatch(new RegExp(`id="dt-${t}"[^>]*aria-controls="dp-${t}"`));
+    // Las cuentas de valoración son un módulo aparte, servido tal cual (el panel lo importa al empezar).
+    expect(text('/valuation-core.js')).toContain('export function multiplesHistory');
+    expect(text('/app.js')).toContain("import('/valuation-core.js')");
     // Lo mismo, sin precios, para quien no tiene clave: en «Resultados de empresas».
     const fin = html.indexOf('id="fin"');
     for (const id of ['fin-qual', 'fin-filings']) expect(html.indexOf(`id="${id}"`), id).toBeGreaterThan(fin);

@@ -59,6 +59,23 @@
     thermo: null, // lo último del termómetro (SPY): «Tu día» usa su último cierre si el SPY no está en tu lista
   };
 
+  // Las cuentas de valoración (public/valuation-core.js, con pruebas; el servidor usa el mismo módulo). Se cargan una
+  // vez al empezar: hasta entonces, los bloques que las usan esperan.
+  let V = null;
+
+  /**
+   * Los pedidos que terminan en la SEC (resultados, fundamentales, calidad y reportes) van de a uno: cada uno son
+   * hasta 16 consultas y la SEC pide no pasar de 10 por segundo. Comparar cuatro empresas a la vez las juntaba todas.
+   */
+  const secQueue = (() => {
+    let chain = Promise.resolve();
+    return (path) => {
+      const p = chain.then(() => api(path));
+      chain = p.catch(() => {});
+      return p;
+    };
+  })();
+
   // Preferencias de este navegador (indicadores y comparación). Si no hay almacenamiento, se usan las de fábrica.
   const prefs = {
     get(key, fallback) {
@@ -1223,16 +1240,20 @@
         : `${arrowOf(pct)} ${abs != null ? `${sign(abs)}${nf(priceDec(price)).format(Math.abs(abs))} (${sign(pct)}${nf(2).format(Math.abs(pct))}%)` : `${sign(pct)}${nf(2).format(Math.abs(pct))}%`} ${when}`;
   }
 
-  // Lo largo de la ficha en pestañas (5 nov, «A · Limpio»): Resumen, Valor, Empresa y Noticias. Se recuerda la última.
-  const D_TABS = ['resumen', 'valor', 'empresa', 'noticias'];
+  // Lo largo de la ficha en pestañas (5 nov, «A · Limpio»). Desde el 10 nov son cinco: Resumen, Negocio (¿es buen
+  // negocio?: resultados y calidad), Valor (¿cara o barata?: múltiplos, P/S y DCF), Empresa y Noticias. Se recuerda la última.
+  const D_TABS = ['resumen', 'negocio', 'valor', 'empresa', 'noticias'];
+  /** Los bloques de cada pestaña que se piden al abrirlos: en su pestaña se abren solos. */
+  const D_TAB_BLOCKS = { negocio: ['d-fin', 'd-qual'], valor: ['d-mult', 'd-ps', 'd-val'] };
   const D_TAB_KEY = 'mercados.ficha-pestana';
   let dTab = prefs.get(D_TAB_KEY, 'resumen');
   let dTabShown = null;
 
-  /** Solo las pestañas con algo: «Valor», las acciones (SEC); «Empresa», si hay datos de Finnhub, reportes de la SEC o hechos de la SMV; «Noticias», si hay titulares. */
+  /** Solo las pestañas con algo: «Negocio» y «Valor», las acciones (SEC); «Empresa», si hay datos de Finnhub, reportes de la SEC o hechos de la SMV; «Noticias», si hay titulares. */
   function renderDetailTabs() {
     const sym = state.selected;
     if (!sym) return;
+    $('dt-negocio').hidden = sym.includes('/');
     $('dt-valor').hidden = sym.includes('/');
     $('dt-empresa').hidden = $('d-co').hidden && $('d-smv').hidden && $('d-filings').hidden;
     $('dt-noticias').hidden = $('d-news').hidden;
@@ -1253,12 +1274,10 @@
       $(`dp-${t}`).hidden = t !== tab;
     }
     if (focus) $(`dt-${tab}`).focus();
-    // «Valor»: cada bloque se pide al abrirlo; en su pestaña se abren solos.
-    if (tab === 'valor') {
-      for (const id of ['d-fin', 'd-qual', 'd-ps', 'd-val']) {
-        const d = $(id);
-        if (!d.hidden && !d.open) d.open = true;
-      }
+    // «Negocio» y «Valor»: cada bloque se pide al abrirlo; en su pestaña se abren solos.
+    for (const id of D_TAB_BLOCKS[tab] ?? []) {
+      const d = $(id);
+      if (!d.hidden && !d.open) d.open = true;
     }
     // Lo que se dibujó con la pestaña oculta quedó sin ancho.
     if (tab !== dTabShown) {
@@ -1425,6 +1444,7 @@
     renderStrategy();
     renderDetailFin();
     renderDetailQual();
+    renderDetailMult();
     renderDetailPs();
     renderDetailVal();
     renderDetailFilings();
@@ -1689,6 +1709,7 @@
           if (state.selected !== sym) return;
           renderSeason();
           renderStrategy();
+          renderDetailMult();
           renderDetailPs();
           renderQuick();
         });
@@ -2561,7 +2582,7 @@
     const c = state.fin.get(sym);
     if (c) return c === 'cargando' ? undefined : c;
     state.fin.set(sym, 'cargando');
-    api(`/api/financials?symbol=${encodeURIComponent(sym)}`)
+    secQueue(`/api/financials?symbol=${encodeURIComponent(sym)}`)
       .then((r) => state.fin.set(sym, r))
       .catch((e) => state.fin.set(sym, { error: e.message }))
       .finally(() => {
@@ -2569,6 +2590,7 @@
         if (state.selected === sym) {
           renderDetailFin();
           renderDetailQual();
+          renderDetailMult();
           renderDetailPs();
           renderDetailVal();
           renderDetailFilings();
@@ -2875,7 +2897,7 @@
     // Primero los fundamentales (quedan guardados en el servidor): así este pedido no repite sus consultas a la SEC.
     if (fundamentalsFor(sym) === undefined) return undefined;
     qualCache.set(sym, 'cargando');
-    api(`/api/quality?symbol=${encodeURIComponent(sym)}`)
+    secQueue(`/api/quality?symbol=${encodeURIComponent(sym)}`)
       .then((r) => qualCache.set(sym, r))
       .catch((e) => qualCache.set(sym, { error: e.message }))
       .finally(() => {
@@ -2923,15 +2945,37 @@
     const last = ys.at(-1);
     const prev = ys.at(-2);
 
-    const items = [];
+    // Rentabilidad y deuda con lo más nuevo (los últimos 12 meses, si hay trimestres): salen de los resultados y los
+    // fundamentales, que ya llegaron cuando se pide este bloque. No necesitan precio.
+    const fr = state.fin.get(sym);
+    const xr = fundCache.get(sym);
+    const fin = fr && fr !== 'cargando' && !fr.error ? fr.data : null;
+    const fund = xr && xr !== 'cargando' && !xr.error ? xr.data : null;
+    const pm = V && fin ? V.peerMetrics(fin, fund, usdRate(fin) ?? 1, null) : null;
+    const when = pm ? (pm.ttm ? '12 meses' : fin.years.at(-1).year) : null;
+
+    const profit = [];
     const roics = ys.map((y) => y.roic).filter((v) => v != null);
     if (last.roic != null) {
-      items.push(stat(`Rendimiento del capital (ROIC) ${last.year}`, pct(last.roic), roics.length >= 3 ? `Promedio de ${roics.length} años: ${pct(roics.reduce((x, y) => x + y, 0) / roics.length)}` : null));
+      profit.push(stat(`Rendimiento del capital (ROIC) ${last.year}`, pct(last.roic), roics.length >= 3 ? `Promedio de ${roics.length} años: ${pct(roics.reduce((x, y) => x + y, 0) / roics.length)}` : null));
     }
+    if (pm?.roe != null) profit.push(stat(`ROE (${when})`, pct(pm.roe), `Utilidad ÷ patrimonio${pm.roa != null ? ` · sobre activos (ROA) ${pct(pm.roa)}` : ''}`));
+    if (pm?.opMargin != null) profit.push(stat(`Margen operativo (${when})`, pct(pm.opMargin), pm.netMargin != null ? `Margen neto ${pct(pm.netMargin)}` : null));
     if (last.grossMargin != null) {
       const dm = prev?.grossMargin != null ? last.grossMargin - prev.grossMargin : null;
-      items.push(stat(`Margen bruto ${last.year}`, pct(last.grossMargin), dm == null ? null : `${arrowOf(dm)} ${sign(dm)}${nf(1).format(Math.abs(dm * 100))} puntos frente a ${prev.year}`));
+      profit.push(stat(`Margen bruto ${last.year}`, pct(last.grossMargin), dm == null ? null : `${arrowOf(dm)} ${sign(dm)}${nf(1).format(Math.abs(dm * 100))} puntos frente a ${prev.year}`));
     }
+    if (pm?.fcfMargin != null) profit.push(stat(`Flujo de caja libre (${when})`, pct(pm.fcfMargin), 'De cada 100 de ventas, lo que queda en caja tras invertir'));
+
+    const debtStats = [];
+    if (pm?.netDebtToEbitda != null) {
+      debtStats.push(stat('Deuda neta ÷ EBITDA', pm.netDebtToEbitda < 0 ? 'Más caja que deuda' : `${nf(1).format(pm.netDebtToEbitda)}×`, pm.netDebtToEbitda < 0 ? null : 'Años de utilidad operativa (antes de depreciación) para pagarla'));
+    }
+    if (pm?.debtToEquity != null) {
+      debtStats.push(stat('Deuda ÷ patrimonio', `${nf(2).format(pm.debtToEquity)}×`, pm.debtUsd != null ? `Deuda ${usdBig(pm.debtUsd)}${pm.cashUsd != null ? ` · caja ${usdBig(pm.cashUsd)}` : ''}` : null));
+    }
+
+    const items = [];
     // Acciones: solo los tres últimos años, que el informe más nuevo trae ajustados por splits.
     const withShares = ys.slice(-3).filter((y) => y.shares > 0);
     const [s0, s1] = [withShares[0], withShares.at(-1)];
@@ -3007,8 +3051,10 @@
         ]
       : [h('p', { class: 'hint' }, 'Sin puntaje de Piotroski: la SEC no trae su activo corriente, su utilidad bruta o su flujo de caja (pasa con los bancos y las aseguradoras).')];
     const tax = last.taxAssumed ? `asumiendo ${pct(last.taxRate)} de impuestos` : `con su tasa de impuestos de ${last.year}, ${pct(last.taxRate)}`;
+    const group = (title, stats) => (stats.length ? [h('h4', { class: 'dcf-h' }, title), h('dl', { class: 'stats fin-stats' }, ...stats)] : []);
+    const groups = [...group('Rentabilidad', profit), ...group('Deuda', debtStats), ...group('Lo que devuelve y lo que diluye', items)];
     return [
-      items.length ? h('dl', { class: 'stats fin-stats' }, ...items) : h('p', { class: 'muted' }, 'La SEC no trae estos datos en el formato estándar para esta empresa.'),
+      ...(groups.length ? groups : [h('p', { class: 'muted' }, 'La SEC no trae estos datos en el formato estándar para esta empresa.')]),
       table,
       ...pio,
       h(
@@ -3047,7 +3093,7 @@
     const c = filingsCache.get(sym);
     if (c) return c === 'cargando' ? undefined : c;
     filingsCache.set(sym, 'cargando');
-    api(`/api/filings?symbol=${encodeURIComponent(sym)}`)
+    secQueue(`/api/filings?symbol=${encodeURIComponent(sym)}`)
       .then((r) => filingsCache.set(sym, r))
       .catch((e) => filingsCache.set(sym, { error: e.message }))
       .finally(() => {
@@ -3182,23 +3228,50 @@
   // dólar del BCRP; el precio, de tu lista o escrito a mano. Las mismas cuentas que src/services/valuation.ts: si
   // cambias una, cambia la otra.
   const psFmt = (v) => `${nf(2).format(v)}×`;
+  /** «18.4×» y «23.1%»: los múltiplos y las proporciones de los bloques de valoración. */
+  const xTimes = (v) => `${nf(1).format(v)}×`;
+  const pctPlain = (v) => rate(v * 100, 1);
   const usdBig = (v) => `US$ ${millions(v / 1e6)}`;
   const usdPenNow = () => state.peruData?.fx?.at(-1)?.sell ?? null;
   const SYM_EQ = /^[A-Z0-9][A-Z0-9.-]{0,11}$/;
 
-  /** Ventas del último año fiscal (también en dólares) y acciones de la portada más nueva; o por qué no se puede. */
+  /** Cuántos dólares vale una unidad de la moneda en que reporta (1 si es en US$); null si Rueda no la sabe pasar. */
+  function usdRate(fin) {
+    const fx = usdPenNow();
+    return fin.currency === 'USD' ? 1 : fin.currency === 'PEN' && fx ? 1 / fx : null;
+  }
+
+  /**
+   * Las ventas más nuevas (también en dólares) y las acciones de la portada más nueva; o por qué no se puede. Desde el
+   * 10 nov, las ventas son las de los últimos 12 meses si la empresa presenta trimestres (`ttm`); si no, las de su
+   * último año fiscal. `label` y `when` dicen cuáles, para los textos.
+   */
   function psBase(fin) {
     if (!fin?.cik) return { error: 'No reporta a la SEC (pasa con los ETF, los fondos y las empresas que no cotizan en EE. UU.).' };
-    const last = [...fin.years].reverse().find((y) => y.revenue > 0);
+    const fy = [...fin.years].reverse().find((y) => y.revenue > 0);
+    const ttm = fin.ttm?.revenue > 0 ? fin.ttm : null;
+    const last = ttm ?? fy;
     if (!last) return { error: 'La SEC no tiene sus ventas: los bancos y las aseguradoras no informan «ventas», y el P/S no les sirve.' };
     const sh = fin.shares?.at(-1);
     if (!sh) return { error: 'La SEC no tiene sus acciones en circulación.' };
-    const fx = usdPenNow();
-    const k = fin.currency === 'USD' ? 1 : fin.currency === 'PEN' && fx ? 1 / fx : null;
+    const k = usdRate(fin);
     if (k == null) {
       return { error: fin.currency === 'PEN' ? 'Reporta en soles: falta el dólar del BCRP (llega con «Perú»).' : `Reporta en ${fin.currency}: por ahora Rueda solo pasa a dólares las ventas en soles.` };
     }
-    return { year: last.year, end: last.end, revenue: last.revenue, revenueUsd: last.revenue * k, k, currency: fin.currency, shares: sh.value, sharesDate: sh.date, adr: fin.adrRatio ?? 1, foreign: !!fin.foreign };
+    return {
+      ttm: !!ttm,
+      label: ttm ? 'los últimos 12 meses' : String(fy.year),
+      when: ttm ? `los últimos 12 meses (a ${monYear(ttm.end)})` : `el año fiscal ${fy.year}`,
+      end: last.end,
+      revenue: last.revenue,
+      revenueUsd: last.revenue * k,
+      k,
+      currency: fin.currency,
+      shares: sh.value,
+      sharesDate: sh.date,
+      adr: fin.adrRatio ?? 1,
+      foreign: !!fin.foreign,
+    };
   }
   const capOf = (b, price) => (price * b.shares) / b.adr;
   const psOf = (b, price) => capOf(b, price) / b.revenueUsd;
@@ -3210,9 +3283,13 @@
     return s.length % 2 ? s[mid] : (s[mid - 1] + s[mid]) / 2;
   }
 
-  /** P/S al cierre de cada año fiscal: el precio de ese día y las acciones de la portada siguiente más cercana. */
+  /**
+   * P/S al cierre de cada año fiscal: el precio de ese día y las acciones de la portada siguiente más cercana, llevadas
+   * a acciones de hoy si hubo un split (los precios guardados ya vienen ajustados).
+   */
   function psByYear(fin, b, points) {
     const out = [];
+    const shares = V ? V.splitAdjusted(fin.shares) : fin.shares.map((x) => ({ ...x, adj: x.value }));
     for (const y of fin.years) {
       if (!(y.revenue > 0)) continue;
       let c = null;
@@ -3222,8 +3299,8 @@
       }
       // Sin precio de ese día (antes de los 5 años guardados) o con un hueco de más de 10 días, no se cuenta.
       if (!c || Date.parse(y.end) - Date.parse(c[0]) > 10 * 86_400_000) continue;
-      const sh = fin.shares.find((s) => s.date >= y.end) ?? fin.shares.at(-1);
-      out.push({ year: y.year, end: y.end, price: c[1], ps: (c[1] * sh.value) / b.adr / (y.revenue * b.k) });
+      const sh = shares.find((x) => x.date >= y.end) ?? shares.at(-1);
+      out.push({ year: y.year, end: y.end, price: c[1], ps: (c[1] * sh.adj) / b.adr / (y.revenue * b.k) });
     }
     return out;
   }
@@ -3242,7 +3319,7 @@
 
   function psNotes(b) {
     return [
-      `Ventas del año fiscal ${b.year} (SEC)${b.currency === 'PEN' ? ', pasadas a dólares con el dólar de hoy del BCRP' : ''}.`,
+      `Ventas de ${b.when} (SEC)${b.currency === 'PEN' ? ', pasadas a dólares con el dólar de hoy del BCRP' : ''}.`,
       `Acciones de la portada al ${fDayYear.format(day(b.sharesDate))}${b.adr !== 1 ? `; cada ADR vale ${b.adr}` : ''}.`,
       b.foreign && b.adr === 1 ? 'Es un emisor extranjero: si cotiza con ADR y cada uno vale varias acciones, el P/S sale mal.' : null,
     ]
@@ -3323,7 +3400,7 @@
         { class: 'stats' },
         stat('P/S hoy', psFmt(now), `Precio ${fmtPrice(kp.price)} (${kp.src})`),
         stat('Capitalización', usdBig(capOf(b, kp.price)), `${compact.format(b.shares)} acciones${b.adr !== 1 ? `, ${b.adr} por ADR` : ''}`),
-        stat(`Ventas ${b.year}`, usdBig(b.revenueUsd), b.currency === 'PEN' ? `S/ ${millions(b.revenue / 1e6)}` : 'Último año fiscal'),
+        stat(b.ttm ? 'Ventas · últimos 12 meses' : `Ventas ${b.label}`, usdBig(b.revenueUsd), b.currency === 'PEN' ? `S/ ${millions(b.revenue / 1e6)}` : b.ttm ? `A ${monYear(b.end)}` : 'Último año fiscal'),
         med != null ? stat(`P/S mediano (${years.length} cierres fiscales)`, psFmt(med), `De ${years[0].year} a ${years.at(-1).year}`) : null,
       ),
       h('div', { class: 'ps-calc' }, h('label', { for: 'd-ps-target' }, 'P/S objetivo'), target, out),
@@ -3339,7 +3416,7 @@
     ['BVN', ['NEM']],
     ['AAPL', ['MSFT', 'GOOGL']],
   ];
-  const psState = { sym: null, peers: [], prices: new Map(), target: '' };
+  const psState = { sym: null, peers: [], prices: new Map(), target: '', side: prefs.get('mercados.ps-lado', false) === true };
 
   function pickPs(rawSym, rawPeers) {
     const up = (s) => String(s ?? '').trim().toUpperCase();
@@ -3396,7 +3473,7 @@
           : [
               priceCell(row),
               h('td', {}, row.price ? usdBig(capOf(row.b, row.price)) : '—'),
-              h('td', {}, usdBig(row.b.revenueUsd), h('small', {}, String(row.b.year))),
+              h('td', {}, usdBig(row.b.revenueUsd), h('small', {}, row.b.ttm ? '12 meses' : row.b.label)),
               h('td', { class: 'ps-val' }, row.ps != null ? psFmt(row.ps) : '—'),
             ]),
       );
@@ -3447,7 +3524,77 @@
       );
     }
     if (!hasPrices()) parts.push(h('p', { class: 'hint' }, 'Con tu clave de Twelve Data, los precios de tu lista se ponen solos.'));
+    parts.push(peersSide(rows));
     host.replaceChildren(...parts);
+  }
+
+  // Lado a lado (10 nov, fase 2): crecimiento, márgenes, rentabilidad, deuda y múltiplos de la acción y sus comparables,
+  // con lo más nuevo de cada una (los últimos 12 meses, si presenta trimestres). Datos de la SEC, para todos; los
+  // múltiplos salen si hay precio (de tu lista o escrito arriba). Se pide al abrirlo: son los fundamentales de cada una.
+  const compactUsd = (v) => (Math.abs(v) >= 1e9 ? `${nf(1).format(v / 1e9)} mil M` : `${nf(0).format(v / 1e6)} M`);
+  const PEER_ROWS = [
+    { key: 'revenueUsd', label: 'Ventas (US$)', fmt: compactUsd },
+    { key: 'growth', label: 'Crecimiento de ventas', fmt: (v) => pctFrac(v) },
+    { key: 'opMargin', label: 'Margen operativo', fmt: pctPlain },
+    { key: 'netMargin', label: 'Margen neto', fmt: pctPlain },
+    { key: 'roe', label: 'ROE', fmt: pctPlain, bal: true },
+    { key: 'netDebtToEbitda', label: 'Deuda neta ÷ EBITDA', fmt: (v) => (v < 0 ? 'caja neta' : `${nf(1).format(v)}×`), bal: true },
+    { key: 'fcfMargin', label: 'Flujo libre ÷ ventas', fmt: pctPlain, bal: true },
+    { key: 'pe', label: 'P/E', fmt: xTimes, price: true },
+    { key: 'evEbitda', label: 'EV / EBITDA', fmt: xTimes, price: true, bal: true },
+    { key: 'fcfYield', label: 'Rendimiento del flujo libre', fmt: pctPlain, price: true, bal: true },
+  ];
+
+  function peersSide(rows) {
+    const box = h('details', { class: 'd-tool', id: 'ps-side' }, h('summary', {}, 'Lado a lado: crecimiento, márgenes, deuda y múltiplos'));
+    box.open = psState.side;
+    box.addEventListener('toggle', () => {
+      if (box.open === psState.side) return;
+      psState.side = box.open;
+      prefs.set('mercados.ps-lado', box.open);
+      renderPsSection();
+    });
+    if (!box.open) return box;
+    if (!V) {
+      box.append(h('p', { class: 'muted' }, 'Cargando…'));
+      return box;
+    }
+    const cols = rows.map((row) => {
+      const fr = state.fin.get(row.s);
+      const fin = fr && fr !== 'cargando' && !fr.error && fr.data.cik && fr.data.years.length ? fr.data : null;
+      if (!fin) return { s: row.s, none: true };
+      // Los fundamentales de cada una van llegando de a uno (secQueue).
+      const xr = fundamentalsFor(row.s);
+      const fund = xr && !xr.error ? xr.data : null;
+      const k = usdRate(fin);
+      return { s: row.s, loading: xr === undefined, m: k == null ? null : V.peerMetrics(fin, fund, k, row.price ?? null), hasPrice: !!row.price };
+    });
+    const cell = (c, r) => {
+      if (c.none || !c.m) return '—';
+      const v = c.m[r.key];
+      if (v != null) return r.fmt(v);
+      if (r.bal && c.loading) return '…';
+      return '—';
+    };
+    const head = (c) => h('th', { scope: 'col' }, c.s, h('small', {}, c.none || !c.m ? 'sin datos' : c.m.ttm ? `12 m a ${monShort(c.m.end)}` : `año ${c.m.end.slice(0, 4)}`));
+    box.append(
+      h(
+        'div',
+        { class: 'ps-wrap' },
+        h(
+          'table',
+          { class: 'fin-table peer-table' },
+          h('thead', {}, h('tr', {}, h('th', { scope: 'col' }, ''), ...cols.map(head))),
+          h('tbody', {}, ...PEER_ROWS.map((r) => h('tr', {}, h('th', { scope: 'row' }, r.label), ...cols.map((c, i) => h('td', { class: i === 0 ? 'ps-val' : null }, cell(c, r)))))),
+        ),
+      ),
+      h(
+        'p',
+        { class: 'hint' },
+        `Con lo más nuevo de cada una: los últimos 12 meses si presenta informes trimestrales; si no, su último año fiscal. Los múltiplos necesitan un precio${cols.some((c) => !c.none && !c.hasPrice) ? ': escríbelo en la tabla de arriba' : ''}. Fuente: SEC EDGAR. Son cuentas, no una recomendación.`,
+      ),
+    );
+    return box;
   }
 
   function setupPsSection() {
@@ -3483,15 +3630,17 @@
     const c = fundCache.get(sym);
     if (c) return c === 'cargando' ? undefined : c;
     fundCache.set(sym, 'cargando');
-    api(`/api/fundamentals?symbol=${encodeURIComponent(sym)}`)
+    secQueue(`/api/fundamentals?symbol=${encodeURIComponent(sym)}`)
       .then((r) => fundCache.set(sym, r))
       .catch((e) => fundCache.set(sym, { error: e.message }))
       .finally(() => {
         if (state.selected === sym) {
+          renderDetailMult();
           renderDetailVal();
           renderDetailQual();
         }
         if (state.finSym === sym) renderFinExtras();
+        if (psState.sym === sym || psState.peers.includes(sym)) renderPsSection();
       });
     return undefined;
   }
@@ -3528,7 +3677,7 @@
       if (med) {
         const rel = now / med - 1;
         tiles.push({ k: 'Valoración (P/S)', v: rel > 0.15 ? 'Sobre su historia' : rel < -0.15 ? 'Bajo su historia' : 'En su promedio', s: `${psFmt(now)} frente a ${psFmt(med)} de mediana (${years.length} cierres fiscales)` });
-      } else tiles.push({ k: 'Valoración (P/S)', v: psFmt(now), s: `Con las ventas de ${b.year}` });
+      } else tiles.push({ k: 'Valoración (P/S)', v: psFmt(now), s: `Con las ventas de ${b.label}` });
     }
     const t = fin.ttm;
     const tp = fin.ttmPrev;
@@ -3559,26 +3708,139 @@
     box.replaceChildren(...tiles.map((t) => h('div', { class: 'dq' }, h('span', { class: 'dq-k' }, t.k), h('span', { class: `dq-v ${t.cls ?? ''}` }, t.v), h('span', { class: 'dq-s' }, t.s))));
   }
 
-  // Ratios y DCF de la ficha. Los montos de la SEC se pasan a dólares como en el P/S (en soles, con el dólar de hoy).
+  // ---------- ¿cara o barata? (10 nov, fase 2 del rumbo nuevo) ----------
+  // Los múltiplos de hoy (con los últimos 12 meses) frente a los de cada cierre fiscal de los últimos 5 años, y el
+  // rendimiento de las utilidades frente al bono del Tesoro. Las cuentas están en valuation-core.js. Describe dónde
+  // está la acción frente a su propia historia: no dice si conviene.
+  const MULT_ROWS = [
+    { key: 'pe', label: 'P/E', name: 'precio ÷ utilidad', fmt: xTimes, none: 'no ganó plata en el periodo' },
+    { key: 'evEbitda', label: 'EV / EBITDA', name: 'valor de la empresa ÷ utilidad operativa antes de depreciación', fmt: xTimes, none: 'la SEC no trae su deuda, su caja o su depreciación' },
+    { key: 'ps', label: 'P/S', name: 'precio ÷ ventas', fmt: (v) => `${nf(2).format(v)}×`, none: 'no informa ventas' },
+    { key: 'pb', label: 'P/B', name: 'precio ÷ patrimonio', fmt: xTimes, none: 'sin patrimonio positivo' },
+    { key: 'fcfYield', label: 'Rendimiento del flujo libre', name: 'flujo de caja libre ÷ lo que vale la empresa', fmt: pctPlain, none: 'la SEC no trae su flujo de caja' },
+  ];
+
+  /** La barra de un múltiplo: su rango de 5 años, la mediana y dónde está hoy. */
+  function multBar(st, text) {
+    const at = (el, v) => {
+      el.style.left = `${Math.min(100, Math.max(0, v * 100))}%`;
+      return el;
+    };
+    const range = h('i', { class: 'mult-range' });
+    range.style.left = `${st.minAt * 100}%`;
+    range.style.width = `${Math.max(1, (st.maxAt - st.minAt) * 100)}%`;
+    return h('div', { class: 'mult-bar', role: 'img', 'aria-label': text }, range, at(h('b', { class: 'mult-med' }), st.medianAt), at(h('b', { class: 'mult-mark' }), st.at));
+  }
+
+  function renderDetailMult() {
+    const box = $('d-mult');
+    const sym = state.selected;
+    box.hidden = !sym || sym.includes('/');
+    if (box.hidden || !box.open) return;
+    const host = $('d-mult-body');
+    const say = (cls, text) => host.replaceChildren(h('p', { class: cls }, text));
+    const fr = financialsFor(sym);
+    const xr = fundamentalsFor(sym);
+    if (!V || !fr || !xr) return say('muted', `Buscando los informes de ${sym} en la SEC…`);
+    if (fr.error || xr.error) return say('err', fr.error ?? xr.error);
+    const fin = fr.data;
+    if (!fin.cik || !fin.years.length) return say('muted', 'La SEC no tiene sus informes (pasa con los ETF y los fondos).');
+    const kp = knownPrice(sym);
+    if (!kp) return say('muted', 'Todavía no llega el precio de hoy.');
+    const sh = fin.shares?.at(-1);
+    if (!sh) return say('muted', 'La SEC no tiene sus acciones en circulación.');
+    const k = usdRate(fin);
+    if (k == null) return say('muted', `Reporta en ${fin.currency}: por ahora Rueda solo pasa a dólares los montos en soles.`);
+    const cur = V.latestOf(fin, xr.data);
+    const now = V.multiples({ price: kp.price, shares: sh.value, adr: fin.adrRatio ?? 1, k }, cur.inc, cur.bal);
+    const full = fullHistory(sym);
+    const hist = full?.points ? V.multiplesHistory(fin, xr.data, full.points, k) : [];
+    const period = cur.ttm ? `los últimos 12 meses (a ${monYear(cur.end)})` : `el año fiscal ${cur.year}`;
+
+    const rows = MULT_ROWS.map((m) => {
+      const v = now[m.key];
+      const head = h('div', { class: 'mult-k' }, h('span', { class: 'mult-label' }, m.label), h('span', { class: 'mult-name' }, m.name));
+      if (v == null) return h('div', { class: 'mult-row na' }, head, h('span', { class: 'mult-now' }, '—'), h('span', { class: 'mult-text' }, `Sin dato: ${m.none}.`));
+      const past = hist.map((y) => y[m.key]);
+      const st = V.standing(v, past);
+      if (!st) {
+        const n = past.filter((x) => x != null).length;
+        const why = full === undefined ? 'Cargando 5 años de precios…' : n ? `Solo ${n} ${n === 1 ? 'año' : 'años'} con datos: no alcanza para comparar.` : 'Sin historia para comparar.';
+        return h('div', { class: 'mult-row' }, head, h('span', { class: 'mult-now' }, m.fmt(v)), h('span', { class: 'mult-text' }, why));
+      }
+      // Cerca (a menos de 10 %), tantos por ciento sobre o bajo la mediana o, si la dobla, cuántas veces.
+      const read =
+        st.rel == null
+          ? null
+          : Math.abs(st.rel) < 0.1
+            ? 'Cerca de su mediana'
+            : st.rel >= 1
+              ? `${nf(1).format(st.rel + 1)} veces su mediana`
+              : `${nf(0).format(Math.abs(st.rel) * 100)} % ${st.rel > 0 ? 'sobre' : 'bajo'} su mediana`;
+      const text = `mediana ${m.fmt(st.median)} · de ${m.fmt(st.min)} a ${m.fmt(st.max)} en ${st.n} años`;
+      return h(
+        'div',
+        { class: 'mult-row' },
+        head,
+        h('span', { class: 'mult-now' }, m.fmt(v)),
+        h('div', { class: 'mult-hist' }, multBar(st, `Hoy ${m.fmt(v)}; ${text}`), h('span', { class: 'mult-text' }, text)),
+        read ? h('span', { class: 'mult-read' }, read) : null,
+      );
+    });
+
+    // Frente al bono: lo que rinden las utilidades por cada dólar pagado, contra el Tesoro a 10 años.
+    const rf = state.usaData?.treasury10y?.at(-1)?.value ?? null;
+    const ey = now.earningsYield;
+    const bond = [];
+    if (ey != null && ey > 0) {
+      bond.push(stat('Rendimiento de las utilidades', pctPlain(ey), 'Utilidad ÷ lo que vale la empresa (el P/E al revés)'));
+      if (rf != null) {
+        const gap = ey * 100 - rf;
+        bond.push(stat('Bono del Tesoro a 10 años', rate(rf, 2), 'Lo que paga EE. UU. sin riesgo de impago'));
+        bond.push(stat('Diferencia', `${sign(gap)}${nf(1).format(Math.abs(gap))} puntos`, gap >= 0 ? 'Las utilidades rinden más que el bono' : 'Las utilidades rinden menos que el bono: el precio cuenta con que crezcan'));
+      }
+    }
+
+    const table =
+      hist.length > 0
+        ? h(
+            'details',
+            { class: 'table-view' },
+            h('summary', {}, 'Ver cada año'),
+            h(
+              'table',
+              { class: 'fin-table' },
+              h('thead', {}, h('tr', {}, h('th', { scope: 'col' }, 'Cierre'), h('th', { scope: 'col' }, 'Precio'), ...MULT_ROWS.map((m) => h('th', { scope: 'col', title: m.name }, m.key === 'fcfYield' ? 'Flujo libre' : m.label)))),
+              h(
+                'tbody',
+                {},
+                h('tr', {}, h('th', { scope: 'row' }, 'Hoy'), h('td', {}, fmtPrice(kp.price)), ...MULT_ROWS.map((m) => h('td', {}, now[m.key] == null ? '—' : m.fmt(now[m.key])))),
+                ...[...hist].reverse().map((y) => h('tr', {}, h('th', { scope: 'row', title: `Cierre del año fiscal: ${fDayYear.format(day(y.end))}` }, String(y.year)), h('td', {}, fmtPrice(y.price)), ...MULT_ROWS.map((m) => h('td', {}, y[m.key] == null ? '—' : m.fmt(y[m.key]))))),
+              ),
+            ),
+          )
+        : null;
+    host.replaceChildren(
+      ...[
+        h('p', { class: 'hint' }, `Hoy: tu precio (${fmtPrice(kp.price)}, ${kp.src}) con los informes de ${period}. Su historia: el mismo múltiplo al cierre de cada año fiscal.`),
+        h('div', { class: 'mult' }, ...rows),
+        hist.length >= 3 ? h('p', { class: 'mult-legend', 'aria-hidden': 'true' }, h('i', { class: 'k-mark' }), 'hoy', h('i', { class: 'k-med' }), 'mediana', h('i', { class: 'k-range' }), 'de su mínimo a su máximo') : null,
+        full?.error ? h('p', { class: 'hint' }, `Sin los 5 años de precios no hay historia: ${full.error}`) : null,
+        table,
+        bond.length ? h('h4', { class: 'dcf-h' }, 'Frente al bono') : null,
+        bond.length ? h('dl', { class: 'stats fin-stats' }, ...bond) : null,
+        h(
+          'p',
+          { class: 'hint' },
+          'Un múltiplo sobre su mediana dice que hoy se paga más por lo mismo que antes; puede ser porque se espera más crecimiento. En el rendimiento del flujo libre es al revés: más alto es más barato. Los precios vienen ajustados por splits y las acciones de cada año se llevan a las de hoy. Son cuentas, no una recomendación.',
+        ),
+      ].filter(Boolean),
+    );
+  }
+
+  // DCF de la ficha. Los montos de la SEC se pasan a dólares como en el P/S (en soles, con el dólar de hoy).
   const dcfSaved = new Map(); // símbolo → supuestos escritos en esta sesión
   const half = (v) => Math.round(v * 2) / 2;
-
-  /**
-   * Valor por acción (o por ADR) de un DCF simple: el flujo de caja libre del último año crece `g` % por 5 años y
-   * después `gt` % para siempre, todo descontado a `r` %; al valor de la empresa se le resta la deuda neta (`nd`, en
-   * millones de US$). null si la tasa no supera al crecimiento perpetuo por al menos medio punto.
-   */
-  function dcfValue(fcf, sharesAdr, { g, gt, r, nd }) {
-    if (!(r > gt + 0.5)) return null;
-    let f = fcf;
-    let pv = 0;
-    for (let t = 1; t <= 5; t++) {
-      f *= 1 + g / 100;
-      pv += f / (1 + r / 100) ** t;
-    }
-    const tv = (f * (1 + gt / 100)) / (r / 100 - gt / 100) / (1 + r / 100) ** 5;
-    return { perShare: (pv + tv - nd * 1e6) / sharesAdr, pv, tv };
-  }
 
   function renderDetailVal() {
     const box = $('d-val');
@@ -3589,7 +3851,7 @@
     const say = (cls, text) => host.replaceChildren(h('p', { class: cls }, text));
     const fr = financialsFor(sym);
     const xr = fundamentalsFor(sym);
-    if (!fr || !xr) return say('muted', `Buscando los informes de ${sym} en la SEC…`);
+    if (!V || !fr || !xr) return say('muted', `Buscando los informes de ${sym} en la SEC…`);
     if (fr.error || xr.error) return say('err', fr.error ?? xr.error);
     const fin = fr.data;
     if (!fin.cik || !fin.years.length) return say('muted', 'La SEC no tiene sus informes (pasa con los ETF y los fondos).');
@@ -3597,120 +3859,85 @@
     if (!kp) return say('muted', 'Todavía no llega el precio de hoy.');
     const sh = fin.shares?.at(-1);
     if (!sh) return say('muted', 'La SEC no tiene sus acciones en circulación.');
-    const fx = usdPenNow();
-    const k = fin.currency === 'USD' ? 1 : fin.currency === 'PEN' && fx ? 1 / fx : null;
+    const k = usdRate(fin);
     if (k == null) return say('muted', `Reporta en ${fin.currency}: por ahora Rueda solo pasa a dólares los montos en soles.`);
-    const last = fin.years.at(-1);
-    const fy = xr.data.years.find((y) => y.end === last.end) ?? null;
-    // Lo más nuevo, si la empresa presenta trimestres: los flujos de los últimos 12 meses y el balance del último 10-Q.
-    const t = fin.ttm;
-    const lt = xr.data.latest;
-    const fresh = !!t && !!lt && lt.end === t.end;
-    const inc = fresh ? t : last;
-    const bal = fresh ? lt : fy;
-    const period = fresh ? `los últimos 12 meses (a ${monYear(t.end)})` : `el año fiscal ${last.year}`;
-    const tag = fresh ? '12 meses' : String(last.year);
-    const adr = fin.adrRatio ?? 1;
-    const sharesAdr = sh.value / adr;
-    const cap = kp.price * sharesAdr;
+    // Lo más nuevo: los flujos de los últimos 12 meses y el balance del último 10-Q; si no hay trimestres, el año fiscal.
+    const cur = V.latestOf(fin, xr.data);
+    const period = cur.ttm ? `los últimos 12 meses (a ${monYear(cur.end)})` : `el año fiscal ${cur.year}`;
+    const sharesAdr = sh.value / (fin.adrRatio ?? 1);
     const usdOf = (v) => (v == null ? null : v * k);
-    const [ni, rev, op] = [usdOf(inc.netIncome), usdOf(inc.revenue), usdOf(inc.operatingIncome)];
-    const [eq, assets, debt, cash, ocf, capex, da] = ['equity', 'assets', 'debt', 'cash', 'ocf', 'capex', 'da'].map((key) => usdOf(bal?.[key]));
-    const ebitda = op != null && da != null ? op + da : null;
-    const ev = debt != null && cash != null ? cap + debt - cash : null;
-    const fcf = ocf != null && capex != null ? ocf - capex : null;
-    const per = (a, b) => (a != null && b != null && b > 0 ? a / b : null);
-    const xTimes = (v) => `${nf(1).format(v)}×`;
-    const pctV = (v) => rate(v * 100, 1);
+    const [debt, cash] = [usdOf(cur.bal?.debt), usdOf(cur.bal?.cash)];
+    const fcf = V.multiples({ price: kp.price, shares: sh.value, adr: fin.adrRatio ?? 1, k }, cur.inc, cur.bal).fcf;
 
-    // Ratios con valor; los que no se pueden calcular se explican en una línea.
-    const rows = [
-      ['P/E (precio / utilidad)', ni > 0 ? cap / ni : null, xTimes, `Utilidad (${tag}): ${ni != null ? usdBig(ni) : '—'}`],
-      ['P/B (precio / valor contable)', per(cap, eq), xTimes, eq != null ? `Patrimonio ${usdBig(eq)}` : null],
-      ['EV / EBITDA', ev != null && ebitda > 0 ? ev / ebitda : null, xTimes, ev != null ? `Valor de la empresa ${usdBig(ev)}` : null],
-      ['Rendimiento del flujo libre', fcf != null ? fcf / cap : null, pctV, fcf != null ? `Flujo de caja libre ${usdBig(fcf)}` : null],
-      ['ROE (utilidad / patrimonio)', per(ni, eq), pctV, null],
-      ['ROA (utilidad / activos)', per(ni, assets), pctV, null],
-      ['Margen operativo', per(op, rev), pctV, null],
-      ['Deuda / patrimonio', per(debt, eq), xTimes, debt != null ? `Deuda ${usdBig(debt)} · caja ${cash != null ? usdBig(cash) : '—'}` : null],
-      ['Deuda neta / EBITDA', debt != null && cash != null && ebitda > 0 ? (debt - cash) / ebitda : null, xTimes, null],
-    ];
-    const shown = rows.filter(([, v]) => v != null);
-    const missing = rows.filter(([, v]) => v == null).map(([label]) => label.split(' (')[0]);
-    const ratios = h('dl', { class: 'stats' }, ...shown.map(([label, v, f, sub]) => stat(label, f(v), sub)));
-
-    let dcf;
     if (fcf == null || fcf <= 0) {
-      dcf = h('p', { class: 'muted' }, fcf == null ? 'Sin flujo de caja en los datos de la SEC: no hay DCF.' : `Con flujo de caja libre negativo en ${period}, un DCF simple no sirve.`);
-    } else {
-      const revs = fin.years.filter((y) => y.revenue > 0);
-      const a = revs.at(-4) ?? revs[0];
-      const z = revs.at(-1);
-      const cagr = a && z && z.year > a.year ? (z.revenue / a.revenue) ** (1 / (z.year - a.year)) - 1 : 0.03;
-      const rf = state.usaData?.treasury10y?.at(-1)?.value ?? null;
-      const def = { g: Math.min(15, Math.max(0, half(cagr * 100))), gt: 2.5, r: half((rf ?? 4) + 5), nd: debt != null && cash != null ? Math.round((debt - cash) / 1e6) : 0 };
-      const v = { ...def, ...dcfSaved.get(sym) };
-      const out = h('div', { class: 'dcf-out' });
-      const field = (key, label, step, title) => {
-        const input = h('input', { type: 'number', step, inputmode: 'decimal', class: 'ps-target', 'aria-label': label, title });
-        input.value = String(v[key]);
-        input.addEventListener('input', () => {
-          const n = Number(input.value);
-          if (!Number.isFinite(n)) return;
-          v[key] = n;
-          dcfSaved.set(sym, { ...v });
-          update();
-        });
-        return h('label', {}, label, input);
+      return say('muted', fcf == null ? 'Sin flujo de caja en los datos de la SEC: no hay DCF.' : `Con flujo de caja libre negativo en ${period}, un DCF simple no sirve.`);
+    }
+    const revs = fin.years.filter((y) => y.revenue > 0);
+    const a = revs.at(-4) ?? revs[0];
+    const z = revs.at(-1);
+    const cagr = a && z && z.year > a.year ? (z.revenue / a.revenue) ** (1 / (z.year - a.year)) - 1 : null;
+    const rf = state.usaData?.treasury10y?.at(-1)?.value ?? null;
+    const def = { g: Math.min(15, Math.max(0, half((cagr ?? 0.03) * 100))), gt: 2.5, r: half((rf ?? 4) + 5), nd: debt != null && cash != null ? Math.round((debt - cash) / 1e6) : 0 };
+    const v = { ...def, ...dcfSaved.get(sym) };
+    const out = h('div', { class: 'dcf-out' });
+    const field = (key, label, step, title) => {
+      const input = h('input', { type: 'number', step, inputmode: 'decimal', class: 'ps-target', 'aria-label': label, title });
+      input.value = String(v[key]);
+      input.addEventListener('input', () => {
+        const n = Number(input.value);
+        if (!Number.isFinite(n)) return;
+        v[key] = n;
+        dcfSaved.set(sym, { ...v });
+        update();
+      });
+      return h('label', {}, label, input);
+    };
+    const update = () => {
+      const base = V.dcfValue(fcf, sharesAdr, v);
+      if (!base) return out.replaceChildren(h('p', { class: 'err' }, 'La tasa de descuento tiene que ser mayor que el crecimiento perpetuo (por al menos medio punto).'));
+      const cell = (r, gt) => {
+        const x = V.dcfValue(fcf, sharesAdr, { ...v, r, gt });
+        return h('td', { class: r === v.r && gt === v.gt ? 'ps-val' : null }, x ? fmtPrice(x.perShare) : '—');
       };
-      const update = () => {
-        const base = dcfValue(fcf, sharesAdr, v);
-        if (!base) return out.replaceChildren(h('p', { class: 'err' }, 'La tasa de descuento tiene que ser mayor que el crecimiento perpetuo (por al menos medio punto).'));
-        const cell = (r, gt) => {
-          const x = dcfValue(fcf, sharesAdr, { ...v, r, gt });
-          return h('td', { class: r === v.r && gt === v.gt ? 'ps-val' : null }, x ? fmtPrice(x.perShare) : '—');
-        };
-        const gts = [v.gt - 0.5, v.gt, v.gt + 0.5];
-        const table = h(
-          'table',
-          { class: 'fin-table dcf-table' },
-          h('thead', {}, h('tr', {}, h('th', { scope: 'col' }, 'Tasa / perpetuo'), ...gts.map((g) => h('th', { scope: 'col' }, rate(g, 1))))),
-          h('tbody', {}, ...[v.r - 1, v.r, v.r + 1].map((r) => h('tr', {}, h('th', { scope: 'row' }, rate(r, 1)), ...gts.map((g) => cell(r, g))))),
-        );
-        const tvShare = base.tv / (base.pv + base.tv);
-        out.replaceChildren(
-          h('p', { class: 'ps-out' }, 'Valor por acción: ', h('strong', {}, fmtPrice(base.perShare)), ' · ', vsToday(base.perShare, kp.price), '.'),
+      const gts = [v.gt - 0.5, v.gt, v.gt + 0.5];
+      const table = h(
+        'table',
+        { class: 'fin-table dcf-table' },
+        h('thead', {}, h('tr', {}, h('th', { scope: 'col' }, 'Tasa / perpetuo'), ...gts.map((g) => h('th', { scope: 'col' }, rate(g, 1))))),
+        h('tbody', {}, ...[v.r - 1, v.r, v.r + 1].map((r) => h('tr', {}, h('th', { scope: 'row' }, rate(r, 1)), ...gts.map((g) => cell(r, g))))),
+      );
+      const tvShare = base.tv / (base.pv + base.tv);
+      // Al revés: qué crecimiento hace falta para que el DCF dé justo el precio de hoy, con esta tasa y este perpetuo.
+      const imp = V.impliedGrowth(kp.price, fcf, sharesAdr, v);
+      const [lo, hi] = V.IMPLIED_RANGE;
+      const past = cagr == null ? '' : ` Sus ventas crecieron ${rate(cagr * 100, 1)} al año desde ${a.year}.`;
+      const implied = !imp
+        ? null
+        : imp.g != null
+          ? h('p', { class: 'ps-out' }, 'El precio de hoy ya descuenta que su flujo de caja libre crezca ', h('strong', {}, `${rate(imp.g, 1)} al año`), ` por 5 años.${past}`)
+          : h('p', { class: 'ps-out' }, imp.above ? `El precio de hoy pide más de ${hi} % de crecimiento al año por 5 años: con estos supuestos, el DCF simple no lo explica.${past}` : `El precio de hoy se justifica aunque el flujo de caja libre caiga más de ${-lo} % al año por 5 años.${past}`);
+      out.replaceChildren(
+        ...[
+          h('p', { class: 'ps-out' }, 'Con tus supuestos valdría ', h('strong', {}, fmtPrice(base.perShare)), ' por acción: ', vsToday(base.perShare, kp.price), '.'),
+          implied,
           h('p', { class: 'hint' }, `El valor terminal es el ${rate(tvShare * 100, 0)} del total: el resultado depende mucho de la tasa y del crecimiento perpetuo.`),
           h('div', { class: 'ps-wrap' }, table),
-        );
-      };
-      update();
-      dcf = h(
-        'div',
-        { class: 'dcf' },
-        h('p', { class: 'hint' }, `Flujo de caja libre de ${period}: ${usdBig(fcf)} (flujo operativo menos inversión en activo fijo).`),
-        h(
-          'div',
-          { class: 'dcf-inputs' },
-          field('g', 'Crecimiento años 1 a 5 (%)', '0.5', `Para partir: el de las ventas desde ${a?.year ?? '—'} (${rate(cagr * 100, 1)} al año), entre 0 y 15 %`),
-          field('gt', 'Crecimiento perpetuo (%)', '0.5', 'Para partir: 2,5 %, cerca del crecimiento de largo plazo de la economía'),
-          field('r', 'Tasa de descuento (%)', '0.5', `Para partir: el bono a 10 años de EE. UU. (${rf != null ? rate(rf, 2) : '≈4 %'}) más 5 puntos de prima por riesgo`),
-          field('nd', 'Deuda neta (US$ millones)', '100', debt != null && cash != null ? 'Deuda menos caja del último balance (SEC)' : 'La SEC no tiene su deuda en el formato estándar: escríbela'),
-        ),
-        out,
-        h('p', { class: 'hint' }, `Supuestos simples para empezar: cámbialos. Para empresas peruanas, súmale el riesgo país a la tasa.${debt == null || cash == null ? ' Ojo: la SEC no trae su deuda o su caja en el formato estándar.' : ''}`),
+        ].filter(Boolean),
       );
-    }
-
-    // replaceChildren escribe «null» si le llega uno: lo que falta se deja fuera.
+    };
+    update();
     host.replaceChildren(
-      ...[
-        h('p', { class: 'hint' }, `Con tu precio (${fmtPrice(kp.price)}, ${kp.src}) y los informes de la SEC de ${period}${fresh ? '' : ': no presenta trimestres con cifras'}${fin.currency === 'PEN' ? ', pasados a dólares con el dólar de hoy' : ''}.`),
-        ratios,
-        missing.length ? h('p', { class: 'hint' }, `Sin datos suficientes en la SEC para: ${listJoin(missing.map((m) => m.toLowerCase()))}.`) : null,
-        h('h4', { class: 'dcf-h' }, 'DCF simple'),
-        dcf,
-      ].filter(Boolean),
+      h('p', { class: 'hint' }, `Con tu precio (${fmtPrice(kp.price)}, ${kp.src}) y el flujo de caja libre de ${period}: ${usdBig(fcf)} (flujo operativo menos inversión en activo fijo${fin.currency === 'PEN' ? ', pasado a dólares con el dólar de hoy' : ''}).`),
+      h(
+        'div',
+        { class: 'dcf-inputs' },
+        field('g', 'Crecimiento años 1 a 5 (%)', '0.5', cagr == null ? 'Para partir: 3 %' : `Para partir: el de las ventas desde ${a.year} (${rate(cagr * 100, 1)} al año), entre 0 y 15 %`),
+        field('gt', 'Crecimiento perpetuo (%)', '0.5', 'Para partir: 2,5 %, cerca del crecimiento de largo plazo de la economía'),
+        field('r', 'Tasa de descuento (%)', '0.5', `Para partir: el bono a 10 años de EE. UU. (${rf != null ? rate(rf, 2) : '≈4 %'}) más 5 puntos de prima por riesgo`),
+        field('nd', 'Deuda neta (US$ millones)', '100', debt != null && cash != null ? 'Deuda menos caja del último balance (SEC)' : 'La SEC no tiene su deuda en el formato estándar: escríbela'),
+      ),
+      out,
+      h('p', { class: 'hint' }, `Supuestos simples para empezar: cámbialos. Para empresas peruanas, súmale el riesgo país a la tasa.${debt == null || cash == null ? ' Ojo: la SEC no trae su deuda o su caja en el formato estándar.' : ''}`),
     );
   }
 
@@ -3730,7 +3957,7 @@
     if (fin?.cik) {
       const b = psBase(fin);
       const kp = knownPrice(sym);
-      if (!b.error && kp) lines.push(`- P/S de ${psFmt(psOf(b, kp.price))} con las ventas de ${b.year} (US$ ${millions(b.revenueUsd / 1e6)}).`);
+      if (!b.error && kp) lines.push(`- P/S de ${psFmt(psOf(b, kp.price))} con las ventas de ${b.label} (US$ ${millions(b.revenueUsd / 1e6)}).`);
       const [a, z] = [fin.years.at(-2), fin.years.at(-1)];
       if (z?.revenue > 0 && a?.revenue > 0) lines.push(`- Ventas ${z.year}: ${pctFrac(z.revenue / a.revenue - 1)} frente a ${a.year}${z.netIncome != null ? `; margen neto ${rate((z.netIncome / z.revenue) * 100, 1)}` : ''}.`);
       const t = fin.ttm;
@@ -4583,6 +4810,7 @@
       // Con el dólar, el P/S, los ratios y el DCF de las empresas que reportan en soles.
       if (psState.sym) renderPsSection();
       if (state.selected) {
+        renderDetailMult();
         renderDetailPs();
         renderDetailVal();
         renderQuick();
@@ -7096,6 +7324,15 @@
 
   // ---------- inicio ----------
   async function init() {
+    // Las cuentas de valoración: al llegar se rehace lo que las esperaba.
+    import('/valuation-core.js')
+      .then((m) => {
+        V = m;
+        if (state.selected) renderDetail();
+        renderPsSection();
+        renderFinExtras();
+      })
+      .catch(() => {});
     renderClock();
     setupFolds();
     setupSheets();
@@ -7127,6 +7364,7 @@
     $('d-strat-kind').addEventListener('change', renderStrategy);
     $('d-fin').addEventListener('toggle', renderDetailFin);
     $('d-qual').addEventListener('toggle', renderDetailQual);
+    $('d-mult').addEventListener('toggle', renderDetailMult);
     $('d-ps').addEventListener('toggle', renderDetailPs);
     $('d-val').addEventListener('toggle', renderDetailVal);
     $('pf-xray').addEventListener('toggle', loadXray);

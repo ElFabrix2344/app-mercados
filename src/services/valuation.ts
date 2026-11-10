@@ -1,9 +1,13 @@
 // P/S (precio ÷ ventas por acción, o sea, capitalización ÷ ventas), pedido del usuario el 4 nov: «facilita con alguna
 // herramienta el método P/S». Eligió las tres opciones: una calculadora en la ficha, un comparador con pares y la
-// herramienta `valorar_ps` del conector. Las ventas (último año fiscal) y las acciones en circulación (portada del
-// informe más nuevo) salen de la SEC; el dólar, del BCRP, si la empresa reporta en soles. El precio lo pone quien
-// mira. El panel hace estas mismas cuentas en el navegador (public/app.js, «P/S»): si cambias una, cambia la otra.
+// herramienta `valorar_ps` del conector. Las ventas y las acciones en circulación (portada del informe más nuevo)
+// salen de la SEC; el dólar, del BCRP, si la empresa reporta en soles. El precio lo pone quien mira. El panel hace
+// estas mismas cuentas en el navegador (public/app.js, «P/S»): si cambias una, cambia la otra.
+// Desde el 10 nov (fase 2, «¿cara o barata?»): las ventas son las de los últimos 12 meses si la empresa presenta
+// trimestres (si no, las del último año fiscal), y el P/S histórico ajusta las acciones por splits con el mismo
+// módulo que usa el panel (public/valuation-core.js).
 
+import { splitAdjusted } from '../../public/valuation-core.js';
 import type { FinancialsData } from './financials';
 
 const round = (v: number, dec: number) => Math.round(v * 10 ** dec) / 10 ** dec;
@@ -12,10 +16,12 @@ export interface PsRow {
   symbol: string;
   name: string | null;
   price: number;
-  /** Año fiscal y cierre de las ventas usadas (el último que tiene ventas). */
+  /** true: ventas de los últimos 12 meses (cuatro trimestres); false: las del último año fiscal que las tiene. */
+  ttm: boolean;
+  /** Año (el fiscal, o el del cierre de los 12 meses) y último día de las ventas usadas. */
   year: number;
   end: string;
-  /** Ventas del año en la moneda del informe y en dólares. */
+  /** Ventas del periodo en la moneda del informe y en dólares. */
   revenue: number;
   currency: string;
   revenueUsd: number;
@@ -39,11 +45,16 @@ function toUsd(currency: string | null, usdPen: number | null): number | null {
   return null;
 }
 
-/** El P/S de hoy con el último año fiscal que tiene ventas. `usdPen`: soles por dólar, si reporta en soles. */
+/**
+ * El P/S de hoy con las ventas más nuevas: las de los últimos 12 meses o, si no hay trimestres, las del último año
+ * fiscal que las tiene. `usdPen`: soles por dólar, si reporta en soles.
+ */
 export function psRow(fin: FinancialsData, price: number, usdPen: number | null): PsResult {
   const symbol = fin.symbol;
   if (!fin.cik) return { symbol, error: 'No reporta a la SEC (ETF, fondo o empresa que no cotiza en EE. UU.).' };
-  const last = [...fin.years].reverse().find((y) => y.revenue != null && y.revenue > 0);
+  const year = [...fin.years].reverse().find((y) => y.revenue != null && y.revenue > 0);
+  const ttm = fin.ttm?.revenue != null && fin.ttm.revenue > 0 ? fin.ttm : null;
+  const last = ttm ? { year: Number(ttm.end.slice(0, 4)), end: ttm.end, revenue: ttm.revenue } : year;
   if (!last) return { symbol, error: 'La SEC no tiene sus ventas (los bancos y las aseguradoras no informan «ventas»: el P/S no les sirve).' };
   const sh = fin.shares.at(-1);
   if (!sh) return { symbol, error: 'La SEC no tiene sus acciones en circulación.' };
@@ -56,6 +67,7 @@ export function psRow(fin: FinancialsData, price: number, usdPen: number | null)
     symbol,
     name: fin.name,
     price,
+    ttm: !!ttm,
     year: last.year,
     end: last.end,
     revenue: last.revenue!,
@@ -94,19 +106,22 @@ function closeOnOrBefore(closes: [string, number][], date: string): [string, num
 
 /**
  * P/S al cierre de cada año fiscal: el precio de ese día, las acciones de la portada siguiente más cercana (la que
- * cuenta las acciones de entonces) y las ventas de ese año. En soles se usa el dólar de hoy: es una aproximación.
+ * cuenta las acciones de entonces) y las ventas de ese año. Los precios guardados vienen ajustados por splits y las
+ * portadas viejas no: las acciones se llevan a acciones de hoy (`splitAdjusted`). En soles se usa el dólar de hoy: es
+ * una aproximación.
  */
 export function psHistory(fin: FinancialsData, closes: [string, number][], usdPen: number | null): { year: number; end: string; price: number; ps: number }[] {
   const k = toUsd(fin.currency, usdPen);
   if (k === null || !closes.length || !fin.shares.length) return [];
   const out: { year: number; end: string; price: number; ps: number }[] = [];
+  const shares: { date: string; value: number; adj: number }[] = splitAdjusted(fin.shares);
   for (const y of fin.years) {
     if (!y.revenue || y.revenue <= 0) continue;
     const c = closeOnOrBefore(closes, y.end);
     // Sin precio de ese día (antes de los 5 años guardados), o con un hueco de más de 10 días, no se cuenta.
     if (!c || Date.parse(y.end) - Date.parse(c[0]) > 10 * 86_400_000) continue;
-    const sh = fin.shares.find((s) => s.date >= y.end) ?? fin.shares.at(-1)!;
-    out.push({ year: y.year, end: y.end, price: c[1], ps: round((c[1] * sh.value) / fin.adrRatio / (y.revenue * k), 2) });
+    const sh = shares.find((s) => s.date >= y.end) ?? shares.at(-1)!;
+    out.push({ year: y.year, end: y.end, price: c[1], ps: round((c[1] * sh.adj) / fin.adrRatio / (y.revenue * k), 2) });
   }
   return out;
 }

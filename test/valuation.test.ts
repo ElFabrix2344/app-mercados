@@ -31,8 +31,18 @@ describe('P/S (precio / ventas)', () => {
   it('capitalización ÷ ventas del último año fiscal, y el precio al que tendría otro P/S', () => {
     const r = psRow(fin(), 30, null);
     if (!isPsRow(r)) throw new Error(r.error);
-    expect(r).toMatchObject({ year: 2025, revenueUsd: 1_000e6, shares: 100e6, marketCapUsd: 3_000e6, ps: 3 });
+    expect(r).toMatchObject({ ttm: false, year: 2025, revenueUsd: 1_000e6, shares: 100e6, marketCapUsd: 3_000e6, ps: 3 });
     expect(priceAtPs(r, 2)).toBe(20);
+  });
+
+  it('si presenta trimestres, van las ventas de los últimos 12 meses, no las del año fiscal', () => {
+    const ttm = { start: '2025-10-01', end: '2026-09-30', revenue: 1_200e6, operatingIncome: null, netIncome: null };
+    const r = psRow(fin({ ttm }), 30, null);
+    if (!isPsRow(r)) throw new Error(r.error);
+    expect(r).toMatchObject({ ttm: true, year: 2026, end: '2026-09-30', revenue: 1_200e6, revenueUsd: 1_200e6, ps: 2.5 });
+    // Un banco con trimestres pero sin ventas sigue sin P/S.
+    const bank = fin({ ttm: { ...ttm, revenue: null }, years: [{ year: 2025, end: '2025-12-31', revenue: null, operatingIncome: null, netIncome: 1e9 }] });
+    expect(psRow(bank, 30, null)).toMatchObject({ error: expect.stringMatching(/bancos/) });
   });
 
   it('en soles se pasa a dólares; en un ADR, la capitalización va entre las acciones por ADR', () => {
@@ -67,6 +77,15 @@ describe('P/S (precio / ventas)', () => {
     ]);
     // Sin precio cerca del cierre (más de 10 días antes), ese año no cuenta.
     expect(psHistory(fin(), [['2025-12-01', 28]], null)).toEqual([]);
+    // Con un split de 10 por 1 en 2025: los precios guardados ya vienen ajustados, y las acciones de antes se llevan a las de hoy.
+    const split = fin({
+      shares: [
+        { date: '2024-02-15', value: 11e6 },
+        { date: '2025-02-15', value: 10.5e6 },
+        { date: '2026-02-15', value: 100e6 },
+      ],
+    });
+    expect(psHistory(split, closes, null).map((y) => y.ps)).toEqual([2.75, 2.92, 2.8]);
     expect(median([3, 1, 2])).toBe(2);
     expect(median([1, 2, 3, 4])).toBe(2.5);
     expect(median([])).toBeNull();

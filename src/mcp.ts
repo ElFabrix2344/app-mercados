@@ -181,7 +181,8 @@ function registerMarketTools(server: McpServer, c: McpContext, when: When): void
     {
       title: 'Valorar por P/S (precio / ventas)',
       description:
-        'P/S de una acción y de hasta 3 comparables: capitalización ÷ ventas del último año fiscal. Ventas y acciones en ' +
+        'P/S de una acción y de hasta 3 comparables: capitalización ÷ ventas de los últimos 12 meses (o del último año ' +
+        'fiscal, si la empresa no presenta trimestres: `ventas_de` lo dice). Ventas y acciones en ' +
         'circulación de la SEC (portada del informe más nuevo; en los ADR, entre las acciones por ADR); el dólar del BCRP si ' +
         'la empresa reporta en soles. Los precios salen de la caché del panel para los símbolos de las listas del dueño; para ' +
         'los demás, pásalos en `precios` (por ejemplo, del conector de Twelve Data). Devuelve el P/S de cada uno, la mediana ' +
@@ -240,7 +241,9 @@ function registerMarketTools(server: McpServer, c: McpContext, when: When): void
                 empresa: r.name,
                 precio: r.price,
                 fuente_precio: sources.get(r.symbol),
-                anio_fiscal_ventas: r.year,
+                ventas_de: r.ttm ? 'últimos 12 meses' : 'año fiscal',
+                ventas_hasta: r.end,
+                ...(r.ttm ? {} : { anio_fiscal_ventas: r.year }),
                 ventas: r.revenue,
                 moneda_ventas: r.currency,
                 ventas_usd: r.revenueUsd,
@@ -281,8 +284,8 @@ function registerMarketTools(server: McpServer, c: McpContext, when: When): void
               }
             : {}),
           notas: [
-            'P/S = precio × acciones en circulación ÷ ventas del último año fiscal (en dólares).',
-            'Las acciones son las de la portada del informe más nuevo; en el P/S histórico, las de la portada siguiente a cada cierre.',
+            'P/S = precio × acciones en circulación ÷ ventas de los últimos 12 meses (en dólares); si la empresa no presenta trimestres, las del último año fiscal.',
+            'Las acciones son las de la portada del informe más nuevo; en el P/S histórico (ventas de cada año fiscal), las de la portada siguiente a cada cierre, ajustadas por splits.',
             ...(fx ? ['Las ventas en soles se pasan a dólares con el dólar de hoy del BCRP (en el histórico es una aproximación).'] : []),
           ],
         };

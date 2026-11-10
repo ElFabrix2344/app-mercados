@@ -45,7 +45,7 @@ Claude ─► Worker «mercados-mcp» (OAuth propio) ─────────
   - **Kalshi no:** sus términos de datos no dejan mostrar sus datos a otros, guardarlos ni usarlos con IA.
 - **Analizar más rápido** (4 nov, «añade las estrellas»: las tres opciones recomendadas para que analizar sea «accesible, rápido»):
   - **Resumen rápido** arriba de la ficha: tendencia (frente a la media de 200 días y RSI), riesgo (volatilidad y mayor caída del año), valoración (P/S frente a la mediana de sus cierres fiscales) y fundamentales (ventas y margen del último año). Describe lo que ya está en la ficha; no predice.
-  - **Ratios y DCF (SEC)**, plegado en la ficha (`services/fundamentals.ts`, `/api/fundamentals`). Trae flujo operativo, inversión en activo fijo, depreciación, caja, deuda, patrimonio y activos de cada año fiscal (`secx:`, 7 días, unas 16 consultas a la SEC). Con eso calcula P/E, P/B, EV/EBITDA, rendimiento del flujo libre, ROE, ROA, margen operativo, deuda/patrimonio y deuda neta/EBITDA.
+  - **Fundamentales (SEC)** (`services/fundamentals.ts`, `/api/fundamentals`). Trae flujo operativo, inversión en activo fijo, depreciación, caja, deuda, patrimonio y activos de cada año fiscal (`secx:`, 7 días, unas 16 consultas a la SEC). Con eso el panel calcula los múltiplos de «¿Cara o barata?», la rentabilidad y la deuda de «Calidad del negocio» y el DCF.
   - **DCF simple:** el flujo libre crece 5 años y después sigue a perpetuidad. Los cuatro supuestos se cambian a mano: crecimiento (de partida, el de las ventas), perpetuo (2,5 %), tasa (bono a 10 años + 5 pp) y deuda neta. Trae una tabla de sensibilidad.
   - **«Analizar con Claude ↗»** en la ficha y en Comparar: abre claude.ai con la pregunta y los números de Rueda ya escritos (`claude.ai/new?q=`), con la cuenta de quien lo usa. A Rueda no le cuesta nada.
 - **Buscador de acciones** (5 nov, `services/lookup.ts`; a la derecha de las pestañas, en todas las hojas; en el celular, una lupa en la barra de arriba; atajo «/»):
@@ -56,9 +56,15 @@ Claude ─► Worker «mercados-mcp» (OAuth propio) ─────────
   - **Minuto lleno:** si se usaron los 8 créditos del minuto (por ejemplo, justo después de que se renovó la lista), la ficha espera y se abre sola al empezar el siguiente, con una cuenta regresiva. El servidor manda cuánto falta (`retryAfter` y el encabezado `Retry-After`). Los pedidos del historial de una acción nueva van de a uno, así se cobra uno solo.
   - **Sin clave**, un amigo ve los resultados de la SEC de la acción que eligió (la sección «Resultados de empresas»).
   - **Recientes:** las últimas 6 quedan en el navegador (`mercados.buscadas`).
-- **Valorar por P/S** (pedido del usuario el 4 nov; `services/valuation.ts` y el bloque «P/S» de `app.js`, con las mismas cuentas): P/S = capitalización ÷ ventas del último año fiscal. Las ventas y las acciones en circulación (portada del informe más nuevo, `dei:EntityCommonStockSharesOutstanding`) salen de la SEC; el dólar del BCRP, si la empresa reporta en soles. Tres herramientas:
+- **¿Cara o barata? (10 nov, segunda fase del rumbo nuevo).** La pestaña «Valor» de la ficha compara lo que pide el precio de hoy con la historia de la propia empresa. Las cuentas están en `public/valuation-core.js` (con pruebas), que usan el panel y el servidor:
+  - **Múltiplos frente a su historia:** P/E, EV/EBITDA, P/S, P/B y rendimiento del flujo libre de hoy (con los últimos 12 meses), cada uno con su mediana y su rango de 5 años en una barra. La historia usa el precio de cada cierre fiscal, con las acciones ajustadas por splits.
+  - **Frente al bono:** lo que rinden las utilidades por cada dólar pagado, contra el Tesoro de EE. UU. a 10 años.
+  - **DCF al revés:** además de cuánto valdría con tus supuestos, qué crecimiento hace falta para justificar el precio de hoy.
+  - **Pares lado a lado** (en «Comparar con pares», para todos): crecimiento, márgenes, ROE, deuda y, con precio, múltiplos de la acción y hasta 3 comparables.
+  - **La ficha tiene cinco pestañas:** Resumen, Negocio (resultados y calidad), Valor, Empresa y Noticias.
+- **Valorar por P/S** (pedido del usuario el 4 nov; `services/valuation.ts` y el bloque «P/S» de `app.js`, con las mismas cuentas): P/S = capitalización ÷ ventas de los últimos 12 meses (o del último año fiscal, si la empresa no presenta trimestres). Las ventas y las acciones en circulación (portada del informe más nuevo, `dei:EntityCommonStockSharesOutstanding`) salen de la SEC; el dólar del BCRP, si la empresa reporta en soles. Tres herramientas:
   - **En la ficha** (dueño y amigos con clave): el P/S de hoy, el de cada cierre fiscal de los últimos 5 años (con el precio de ese día y las acciones de la portada siguiente), su mediana y una casilla «P/S objetivo» que da el precio implícito.
-  - **Comparador** (sección «Valorar por P/S», para todos): la acción y hasta 3 comparables; los precios de tu lista se ponen solos y los demás se escriben a mano. Precio implícito a la mediana de los comparables o al P/S que escribas.
+  - **Comparador** (sección «Comparar con pares», para todos): la acción y hasta 3 comparables; los precios de tu lista se ponen solos y los demás se escriben a mano. Precio implícito a la mediana de los comparables o al P/S que escribas.
   - **Conector:** `valorar_ps`.
   - **Límites:** no sirve para bancos ni aseguradoras (no informan ventas). Solo pasa a dólares las ventas en soles. En los ADR la capitalización va entre las acciones por ADR (`ADR_RATIO` en `services/financials.ts`: Cementos Pacasmayo, 5); en otros emisores extranjeros se avisa que revisen la proporción. La portada de Credicorp cuenta acciones que tienen sus filiales.
 - **Calendario económico:** decisiones de tasas del BCRP y de la Fed, y publicaciones de inflación del INEI y del BLS, en `lib/calendar.ts`. Las fechas se cargan a mano desde cada fuente oficial (`SOURCES`), hoy hasta 2026 para el BCRP y hasta 2027 para las demás (`CALENDAR_UNTIL`). Las horas oficiales se convierten a la hora de Lima, y las fechas que la fuente da como tentativas se marcan así. Si `EVENTS` quedara vacío, el panel oculta la sección y el conector no ofrece la herramienta.
@@ -260,6 +266,7 @@ src/
   services/quality.ts   calidad del negocio: ROIC, Piotroski, dividendos, recompras y acciones (SEC)
   services/filings.ts   reportes presentados a la SEC, con enlace al documento (caché de 12 horas)
   lib/quarters.ts       trimestres sueltos y últimos 12 meses a partir de los acumulados de los 10-Q
+  (public/valuation-core.js: las cuentas de valoración, compartidas por el panel y el servidor)
   services/hapi.ts      cuenta de Hapi cifrada: guarda y devuelve el texto cifrado de cada persona, y los precios para valorizarla
   services/people.ts    «Personas»: quién puede entrar (lista en KV) y su copia a Access
   game/juego.ts         lo que comparten los juegos: jugadores, semanas, almacenamiento y errores por RPC
