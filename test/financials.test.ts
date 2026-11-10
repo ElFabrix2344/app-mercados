@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { annualValues, companyConcept, findCik, secTicker, shareCounts } from '../src/lib/sec';
+import { annualValues, companyConcept, findCik, periodValues, secTicker, shareCounts } from '../src/lib/sec';
 import { financials, fiscalYear, mergeLines, SEC_TTL_MS, SEC_YEARS } from '../src/services/financials';
 import type { Deps } from '../src/services/market';
 import { memoryKV } from './helpers';
@@ -81,9 +81,56 @@ describe('companyConcept', () => {
         units: { 'PEN/shares': [fact('2024-01-01', '2024-12-31', 60, '2025-04-30', '20-F')], PEN: [fact('2024-01-01', '2024-12-31', 5e9, '2025-04-30', '20-F')] },
       },
     });
-    expect(await companyConcept(1001290, 'ifrs-full', 'ProfitLoss', f)).toEqual({ currency: 'PEN', values: [{ end: '2024-12-31', value: 5e9 }] });
+    expect(await companyConcept(1001290, 'ifrs-full', 'ProfitLoss', f)).toEqual({
+      currency: 'PEN',
+      values: [{ end: '2024-12-31', value: 5e9 }],
+      periods: [{ start: '2024-01-01', end: '2024-12-31', value: 5e9 }],
+      balances: [],
+    });
     expect(calls[0]!.url).toBe('https://data.sec.gov/api/xbrl/companyconcept/CIK0001001290/ifrs-full/ProfitLoss.json');
     expect(await companyConcept(1001290, 'ifrs-full', 'Revenue', f)).toBeNull();
+  });
+
+  it('un saldo trae los balances anuales y, aparte, todos (también los de los 10-Q); las acciones, en su unidad', async () => {
+    const { f } = secFetch({
+      'us-gaap/Assets.json': concept('USD', [
+        { end: '2025-12-31', val: 100, filed: '2026-02-27', form: '10-K' },
+        { end: '2026-06-30', val: 120, filed: '2026-07-31', form: '10-Q' },
+      ]),
+      'us-gaap/WeightedAverageNumberOfDilutedSharesOutstanding.json': { units: { shares: [fact('2025-01-01', '2025-12-31', 800, '2026-02-27')] } },
+    });
+    expect(await companyConcept(7, 'us-gaap', 'Assets', f, 'instant')).toEqual({
+      currency: 'USD',
+      values: [{ end: '2025-12-31', value: 100 }],
+      periods: [],
+      balances: [
+        { end: '2025-12-31', value: 100 },
+        { end: '2026-06-30', value: 120 },
+      ],
+    });
+    // Sin pedir acciones, un concepto que solo viene en «shares» no sirve como monto.
+    expect(await companyConcept(7, 'us-gaap', 'WeightedAverageNumberOfDilutedSharesOutstanding', f)).toBeNull();
+    expect(await companyConcept(7, 'us-gaap', 'WeightedAverageNumberOfDilutedSharesOutstanding', f, 'duration', 'shares')).toMatchObject({ currency: 'shares', values: [{ end: '2025-12-31', value: 800 }] });
+  });
+});
+
+describe('periodValues', () => {
+  it('años, trimestres y acumulados de los 10-K y 10-Q: uno por (inicio, fin), el del informe más nuevo', () => {
+    expect(
+      periodValues([
+        fact('2026-01-01', '2026-03-31', 30, '2026-04-30', '10-Q'),
+        fact('2026-01-01', '2026-06-30', 65, '2026-07-31', '10-Q'),
+        fact('2026-04-01', '2026-06-30', 35, '2026-07-31', '10-Q'),
+        fact('2025-01-01', '2025-12-31', 100, '2026-02-27'),
+        fact('2025-01-01', '2025-12-31', 101, '2026-03-15', '10-K/A'), // corregido
+        fact('2025-01-01', '2025-12-31', 999, '2026-04-17', 'DEF 14A'), // de la junta: no cuenta
+      ]),
+    ).toEqual([
+      { start: '2025-01-01', end: '2025-12-31', value: 101 },
+      { start: '2026-01-01', end: '2026-03-31', value: 30 },
+      { start: '2026-01-01', end: '2026-06-30', value: 65 },
+      { start: '2026-04-01', end: '2026-06-30', value: 35 },
+    ]);
   });
 });
 
@@ -152,6 +199,49 @@ describe('financials', () => {
     expect(calls).toHaveLength(8);
     await financials({ ...d, now: new Date(NOW.getTime() + SEC_TTL_MS + 60_000) }, 'SCCO');
     expect(calls).toHaveLength(16);
+  });
+
+  it('los trimestres de los 10-Q: el cuarto sale del año, y los últimos 12 meses son los cuatro más nuevos', async () => {
+    const q = (start: string, end: string, val: number, filed: string) => fact(start, end, val, filed, '10-Q');
+    const routes = {
+      ...sccoRoutes,
+      // 2025 completo (año de 1000) y los tres primeros trimestres de 2026; el segundo de 2026 solo viene acumulado.
+      'CIK0001001838/us-gaap/Revenues.json': concept('USD', [
+        fact('2024-01-01', '2024-12-31', 900, '2025-02-28'),
+        q('2025-01-01', '2025-03-31', 200, '2025-04-30'),
+        q('2025-04-01', '2025-06-30', 250, '2025-07-31'),
+        q('2025-07-01', '2025-09-30', 260, '2025-10-30'),
+        q('2025-01-01', '2025-09-30', 710, '2025-10-30'),
+        fact('2025-01-01', '2025-12-31', 1000, '2026-02-27'),
+        q('2026-01-01', '2026-03-31', 300, '2026-04-30'),
+        q('2026-01-01', '2026-06-30', 620, '2026-07-31'),
+        q('2026-07-01', '2026-09-30', 330, '2026-10-30'),
+      ]),
+      'CIK0001001838/us-gaap/NetIncomeLoss.json': concept('USD', [fact('2025-01-01', '2025-12-31', 100, '2026-02-27'), q('2026-07-01', '2026-09-30', 40, '2026-10-30')]),
+    };
+    const r = await financials({ kv: memoryKV().kv, now: new Date('2026-11-09T15:00:00Z'), fetch: secFetch(routes).f }, 'SCCO');
+    expect(r.data.quarters.map((x) => [x.end, x.revenue])).toEqual([
+      ['2025-03-31', 200],
+      ['2025-06-30', 250],
+      ['2025-09-30', 260],
+      ['2025-12-31', 290], // 1000 del año − 710 de los nueve meses
+      ['2026-03-31', 300],
+      ['2026-06-30', 320], // 620 del semestre − 300
+      ['2026-09-30', 330],
+    ]);
+    expect(r.data.ttm).toEqual({ start: '2025-10-01', end: '2026-09-30', revenue: 1240, operatingIncome: null, netIncome: null });
+    // Los 12 meses anteriores necesitan cuatro trimestres seguidos: aquí solo hay tres.
+    expect(r.data.ttmPrev).toBeNull();
+    expect(r.data.quarters.at(-1)).toMatchObject({ netIncome: 40 });
+  });
+
+  it('trimestres más viejos que el último año (dejó de presentar 10-Q) no cuentan como «al día»', async () => {
+    const routes = {
+      ...sccoRoutes,
+      'CIK0001001838/us-gaap/OperatingIncomeLoss.json': concept('USD', [fact('2025-01-01', '2025-12-31', 6_000e6, '2026-02-27'), fact('2019-01-01', '2019-03-31', 9, '2019-04-30', '10-Q')]),
+    };
+    const r = await financials({ kv: memoryKV().kv, now: NOW, fetch: secFetch(routes).f }, 'SCCO');
+    expect(r.data).toMatchObject({ quarters: [], ttm: null, ttmPrev: null });
   });
 
   it('lo guardado antes de las acciones (4 nov) se renueva una vez', async () => {

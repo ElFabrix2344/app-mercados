@@ -21,6 +21,9 @@ const fin = (o: Partial<FinancialsData> = {}): FinancialsData => ({
   ],
   foreign: false,
   adrRatio: 1,
+  quarters: [],
+  ttm: null,
+  ttmPrev: null,
   ...o,
 });
 

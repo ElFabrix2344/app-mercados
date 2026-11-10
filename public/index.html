@@ -47,13 +47,14 @@
       </div>
     </div>
 
-    <!-- Las hojas por tema y el buscador. La hoja va en la dirección (#acciones, #mercados, #juego) y se recuerda en el equipo. -->
+    <!-- Las hojas por tema y el buscador. La hoja va en la dirección (#acciones, #mercados, #cartera) y se recuerda en el
+         equipo. El juego del grupo no tiene pestaña desde el 9 nov: se entra por el enlace del pie (#juego). -->
     <div class="sheetbar">
       <nav class="sheets" id="sheets" role="tablist" aria-label="Hojas de Rueda">
         <button type="button" role="tab" id="tab-hoy" aria-controls="sheet-hoy" aria-selected="true"><svg class="tab-ico" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2.5V5M12 19v2.5M2.5 12H5M19 12h2.5M5.3 5.3l1.8 1.8M16.9 16.9l1.8 1.8M5.3 18.7l1.8-1.8M16.9 7.1l1.8-1.8"/></svg><span>Hoy</span></button>
         <button type="button" role="tab" id="tab-acciones" aria-controls="sheet-acciones" aria-selected="false" tabindex="-1"><svg class="tab-ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M3.5 20h17"/><path d="m4.5 15.5 5-5 4 4 6.5-7.5"/></svg><span>Acciones</span></button>
         <button type="button" role="tab" id="tab-mercados" aria-controls="sheet-mercados" aria-selected="false" tabindex="-1"><svg class="tab-ico" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3c2.4 2.6 3.6 5.6 3.6 9s-1.2 6.4-3.6 9c-2.4-2.6-3.6-5.6-3.6-9S9.6 5.6 12 3Z"/></svg><span>Mercados</span></button>
-        <button type="button" role="tab" id="tab-juego" aria-controls="game" aria-selected="false" tabindex="-1"><svg class="tab-ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M8 4h8v5a4 4 0 0 1-8 0V4Z"/><path d="M8 6H5a3 3 0 0 0 3 4M16 6h3a3 3 0 0 1-3 4M12 13v4M9 20h6M10 17h4"/></svg><span>Juego</span><span class="sheet-badge" id="game-badge" hidden></span></button>
+        <button type="button" role="tab" id="tab-cartera" aria-controls="sheet-cartera" aria-selected="false" tabindex="-1"><svg class="tab-ico" viewBox="0 0 24 24" aria-hidden="true"><rect x="3.5" y="7.5" width="17" height="12" rx="2"/><path d="M9 7.5V5.5a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2M3.5 13h17"/></svg><span>Cartera</span></button>
       </nav>
       <!-- Buscador de acciones (5 nov), a la derecha de las hojas: sugerencias de la SEC por nombre o símbolo; abre la ficha
            de cualquiera, también fuera de tus listas. En el celular es una lupa que abre el buscador arriba, a todo el ancho. -->
@@ -78,13 +79,6 @@
     </div>
   </header>
 
-  <!-- Aviso de la liga de acciones en las hojas del panel, para quien todavía no entró (se cierra con × y no vuelve). -->
-  <div class="teaser" id="lg-teaser" hidden>
-    <p><strong>Nuevo: Liga de acciones.</strong> Compite con el grupo con una cartera de acciones de verdad: cada quincena, una temporada.</p>
-    <button type="button" class="cta" id="lg-teaser-go">Entrar</button>
-    <button type="button" class="teaser-x" id="lg-teaser-x" aria-label="Cerrar el aviso">×</button>
-  </div>
-
   <!-- Instalar Rueda como app, sin tienda de apps: los pasos según el equipo los pone app.js. -->
   <section class="screen install" id="install-panel" aria-labelledby="install-h" tabindex="-1" hidden>
     <div class="screen-head">
@@ -106,7 +100,7 @@
 
   <main class="hojas" id="hojas">
     <!-- Hojas por tema (5 nov, pedido del usuario: «que la UI sea lo más fácil de usar posible, en PC y celular»):
-         «Hoy», «Acciones» y «Mercados», más «Juego». En computadora, cada una en columnas (izquierda | lo principal |
+         «Hoy», «Acciones», «Mercados» y «Cartera». En computadora, cada una en columnas (izquierda | lo principal |
          derecha); en tablet, dos; en el celular, una, con la barra de hojas abajo (styles.css). -->
     <div class="cols sheet" id="sheet-hoy" role="tabpanel" aria-labelledby="tab-hoy">
       <div class="col col-left" aria-label="Agenda">
@@ -138,11 +132,9 @@
           </div>
           <ul class="welcome">
             <li><strong>Precios y gráficos:</strong> con tu clave gratis de Twelve Data ves tu lista de seguimiento con precios, gráficos de 5 años, comparar y el termómetro del S&amp;P 500. Conectarla toma 2 minutos.</li>
-            <li><strong>Liga de acciones:</strong> en la hoja «Juego», arriba, arma una cartera con acciones de verdad y compite con el grupo. Es la misma clave.</li>
-            <li><strong>Más juegos:</strong> el gráfico del día, 2/3 del promedio y los pronósticos de tasas, inflación y dólar.</li>
-            <li><strong>Mi cuenta Hapi:</strong> importa tu estado de cuenta en PDF o anota tus operaciones. Se cifra con tu frase: nadie más la puede ver, tampoco el dueño de la app.</li>
             <li><strong>Buscador:</strong> arriba, cualquier acción por nombre o símbolo. Sin clave ves sus resultados de la SEC; con ella, su ficha completa.</li>
-            <li><strong>Resultados de empresas y P/S:</strong> ingresos y utilidades de los últimos años de cualquier acción que reporte a la SEC, y un comparador por P/S (precio / ventas) con empresas parecidas.</li>
+            <li><strong>Empresas por dentro:</strong> de cualquier acción que reporte a la SEC, sus ingresos y utilidades por año y por trimestre, la calidad del negocio (cuánto rinde su capital, su deuda, sus dividendos) y los reportes que presentó, con enlace al documento. Y un comparador por P/S (precio / ventas) con empresas parecidas.</li>
+            <li><strong>Mi cuenta Hapi:</strong> en la hoja «Cartera», importa tu estado de cuenta en PDF o anota tus operaciones. Se cifra con tu frase: nadie más la puede ver, tampoco el dueño de la app.</li>
             <li><strong>Materias primas:</strong> cobre, oro, plata, zinc y petróleo, y si los grandes fondos están comprados o vendidos en cada una.</li>
             <li><strong>Lo que espera el mercado:</strong> las probabilidades de Polymarket sobre empresas, la Fed y eventos del mundo.</li>
             <li><strong>Perú y EE. UU.:</strong> dólar, tasas, inflación, BVL, bonos y la curva del Tesoro, con el calendario de anuncios y las noticias.</li>
@@ -256,14 +248,14 @@
 
     <div class="cols sheet" id="sheet-acciones" role="tabpanel" aria-labelledby="tab-acciones" hidden>
       <div class="col col-left" aria-label="Tus listas">
-        <!-- Amigos sin clave: donde iría su lista. Con su clave gratis de Twelve Data (la misma de la liga) ven sus precios. -->
+        <!-- Amigos sin clave: donde iría su lista. Con su clave gratis de Twelve Data ven sus precios. -->
         <section class="screen friend-only" id="keycard" aria-labelledby="kc-h" hidden>
           <div class="screen-head">
             <h2 id="kc-h">Precios con tu clave</h2>
           </div>
           <p class="kc-text">Tu propia lista de seguimiento con precios, los gráficos de 5 años con indicadores, comparar y el termómetro del S&amp;P 500. Rueda no puede mostrarte los de su clave, pero sí los de la tuya: crearla es gratis y toma 2 minutos.</p>
           <button type="button" class="cta" id="kc-go">Conectar mi clave</button>
-          <p class="hint">Con la misma clave también entras a la liga de acciones. Se guarda cifrada, solo trae lo tuyo (nadie más lo ve) y la puedes quitar cuando quieras.</p>
+          <p class="hint">Se guarda cifrada, solo trae lo tuyo (nadie más lo ve) y la puedes quitar cuando quieras.</p>
         </section>
 
         <section class="screen keyed" id="watchlist" aria-labelledby="wl-h">
@@ -286,6 +278,9 @@
           </div>
           <div class="rows" id="tiles"></div>
           <p class="hint" id="hist-note" hidden></p>
+          <!-- Solo los amigos: sus precios vienen de su propia clave, y aquí la quitan. -->
+          <p class="hint friend-only" id="wl-key">Precios con tu clave de Twelve Data, guardada cifrada · <button type="button" class="linkish" id="wl-key-off">quitar mi clave</button></p>
+          <p class="err" id="wl-key-err" hidden></p>
         </section>
 
         <section class="screen owner-only" id="eod" aria-labelledby="eod-h">
@@ -333,7 +328,9 @@
                 <p>Velas: cada una muestra la apertura, el máximo, el mínimo y el cierre del día. Hueca si cerró más arriba de lo que abrió; rellena si cerró más abajo. Se ven hasta 1 año.</p>
                 <p>Con el buscador de arriba abres la ficha de cualquier acción, aunque no esté en tus listas: cada una nueva usa unos 2 créditos (su precio y 5 años de historia) y se pueden abrir 20 nuevas al día. Con «Agregar a mi lista» queda en tu lista de seguimiento.</p>
                 <p class="owner-only">Los datos de la empresa vienen de Finnhub, solo los ves tú y se guardan 24 horas. El PER y el BPA son de los últimos 12 meses; los montos van en la moneda en que reporta la empresa.</p>
-                <p>Los resultados anuales vienen de los informes que la empresa presenta a la SEC (10-K o 20-F): son públicos y se guardan una semana.</p>
+                <p>Los resultados vienen de los informes que la empresa presenta a la SEC: los anuales (10-K o 20-F) y, si los presenta, los trimestrales (10-Q). Con estos se arman los últimos 12 meses, para no depender de un informe anual de hace hasta un año. Son públicos y se guardan una semana.</p>
+                <p>«Calidad del negocio»: el ROIC es cuánto gana la empresa por cada dólar de capital puesto en el negocio. El puntaje de Piotroski suma nueve señales de salud financiera frente al año anterior; suele leerse así: de 7 a 9, finanzas sólidas; de 0 a 3, débiles. No sirve para bancos ni aseguradoras.</p>
+                <p>En «Empresa» están los reportes que presentó a la SEC, con enlace al documento (en inglés): informes, hechos (8-K) y la junta de accionistas.</p>
                 <p>El resumen de arriba describe lo que ya está en la ficha (tendencia, riesgo, valoración y fundamentales): no predice. «Ratios y DCF» usa los informes de la SEC y tu precio; el DCF es simple y sus supuestos se cambian a mano. Nada de esto es una recomendación de inversión.</p>
               </div>
             </details>
@@ -412,8 +409,13 @@
           </div>
           <div class="d-panel" id="dp-valor" role="tabpanel" aria-labelledby="dt-valor" hidden>
             <details class="d-tool" id="d-fin">
-              <summary>Resultados anuales (SEC)</summary>
+              <summary>Resultados: últimos 12 meses, por año y por trimestre (SEC)</summary>
               <div id="d-fin-body"></div>
+            </details>
+            <!-- Calidad del negocio (9 nov): ROIC, dividendos, recompras, acciones y el puntaje de Piotroski. -->
+            <details class="d-tool" id="d-qual">
+              <summary>Calidad del negocio: rendimiento del capital y Piotroski (SEC)</summary>
+              <div id="d-qual-body"></div>
             </details>
             <details class="d-tool" id="d-ps">
               <summary>Valorar por P/S (precio / ventas)</summary>
@@ -434,6 +436,11 @@
                 <div id="d-co-surprises"></div>
               </div>
               <p class="hint" id="d-co-note"></p>
+            </div>
+            <!-- Lo que presentó a la SEC (9 nov): informes, hechos y avisos, con enlace al documento. Público: lo ven todos. -->
+            <div class="d-filings" id="d-filings" hidden>
+              <p class="hint">Reportes a la SEC</p>
+              <div id="d-filings-body"></div>
             </div>
             <!-- Empresas peruanas que cotizan en EE. UU.: sus hechos de importancia de los últimos 60 días (SMV, públicos). -->
             <div class="d-news" id="d-smv" hidden>
@@ -482,94 +489,6 @@
           </div>
           <p class="hint" id="cmp-note"></p>
         </section>
-
-        <section class="screen owner-only" id="portfolio" aria-labelledby="pf-h">
-          <div class="screen-head">
-            <h2 id="pf-h">Cartera simulada</h2>
-            <details class="help">
-              <summary aria-label="Cómo funciona la cartera simulada">?</summary>
-              <div class="help-body">
-                <p>En US$, a costo promedio, sin dividendos ni comisiones. Solo con los símbolos de tu lista que cotizan en dólares.</p>
-                <p>Si no pones precio, se usa el cierre de ese día. Se valoriza con los precios ya guardados: no gasta créditos.</p>
-                <p>La comparación hace las mismas compras y ventas en el S&amp;P 500 (SPY).</p>
-              </div>
-            </details>
-            <button type="button" id="pf-csv" class="csv-btn" title="Operaciones de la cartera, para Excel" disabled>⤓ CSV</button>
-          </div>
-          <form id="pf-form" class="pf-form">
-            <label>Fecha <input type="date" id="pf-date" required></label>
-            <label>Símbolo <select id="pf-symbol" required></select></label>
-            <label>Operación <select id="pf-side"><option value="buy">Compra</option><option value="sell">Venta</option></select></label>
-            <label>Cantidad <input type="number" id="pf-qty" min="0" step="any" inputmode="decimal" required></label>
-            <label>Precio en US$ <input type="number" id="pf-price" min="0" step="any" inputmode="decimal" placeholder="Cierre de ese día"></label>
-            <button type="submit">Agregar</button>
-          </form>
-          <p class="err" id="pf-err" hidden></p>
-          <div id="pf-body"><p class="muted">Cargando…</p></div>
-          <details class="d-tool" id="pf-xray">
-            <summary>Rayos X de la cartera: de qué está hecha y cuánto riesgo tiene</summary>
-            <div id="pf-xray-body"></div>
-          </details>
-        </section>
-
-        <section class="screen" id="hapi" aria-labelledby="hp-h">
-          <div class="screen-head">
-            <h2 id="hp-h">Mi cuenta Hapi</h2>
-            <span class="src">Cifrada · solo tú</span>
-            <details class="help">
-              <summary aria-label="Cómo funciona tu cuenta Hapi">?</summary>
-              <div class="help-body">
-                <p>Tu cuenta se cifra en tu navegador con una frase que solo sabes tú. Rueda guarda solo texto ilegible: nadie más del grupo puede verla, ni el dueño de la app. Si olvidas la frase, no hay forma de recuperarla.</p>
-                <p>Importa el estado de cuenta mensual de Hapi (PDF): se lee en tu navegador, no se sube, y de él solo quedan los movimientos, el valor total y los precios de cierre de tus posiciones, con los que se valoriza tu cuenta hasta que importes el siguiente. La primera vez, tu cuenta empieza con el saldo de ese mes.</p>
-                <p>También puedes anotar a mano compras, ventas, dividendos, depósitos y retiros. Si dejas el costo vacío, se calcula con las comisiones de Hapi de 2026: US$ 0,10 por orden de acciones enteras y US$ 0,15 por fracciones (US$ 0,05 con Prime); en las ventas, además, los cargos de la SEC y de FINRA. Depósito en soles: US$ 1,99; retiro en soles: US$ 4,99.</p>
-                <p>En los depósitos va lo que llegó a Hapi; en los retiros, lo que salió de Hapi. Si anotas también los soles, ves tu rendimiento en soles, con el dólar del BCRP de hoy. Dividendos: EE. UU. retiene el 30 % a quienes viven en el Perú.</p>
-                <p>El código que corre en tu navegador es público: al pie de la página está la versión exacta, con enlace a GitHub.</p>
-              </div>
-            </details>
-            <button type="button" id="hp-csv" class="csv-btn" title="Movimientos de tu cuenta Hapi, para Excel" disabled>⤓ CSV</button>
-          </div>
-          <div id="hp-lock"><p class="muted">Cargando…</p></div>
-          <div id="hp-open" hidden>
-            <div class="hp-tools">
-              <label class="csv-btn hp-file">⤒ Importar estado de cuenta (PDF)<input type="file" id="hp-file" accept="application/pdf,.pdf" hidden></label>
-              <button type="button" id="hp-lock-btn" class="pf-del" title="Cierra tu cuenta en este equipo y olvida la clave guardada">Bloquear</button>
-            </div>
-            <p class="hint" id="hp-ios-hint" hidden>En iPhone o iPad, guarda primero el PDF en la app Archivos: ábrelo, toca Compartir y elige «Guardar en Archivos». Después búscalo aquí con «Importar estado de cuenta».</p>
-            <div id="hp-import" class="hp-import" hidden></div>
-            <form id="hp-form" class="pf-form">
-              <label>Movimiento <select id="hp-kind"><option value="buy">Compra</option><option value="sell">Venta</option><option value="dividend">Dividendo</option><option value="deposit">Depósito</option><option value="withdrawal">Retiro</option></select></label>
-              <label>Fecha <input type="date" id="hp-date" required></label>
-              <label data-for="trade dividend">Símbolo <input id="hp-symbol" maxlength="12" autocomplete="off" autocapitalize="characters" spellcheck="false" placeholder="VOO"></label>
-              <label data-for="trade">Cantidad <input type="number" id="hp-qty" min="0" step="any" inputmode="decimal"></label>
-              <label data-for="trade">Precio en US$ <input type="number" id="hp-price" min="0" step="any" inputmode="decimal"></label>
-              <label data-for="dividend transfer"><span id="hp-amount-label">Monto en US$</span> <input type="number" id="hp-amount" min="0" step="any" inputmode="decimal"></label>
-              <label data-for="transfer"><span id="hp-pen-label">Soles</span> <input type="number" id="hp-pen" min="0" step="any" inputmode="decimal" placeholder="Opcional"></label>
-              <label data-for="dividend">Retención en US$ <input type="number" id="hp-tax" min="0" step="any" inputmode="decimal" placeholder="30 %"></label>
-              <label data-for="trade transfer">Costo en US$ <input type="number" id="hp-fee" min="0" step="any" inputmode="decimal" placeholder="Se calcula"></label>
-              <button type="submit">Anotar</button>
-            </form>
-            <p class="err" id="hp-err" hidden></p>
-            <div class="hp-settings">
-              <label>Plan <select id="hp-plan"><option value="standard">Standard</option><option value="prime">Prime</option></select></label>
-              <form id="hp-snap-form" class="hp-snap">
-                <label>Valor total según Hapi (US$) <input type="number" id="hp-snap-value" min="0" step="any" inputmode="decimal" required></label>
-                <label>Al <input type="date" id="hp-snap-date" required></label>
-                <button type="submit">Guardar</button>
-                <button type="button" id="hp-snap-clear" class="pf-del" hidden>Quitar</button>
-              </form>
-            </div>
-            <div id="hp-body"></div>
-            <details class="d-tool">
-              <summary>Cambiar la frase</summary>
-              <form id="hp-pass-form" class="hp-pass">
-                <label>Frase nueva <input type="password" id="hp-new1" minlength="10" required autocomplete="new-password"></label>
-                <label>Repítela <input type="password" id="hp-new2" minlength="10" required autocomplete="new-password"></label>
-                <button type="submit">Cambiar</button>
-              </form>
-              <p class="hint" id="hp-pass-status" role="status"></p>
-            </details>
-          </div>
-        </section>
       </div>
 
       <aside class="col col-right" aria-label="Resultados y P/S">
@@ -580,9 +499,10 @@
             <details class="help">
               <summary aria-label="De dónde salen los resultados">?</summary>
               <div class="help-body">
-                <p>Ingresos, utilidad operativa y utilidad neta de cada año fiscal, de los informes anuales que las empresas presentan a la SEC, el regulador de valores de EE. UU.: el 10-K de las empresas de EE. UU. y el 20-F o 40-F de las extranjeras que cotizan allá, como Southern Copper, Buenaventura o Credicorp.</p>
+                <p>Ingresos, utilidad operativa y utilidad neta de los informes que las empresas presentan a la SEC, el regulador de valores de EE. UU.: los anuales (el 10-K de las empresas de EE. UU. y el 20-F o 40-F de las extranjeras, como Buenaventura o Credicorp) y los trimestrales (10-Q). Con los trimestres se arman los últimos 12 meses; las que solo presentan 20-F no los tienen.</p>
                 <p>Los montos van en la moneda en que reporta cada empresa, tal como figuran en sus informes. Los bancos no reportan «ingresos» como las demás empresas: de ellos se ve la utilidad. Los ETF y los fondos no tienen estos informes.</p>
-                <p>Son datos públicos y se guardan una semana.</p>
+                <p>Debajo: la calidad del negocio (el ROIC, lo que devuelve a sus accionistas y el puntaje de Piotroski, que suele leerse así: de 7 a 9, finanzas sólidas; de 0 a 3, débiles) y los reportes que presentó, con enlace al documento.</p>
+                <p>Son datos públicos y se guardan una semana (los reportes, 12 horas). Son cuentas, no una recomendación de inversión.</p>
               </div>
             </details>
           </div>
@@ -593,6 +513,15 @@
           </form>
           <div class="ranges fin-chips" id="fin-chips" role="group" aria-label="Empresas sugeridas"></div>
           <div id="fin-body"></div>
+          <!-- Lo mismo que en la ficha, sin precios: se pide al abrir cada uno. -->
+          <details class="d-tool" id="fin-qual" hidden>
+            <summary>Calidad del negocio</summary>
+            <div id="fin-qual-body"></div>
+          </details>
+          <details class="d-tool" id="fin-filings" hidden>
+            <summary>Reportes a la SEC</summary>
+            <div id="fin-filings-body"></div>
+          </details>
         </section>
 
         <!-- Valorar por P/S con comparables (pedido del usuario, 4 nov): ventas y acciones de la SEC (públicas), dólar del
@@ -742,9 +671,109 @@
       </aside>
     </div>
 
-    <!-- Hoja «Juego»: lo que se juega en grupo, sin plata (juegan el dueño y los amigos). Arriba y a todo el ancho, la
-         liga de acciones, que es lo principal; después, los demás juegos y, al costado, el ranking de pronósticos. -->
-    <div class="game" id="game" role="tabpanel" aria-labelledby="tab-juego" hidden>
+    <!-- Hoja «Cartera» (9 nov, en lugar de «Juego»): lo tuyo. Tu cuenta Hapi (cada uno la suya, cifrada en su navegador)
+         y, para el dueño, la cartera simulada. Aquí irá lo que mida tu cartera de verdad (ROADMAP, fase 3). -->
+    <div class="cols sheet" id="sheet-cartera" role="tabpanel" aria-labelledby="tab-cartera" hidden>
+      <div class="col col-center">
+        <section class="screen" id="hapi" aria-labelledby="hp-h">
+          <div class="screen-head">
+            <h2 id="hp-h">Mi cuenta Hapi</h2>
+            <span class="src">Cifrada · solo tú</span>
+            <details class="help">
+              <summary aria-label="Cómo funciona tu cuenta Hapi">?</summary>
+              <div class="help-body">
+                <p>Tu cuenta se cifra en tu navegador con una frase que solo sabes tú. Rueda guarda solo texto ilegible: nadie más del grupo puede verla, ni el dueño de la app. Si olvidas la frase, no hay forma de recuperarla.</p>
+                <p>Importa el estado de cuenta mensual de Hapi (PDF): se lee en tu navegador, no se sube, y de él solo quedan los movimientos, el valor total y los precios de cierre de tus posiciones, con los que se valoriza tu cuenta hasta que importes el siguiente. La primera vez, tu cuenta empieza con el saldo de ese mes.</p>
+                <p>También puedes anotar a mano compras, ventas, dividendos, depósitos y retiros. Si dejas el costo vacío, se calcula con las comisiones de Hapi de 2026: US$ 0,10 por orden de acciones enteras y US$ 0,15 por fracciones (US$ 0,05 con Prime); en las ventas, además, los cargos de la SEC y de FINRA. Depósito en soles: US$ 1,99; retiro en soles: US$ 4,99.</p>
+                <p>En los depósitos va lo que llegó a Hapi; en los retiros, lo que salió de Hapi. Si anotas también los soles, ves tu rendimiento en soles, con el dólar del BCRP de hoy. Dividendos: EE. UU. retiene el 30 % a quienes viven en el Perú.</p>
+                <p>El código que corre en tu navegador es público: al pie de la página está la versión exacta, con enlace a GitHub.</p>
+              </div>
+            </details>
+            <button type="button" id="hp-csv" class="csv-btn" title="Movimientos de tu cuenta Hapi, para Excel" disabled>⤓ CSV</button>
+          </div>
+          <div id="hp-lock"><p class="muted">Cargando…</p></div>
+          <div id="hp-open" hidden>
+            <div class="hp-tools">
+              <label class="csv-btn hp-file">⤒ Importar estado de cuenta (PDF)<input type="file" id="hp-file" accept="application/pdf,.pdf" hidden></label>
+              <button type="button" id="hp-lock-btn" class="pf-del" title="Cierra tu cuenta en este equipo y olvida la clave guardada">Bloquear</button>
+            </div>
+            <p class="hint" id="hp-ios-hint" hidden>En iPhone o iPad, guarda primero el PDF en la app Archivos: ábrelo, toca Compartir y elige «Guardar en Archivos». Después búscalo aquí con «Importar estado de cuenta».</p>
+            <div id="hp-import" class="hp-import" hidden></div>
+            <form id="hp-form" class="pf-form">
+              <label>Movimiento <select id="hp-kind"><option value="buy">Compra</option><option value="sell">Venta</option><option value="dividend">Dividendo</option><option value="deposit">Depósito</option><option value="withdrawal">Retiro</option></select></label>
+              <label>Fecha <input type="date" id="hp-date" required></label>
+              <label data-for="trade dividend">Símbolo <input id="hp-symbol" maxlength="12" autocomplete="off" autocapitalize="characters" spellcheck="false" placeholder="VOO"></label>
+              <label data-for="trade">Cantidad <input type="number" id="hp-qty" min="0" step="any" inputmode="decimal"></label>
+              <label data-for="trade">Precio en US$ <input type="number" id="hp-price" min="0" step="any" inputmode="decimal"></label>
+              <label data-for="dividend transfer"><span id="hp-amount-label">Monto en US$</span> <input type="number" id="hp-amount" min="0" step="any" inputmode="decimal"></label>
+              <label data-for="transfer"><span id="hp-pen-label">Soles</span> <input type="number" id="hp-pen" min="0" step="any" inputmode="decimal" placeholder="Opcional"></label>
+              <label data-for="dividend">Retención en US$ <input type="number" id="hp-tax" min="0" step="any" inputmode="decimal" placeholder="30 %"></label>
+              <label data-for="trade transfer">Costo en US$ <input type="number" id="hp-fee" min="0" step="any" inputmode="decimal" placeholder="Se calcula"></label>
+              <button type="submit">Anotar</button>
+            </form>
+            <p class="err" id="hp-err" hidden></p>
+            <div class="hp-settings">
+              <label>Plan <select id="hp-plan"><option value="standard">Standard</option><option value="prime">Prime</option></select></label>
+              <form id="hp-snap-form" class="hp-snap">
+                <label>Valor total según Hapi (US$) <input type="number" id="hp-snap-value" min="0" step="any" inputmode="decimal" required></label>
+                <label>Al <input type="date" id="hp-snap-date" required></label>
+                <button type="submit">Guardar</button>
+                <button type="button" id="hp-snap-clear" class="pf-del" hidden>Quitar</button>
+              </form>
+            </div>
+            <div id="hp-body"></div>
+            <details class="d-tool">
+              <summary>Cambiar la frase</summary>
+              <form id="hp-pass-form" class="hp-pass">
+                <label>Frase nueva <input type="password" id="hp-new1" minlength="10" required autocomplete="new-password"></label>
+                <label>Repítela <input type="password" id="hp-new2" minlength="10" required autocomplete="new-password"></label>
+                <button type="submit">Cambiar</button>
+              </form>
+              <p class="hint" id="hp-pass-status" role="status"></p>
+            </details>
+          </div>
+        </section>
+      </div>
+
+      <aside class="col col-right" aria-label="Cartera simulada">
+        <section class="screen owner-only" id="portfolio" aria-labelledby="pf-h">
+          <div class="screen-head">
+            <h2 id="pf-h">Cartera simulada</h2>
+            <details class="help">
+              <summary aria-label="Cómo funciona la cartera simulada">?</summary>
+              <div class="help-body">
+                <p>En US$, a costo promedio, sin dividendos ni comisiones. Solo con los símbolos de tu lista que cotizan en dólares.</p>
+                <p>Si no pones precio, se usa el cierre de ese día. Se valoriza con los precios ya guardados: no gasta créditos.</p>
+                <p>La comparación hace las mismas compras y ventas en el S&amp;P 500 (SPY).</p>
+              </div>
+            </details>
+            <button type="button" id="pf-csv" class="csv-btn" title="Operaciones de la cartera, para Excel" disabled>⤓ CSV</button>
+          </div>
+          <form id="pf-form" class="pf-form">
+            <label>Fecha <input type="date" id="pf-date" required></label>
+            <label>Símbolo <select id="pf-symbol" required></select></label>
+            <label>Operación <select id="pf-side"><option value="buy">Compra</option><option value="sell">Venta</option></select></label>
+            <label>Cantidad <input type="number" id="pf-qty" min="0" step="any" inputmode="decimal" required></label>
+            <label>Precio en US$ <input type="number" id="pf-price" min="0" step="any" inputmode="decimal" placeholder="Cierre de ese día"></label>
+            <button type="submit">Agregar</button>
+          </form>
+          <p class="err" id="pf-err" hidden></p>
+          <div id="pf-body"><p class="muted">Cargando…</p></div>
+          <details class="d-tool" id="pf-xray">
+            <summary>Rayos X de la cartera: de qué está hecha y cuánto riesgo tiene</summary>
+            <div id="pf-xray-body"></div>
+          </details>
+        </section>
+      </aside>
+    </div>
+    <!-- El juego del grupo: lo que se juega sin plata (el dueño y los amigos). Desde el 9 nov no tiene pestaña («parece
+         que nadie lo está usando mucho»): se entra por el enlace del pie o con #juego, y nada se borró. Arriba y a todo
+         el ancho, la liga de acciones; después, los demás juegos y, al costado, el ranking de pronósticos. -->
+    <div class="game" id="game" role="region" aria-labelledby="game-h" hidden>
+      <div class="game-top">
+        <h2 id="game-h">Juego del grupo</h2>
+        <button type="button" class="linkish" id="game-back">← Volver a Rueda</button>
+      </div>
       <!-- Liga de acciones (src/game/acciones.ts): carteras de verdad con la clave gratis de Twelve Data de cada uno. -->
       <section class="screen hero" id="league" aria-labelledby="lg-h">
         <div class="screen-head">
@@ -832,13 +861,15 @@
     </div>
   </main>
 
-  <!-- Tutorial para entrar a la liga, paso a paso (lo arma app.js). Se abre con «Entrar a la liga» o con /#liga. -->
+  <!-- Tutorial para conectar tu clave de Twelve Data, paso a paso (lo arma app.js). Se abre con «Conectar mi clave», con
+       «Entrar a la liga» o con /#liga. -->
   <dialog class="tutorial" id="lg-tutorial" aria-labelledby="lt-h"></dialog>
 
   <footer class="foot">
     <p>Datos informativos; no es asesoría de inversión. Fuentes: BCRP, FRED® (Junta de la Reserva Federal y BLS), SEC EDGAR<span class="keyed"> y Twelve Data</span>. <a href="/terminos.html">Términos y privacidad</a>.</p>
     <!-- Aviso exacto que piden los términos de la API de FRED, con el enlace a esos términos. -->
     <p><span lang="en">This product uses the FRED® API but is not endorsed or certified by the Federal Reserve Bank of St. Louis.</span> Al usar Rueda aceptas los <a href="https://fred.stlouisfed.org/docs/api/terms_of_use.html" target="_blank" rel="noopener noreferrer">términos de uso de la API de FRED®</a>.</p>
+    <p class="foot-game"><a href="#juego">Juego del grupo</a>: la liga de acciones, los pronósticos y los minijuegos.</p>
     <p id="version"></p>
   </footer>
 </div>

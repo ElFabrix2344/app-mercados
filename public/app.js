@@ -353,8 +353,11 @@
         svg.append(label);
       }
       if (spec.xLabels !== false && spec.labels) {
-        // Etiquetas propias (plazos, años): todas si caben, si no, una sí y una no, contando desde la última.
-        const every = iw / n >= 26 ? 1 : 2;
+        // Etiquetas propias (plazos, años, trimestres): todas si caben; si no, una de cada dos o tres, contando desde
+        // la última. Cuánto ocupa cada una depende de su largo: un año (4 letras) entra en 26 px; «set 26», en unos 50.
+        const longest = Math.max(...spec.labels.map((t) => String(t).length));
+        const need = longest <= 4 ? 26 : longest * 7.2 + 6;
+        const every = Math.max(1, Math.ceil(need / (iw / n)));
         spec.labels.forEach((text, i) => {
           if ((n - 1 - i) % every) return;
           const label = s('text', { class: 'tick', x: X(i), y: H - 6, 'text-anchor': 'middle' });
@@ -711,7 +714,7 @@
     clearTimeout(resizeTimer);
     resizeTimer = setTimeout(() => {
       redrawCharts();
-      // La carrera de la liga se dibuja al ancho de su sección (solo si se está viendo la hoja «Juego»).
+      // La carrera de la liga se dibuja al ancho de su sección (solo si se está viendo el juego).
       if (raceHost?.isConnected && state.games && currentSheet() === 'juego') drawRace(raceHost, state.games.liga);
     }, 150);
   });
@@ -1226,12 +1229,12 @@
   let dTab = prefs.get(D_TAB_KEY, 'resumen');
   let dTabShown = null;
 
-  /** Solo las pestañas con algo: «Valor», las acciones (SEC); «Empresa», si hay datos de Finnhub o de la SMV; «Noticias», si hay titulares. */
+  /** Solo las pestañas con algo: «Valor», las acciones (SEC); «Empresa», si hay datos de Finnhub, reportes de la SEC o hechos de la SMV; «Noticias», si hay titulares. */
   function renderDetailTabs() {
     const sym = state.selected;
     if (!sym) return;
     $('dt-valor').hidden = sym.includes('/');
-    $('dt-empresa').hidden = $('d-co').hidden && $('d-smv').hidden;
+    $('dt-empresa').hidden = $('d-co').hidden && $('d-smv').hidden && $('d-filings').hidden;
     $('dt-noticias').hidden = $('d-news').hidden;
     showDetailTab(dTab, false);
   }
@@ -1252,7 +1255,7 @@
     if (focus) $(`dt-${tab}`).focus();
     // «Valor»: cada bloque se pide al abrirlo; en su pestaña se abren solos.
     if (tab === 'valor') {
-      for (const id of ['d-fin', 'd-ps', 'd-val']) {
+      for (const id of ['d-fin', 'd-qual', 'd-ps', 'd-val']) {
         const d = $(id);
         if (!d.hidden && !d.open) d.open = true;
       }
@@ -1421,8 +1424,10 @@
     renderSeason();
     renderStrategy();
     renderDetailFin();
+    renderDetailQual();
     renderDetailPs();
     renderDetailVal();
+    renderDetailFilings();
     renderQuick();
     renderLook(sym);
     renderDetailTabs();
@@ -2563,8 +2568,11 @@
         if (state.finSym === sym) renderFinSection();
         if (state.selected === sym) {
           renderDetailFin();
+          renderDetailQual();
           renderDetailPs();
           renderDetailVal();
+          renderDetailFilings();
+          renderDetailTabs();
           renderQuick();
           $('d-claude').href = detailClaudeHref(sym);
         }
@@ -2579,18 +2587,36 @@
     return max >= 1e9 ? { div: 1e9, name: 'miles de millones', unit: 'mil millones', dec: 1 } : { div: 1e6, name: 'millones', unit: 'millones', dec: max >= 1e8 ? 0 : 1 };
   }
 
-  /** Cambio frente al año anterior: en %, salvo que alguno de los dos años haya sido de pérdidas. */
-  function yoyText(v, prev, prevYear) {
+  /** Cambio frente a otro periodo (`what`: «2024», «los 12 meses anteriores»): en %, salvo que alguno haya sido de pérdidas. */
+  function growthText(v, prev, what) {
     if (v == null || prev == null) return null;
-    if (prev > 0 && v >= 0) return `${arrowOf(v - prev)} ${pctFrac(v / prev - 1)} frente a ${prevYear}`;
-    if (prev > 0) return `Pasó a pérdidas (ganó en ${prevYear})`;
-    if (prev < 0 && v > 0) return `Volvió a ganar (perdió en ${prevYear})`;
+    if (prev > 0 && v >= 0) return `${arrowOf(v - prev)} ${pctFrac(v / prev - 1)} frente a ${what}`;
+    if (prev > 0) return `Pasó a pérdidas (ganó en ${what})`;
+    if (prev < 0 && v > 0) return `Volvió a ganar (perdió en ${what})`;
     return null;
   }
 
+  // Los resultados se ven por año (12 años) o por trimestre (los 12 últimos, de los 10-Q); se recuerda en este equipo.
+  const FIN_MODE_KEY = 'mercados.sec-vista';
+  let finMode = prefs.get(FIN_MODE_KEY, 'anual') === 'trimestral' ? 'trimestral' : 'anual';
+  /** «set 2026»: el mes en que cierra un trimestre o los últimos 12 meses. */
+  const monYear = (iso) => fMonthYear.format(day(iso)).replace(/\./g, '');
+  /** Lo mismo, corto, para el eje del gráfico: «set 26». */
+  const fMonthShort = fmt({ month: 'short', timeZone: 'UTC' });
+  const monShort = (iso) => `${fMonthShort.format(day(iso)).replace(/\./g, '').toLowerCase()} ${iso.slice(2, 4)}`;
+  /** El mismo trimestre del año anterior. */
+  const yearBefore = (rows, q) =>
+    rows.find((x) => {
+      const days = (Date.parse(q.end) - Date.parse(x.end)) / 86_400_000;
+      return days > 350 && days < 380;
+    }) ?? null;
+
   const netMargin = (y) => (y.revenue > 0 && y.netIncome != null ? y.netIncome / y.revenue : null);
 
-  /** Bloque de resultados: los nodos y la función que dibuja el gráfico (cuando ya está en la página). */
+  /**
+   * Bloque de resultados: los nodos y la función que dibuja el gráfico (cuando ya está en la página). Arriba, lo más
+   * nuevo: los últimos 12 meses y el último trimestre, si la empresa presenta 10-Q; si no, su último año fiscal.
+   */
   function financialsView(r, withName) {
     const d = r.data;
     if (!d.cik) return { nodes: [h('p', { class: 'muted' }, `La SEC no tiene informes anuales de ${d.symbol}: pasa con los ETF, los fondos y las empresas que no cotizan en EE. UU.`)] };
@@ -2601,12 +2627,30 @@
     const cur = moneyPrefix(d.currency);
     const curName = cur.trim() || d.currency;
     const money = (v) => `${v < 0 ? '−' : ''}${cur}${millions(Math.abs(v) / 1e6)}`;
+    const qs = d.quarters ?? [];
+    const t = d.ttm ?? null;
+    const tp = d.ttmPrev ?? null;
+    const byQuarter = finMode === 'trimestral' && qs.length >= 4;
 
     const items = [];
-    if (last.revenue != null) items.push(stat(`Ingresos ${last.year}`, money(last.revenue), yoyText(last.revenue, prev?.revenue, prev?.year)));
-    if (last.netIncome != null) items.push(stat(`Utilidad neta ${last.year}`, money(last.netIncome), yoyText(last.netIncome, prev?.netIncome, prev?.year)));
-    const m = netMargin(last);
-    if (m != null) items.push(stat(`Margen neto ${last.year}`, rate(m * 100, 1), last.operatingIncome != null ? `Margen operativo ${rate((last.operatingIncome / last.revenue) * 100, 1)}` : null));
+    if (t) {
+      const before = 'los 12 meses anteriores';
+      if (t.revenue != null) items.push(stat('Ingresos · últimos 12 meses', money(t.revenue), growthText(t.revenue, tp?.revenue, before)));
+      if (t.netIncome != null) items.push(stat('Utilidad neta · últimos 12 meses', money(t.netIncome), growthText(t.netIncome, tp?.netIncome, before)));
+      const m = netMargin(t);
+      if (m != null) items.push(stat('Margen neto · últimos 12 meses', rate(m * 100, 1), t.operatingIncome != null ? `Margen operativo ${rate((t.operatingIncome / t.revenue) * 100, 1)}` : null));
+      const lq = qs.at(-1);
+      const ly = lq ? yearBefore(qs, lq) : null;
+      const line = lq?.revenue != null ? 'revenue' : 'netIncome';
+      if (lq?.[line] != null) {
+        items.push(stat(`${line === 'revenue' ? 'Ingresos' : 'Utilidad neta'} del trimestre a ${monYear(lq.end)}`, money(lq[line]), ly ? growthText(lq[line], ly[line], `un año antes`) : null));
+      }
+    } else {
+      if (last.revenue != null) items.push(stat(`Ingresos ${last.year}`, money(last.revenue), growthText(last.revenue, prev?.revenue, prev?.year)));
+      if (last.netIncome != null) items.push(stat(`Utilidad neta ${last.year}`, money(last.netIncome), growthText(last.netIncome, prev?.netIncome, prev?.year)));
+      const m = netMargin(last);
+      if (m != null) items.push(stat(`Margen neto ${last.year}`, rate(m * 100, 1), last.operatingIncome != null ? `Margen operativo ${rate((last.operatingIncome / last.revenue) * 100, 1)}` : null));
+    }
     const withRev = ys.filter((y) => y.revenue > 0);
     const a = withRev[0];
     const b = withRev.at(-1);
@@ -2614,19 +2658,54 @@
       items.push(stat('Crecimiento anual de ingresos', pctFrac((b.revenue / a.revenue) ** (1 / (b.year - a.year)) - 1), `Compuesto, ${a.year}–${b.year}`));
     }
 
-    const sc = finScale(ys);
-    const bars = FIN_BARS.filter((x) => ys.some((y) => y[x.key] != null));
+    // Por año o por trimestre: el mismo gráfico y la misma tabla, con otras filas.
+    const rows = byQuarter ? qs : ys;
+    const labelOf = (x) => (byQuarter ? monYear(x.end) : String(x.year));
+    const modes =
+      qs.length >= 4
+        ? h(
+            'div',
+            { class: 'ranges fin-mode', role: 'group', 'aria-label': 'Resultados por año o por trimestre' },
+            ...[
+              ['anual', 'Por año'],
+              ['trimestral', 'Por trimestre'],
+            ].map(([id, label]) => {
+              const btn = h('button', { type: 'button', 'aria-pressed': String((byQuarter ? 'trimestral' : 'anual') === id) }, label);
+              btn.addEventListener('click', () => {
+                finMode = id;
+                prefs.set(FIN_MODE_KEY, id);
+                renderDetailFin();
+                renderFinSection();
+              });
+              return btn;
+            }),
+          )
+        : null;
+    const sc = finScale(rows);
+    const bars = FIN_BARS.filter((x) => rows.some((y) => y[x.key] != null));
     const chart = h('div', { class: 'chart' });
     const csv = h('button', { type: 'button', class: 'csv-btn', title: 'Descargar los resultados para Excel' }, '⤓ CSV');
     csv.addEventListener('click', () =>
-      downloadCsv(
-        `sec_resultados_${d.symbol}_${today()}.csv`,
-        ['anio_fiscal', 'cierre', `ingresos_${d.currency}`, `utilidad_operativa_${d.currency}`, `utilidad_neta_${d.currency}`],
-        ys.map((y) => [y.year, y.end, y.revenue, y.operatingIncome, y.netIncome]),
-      ),
+      byQuarter
+        ? downloadCsv(
+            `sec_trimestres_${d.symbol}_${today()}.csv`,
+            ['inicio', 'cierre', `ingresos_${d.currency}`, `utilidad_operativa_${d.currency}`, `utilidad_neta_${d.currency}`],
+            qs.map((q) => [q.start, q.end, q.revenue, q.operatingIncome, q.netIncome]),
+          )
+        : downloadCsv(
+            `sec_resultados_${d.symbol}_${today()}.csv`,
+            ['anio_fiscal', 'cierre', `ingresos_${d.currency}`, `utilidad_operativa_${d.currency}`, `utilidad_neta_${d.currency}`],
+            ys.map((y) => [y.year, y.end, y.revenue, y.operatingIncome, y.netIncome]),
+          ),
     );
-    const cols = FIN_COLS.filter((c) => ys.some((y) => y[c.key] != null));
-    const hasMargin = ys.some((y) => netMargin(y) != null);
+    const cols = FIN_COLS.filter((c) => rows.some((y) => y[c.key] != null));
+    const hasMargin = rows.some((y) => netMargin(y) != null);
+    // Por trimestre, además, cuánto cambió frente al mismo trimestre del año anterior.
+    const growthKey = byQuarter ? (rows.some((y) => y.revenue != null) ? 'revenue' : 'netIncome') : null;
+    const growthOf = (y) => {
+      const before = growthKey ? yearBefore(rows, y) : null;
+      return before && y[growthKey] != null && before[growthKey] > 0 && y[growthKey] >= 0 ? pctFrac(y[growthKey] / before[growthKey] - 1) : '—';
+    };
     const amount = (v) => (v == null ? '—' : `${v < 0 ? '−' : ''}${nf(sc.dec).format(Math.abs(v) / sc.div)}`);
     const table = h(
       'details',
@@ -2635,18 +2714,31 @@
       h(
         'table',
         { class: 'fin-table' },
-        h('thead', {}, h('tr', {}, h('th', { scope: 'col' }, 'Año'), ...cols.map((c) => h('th', { scope: 'col' }, c.label)), hasMargin ? h('th', { scope: 'col' }, 'Margen neto') : null)),
+        h(
+          'thead',
+          {},
+          h(
+            'tr',
+            {},
+            h('th', { scope: 'col' }, byQuarter ? 'Trimestre a' : 'Año'),
+            ...cols.map((c) => h('th', { scope: 'col' }, c.label)),
+            hasMargin ? h('th', { scope: 'col' }, 'Margen neto') : null,
+            growthKey ? h('th', { scope: 'col' }, `${growthKey === 'revenue' ? 'Ingresos' : 'Utilidad'} vs. un año antes`) : null,
+          ),
+        ),
         h(
           'tbody',
           {},
-          ...[...ys].reverse().map((y) => {
+          ...[...rows].reverse().map((y) => {
             const ym = netMargin(y);
+            const title = byQuarter ? `Del ${fDayYear.format(day(y.start))} al ${fDayYear.format(day(y.end))}` : `Cierre del año fiscal: ${fDayYear.format(day(y.end))}`;
             return h(
               'tr',
               {},
-              h('th', { scope: 'row', title: `Cierre del año fiscal: ${fDayYear.format(day(y.end))}` }, String(y.year)),
+              h('th', { scope: 'row', title }, labelOf(y)),
               ...cols.map((c) => h('td', {}, amount(y[c.key]))),
               hasMargin ? h('td', {}, ym == null ? '—' : rate(ym * 100, 1)) : null,
+              growthKey ? h('td', {}, growthOf(y)) : null,
             );
           }),
         ),
@@ -2656,8 +2748,10 @@
     // La SEC puede tardar en sumar un informe a sus datos (en 2026 pasa con los 20-F en NIIF): se avisa si ya debería estar.
     const overdue = Date.now() - Date.parse(`${last.end}T00:00:00Z`) > FIN_OVERDUE_DAYS * 86_400_000;
     const source = [
-      `Fuente: SEC EDGAR, informes anuales de ${d.name} (${d.standard === 'ifrs-full' ? 'NIIF' : 'US GAAP'}, en ${d.currency}).`,
+      `Fuente: SEC EDGAR, informes de ${d.name} (${d.standard === 'ifrs-full' ? 'NIIF' : 'US GAAP'}, en ${d.currency}).`,
       `Su año fiscal cierra en ${fMonthName.format(day(last.end)).toLowerCase()}.`,
+      t ? `Los últimos 12 meses van de ${monYear(t.start)} a ${monYear(t.end)}: son sus cuatro trimestres más nuevos (el cuarto de cada año sale de restar los otros tres al informe anual).` : null,
+      !qs.length ? 'Solo hay datos anuales: no presenta informes trimestrales con cifras (pasa con las extranjeras que presentan 20-F).' : null,
       overdue ? `Los datos de la SEC llegan hasta ${last.year}: el informe de ${last.year + 1} todavía no aparece.` : null,
       `${r.stale ? 'Guardado' : 'Actualizado'} ${ago(r.fetchedAt)}.`,
     ]
@@ -2666,7 +2760,8 @@
     const nodes = [
       withName ? h('p', { class: 'co-h' }, `${d.name} · ${d.symbol} · `, hapiLink(d.symbol)) : null,
       h('dl', { class: 'stats fin-stats' }, ...items),
-      h('div', { class: 'chart-head' }, h('p', { class: 'hint' }, `Por año fiscal, en ${sc.name} de ${curName}`), csv),
+      modes,
+      h('div', { class: 'chart-head' }, h('p', { class: 'hint' }, `${byQuarter ? 'Por trimestre' : 'Por año fiscal'}, en ${sc.name} de ${curName}`), csv),
       h('div', { class: 'legend' }, ...bars.map((x) => h('span', { class: `legend-item ${x.cls}` }, h('span', { class: 'key fill' }), x.label))),
       chart,
       table,
@@ -2675,23 +2770,23 @@
     ].filter(Boolean);
     const draw = () =>
       drawChart(chart, {
-        dates: ys.map((y) => y.end),
-        labels: ys.map((y) => String(y.year)),
-        series: bars.map((x) => ({ name: x.label, cls: x.cls, kind: 'bars', values: ys.map((y) => (y[x.key] == null ? null : y[x.key] / sc.div)) })),
+        dates: rows.map((y) => y.end),
+        labels: rows.map((y) => (byQuarter ? monShort(y.end) : labelOf(y))),
+        series: bars.map((x) => ({ name: x.label, cls: x.cls, kind: 'bars', values: rows.map((y) => (y[x.key] == null ? null : y[x.key] / sc.div)) })),
         inset: true,
         height: 180,
         axis: true,
         interactive: true,
         measure: 'none',
         padR: 8,
-        refs: ys.some((y) => bars.some((x) => y[x.key] < 0)) ? [0] : [],
+        refs: rows.some((y) => bars.some((x) => y[x.key] < 0)) ? [0] : [],
         fmt: (v) => `${v < 0 ? '−' : ''}${curName} ${nf(sc.dec).format(Math.abs(v))} ${sc.unit}`,
         endLabel: () => null,
         extraTip: (i) => {
-          const ym = netMargin(ys[i]);
+          const ym = netMargin(rows[i]);
           return ym == null ? [] : [{ keyCls: 'none', value: rate(ym * 100, 1), label: 'Margen neto' }];
         },
-        aria: `${bars.map((x) => x.label).join(' y ')} de ${d.name} por año fiscal, de ${ys[0].year} a ${last.year}, en ${sc.name} de ${curName}`,
+        aria: `${bars.map((x) => x.label).join(' y ')} de ${d.name} ${byQuarter ? 'por trimestre' : 'por año fiscal'}, de ${labelOf(rows[0])} a ${labelOf(rows.at(-1))}, en ${sc.name} de ${curName}`,
       });
     return { nodes, draw };
   }
@@ -2718,6 +2813,19 @@
     if (!sym) return;
     for (const b of $('fin-chips').querySelectorAll('button')) b.setAttribute('aria-pressed', String(b.textContent === sym));
     showFinancials($('fin-body'), sym, true);
+    renderFinExtras();
+  }
+
+  /** Debajo de los resultados, para todos (también sin clave): la calidad del negocio y los reportes; cada uno se pide al abrirlo. */
+  function renderFinExtras() {
+    const sym = state.finSym;
+    const fr = sym ? state.fin.get(sym) : null;
+    const has = !!fr && fr !== 'cargando' && !fr.error && !!fr.data.cik && fr.data.years.length > 0;
+    $('fin-qual').hidden = !has;
+    $('fin-filings').hidden = !has;
+    if (!has) return;
+    if ($('fin-qual').open) showQuality($('fin-qual-body'), sym, false);
+    if ($('fin-filings').open) showFilings($('fin-filings-body'), sym);
   }
 
   function pickFin(raw) {
@@ -2748,9 +2856,324 @@
       e.preventDefault();
       pickFin($('fin-sym').value);
     });
+    $('fin-qual').addEventListener('toggle', renderFinExtras);
+    $('fin-filings').addEventListener('toggle', renderFinExtras);
     const saved = prefs.get('mercados.sec', 'SCCO');
     $('fin-sym').value = saved;
     pickFin(saved);
+  }
+
+  // ---------- calidad del negocio (SEC) ----------
+  // 9 nov («la ficha al día»): cuánto rinde el capital (ROIC), lo que la empresa devuelve o diluye y el puntaje de
+  // Piotroski, con los informes anuales de la SEC. Las cuentas las hace el servidor (src/services/quality.ts): aquí
+  // solo se muestran. Es público: está en la ficha y, sin precios, en «Resultados de empresas».
+  const qualCache = new Map(); // símbolo → /api/quality | { error } | 'cargando'
+
+  function qualityFor(sym) {
+    const c = qualCache.get(sym);
+    if (c) return c === 'cargando' ? undefined : c;
+    // Primero los fundamentales (quedan guardados en el servidor): así este pedido no repite sus consultas a la SEC.
+    if (fundamentalsFor(sym) === undefined) return undefined;
+    qualCache.set(sym, 'cargando');
+    api(`/api/quality?symbol=${encodeURIComponent(sym)}`)
+      .then((r) => qualCache.set(sym, r))
+      .catch((e) => qualCache.set(sym, { error: e.message }))
+      .finally(() => {
+        if (state.selected === sym) renderDetailQual();
+        if (state.finSym === sym) renderFinExtras();
+      });
+    return undefined;
+  }
+
+  /** Capitalización en US$ con tu precio y las acciones de la SEC, y cuánto vale en dólares una unidad de su moneda; null si falta algo. */
+  function marketCapOf(sym) {
+    const fr = state.fin.get(sym);
+    const fin = fr && fr !== 'cargando' && !fr.error ? fr.data : null;
+    const kp = knownPrice(sym);
+    const sh = fin?.shares?.at(-1);
+    if (!fin?.cik || !kp || !sh) return null;
+    const fx = usdPenNow();
+    const k = fin.currency === 'USD' ? 1 : fin.currency === 'PEN' && fx ? 1 / fx : null;
+    return k == null ? null : { cap: (kp.price * sh.value) / (fin.adrRatio ?? 1), k };
+  }
+
+  /** Las nueve señales de Piotroski: qué mide cada una y con qué números (`f`: cómo se escriben). */
+  const PIOTROSKI = {
+    utilidad: ['Utilidad positiva', (c, f) => (c.now == null ? null : `utilidad sobre activos (ROA) ${f.pct(c.now)}`)],
+    flujo: ['Sus operaciones generan caja', (c, f) => (c.now == null ? null : `flujo operativo ${f.money(c.now)}`)],
+    roa: ['Rinde más sobre sus activos', (c, f) => `ROA ${f.pct(c.now)} frente a ${f.pct(c.prev)}`],
+    caja: ['Más caja que utilidad', (c, f) => `caja de las operaciones ${f.money(c.now)} · utilidad ${f.money(c.prev)}`],
+    deuda: ['Menos deuda sobre activos', (c, f) => `${f.pct(c.now)} frente a ${f.pct(c.prev)}`],
+    liquidez: ['Más liquidez (activo corriente ÷ pasivo corriente)', (c, f) => `${f.times(c.now)} frente a ${f.times(c.prev)}`],
+    acciones: ['Sin acciones nuevas', (c, f) => `${f.count(c.now)} frente a ${f.count(c.prev)}`],
+    margen: ['Mejor margen bruto', (c, f) => `${f.pct(c.now)} frente a ${f.pct(c.prev)}`],
+    rotacion: ['Más ventas por cada unidad de activos', (c, f) => `${f.times(c.now)} frente a ${f.times(c.prev)}`],
+  };
+
+  /** Los nodos del bloque. `withPrice`: en la ficha, además, lo devuelto frente a lo que vale hoy la empresa. */
+  function qualityView(r, sym, withPrice) {
+    const d = r.data;
+    if (!d.cik || !d.years.length) return [h('p', { class: 'muted' }, 'La SEC no tiene informes anuales para medir esto: pasa con los ETF y los fondos.')];
+    const cur = moneyPrefix(d.currency);
+    const curName = cur.trim() || d.currency;
+    const money = (v) => `${v < 0 ? '−' : ''}${cur}${millions(Math.abs(v) / 1e6)}`;
+    const pct = (v) => rate(v * 100, 1);
+    const f = { pct, money, times: (v) => `${nf(2).format(v)}×`, count: (v) => millions(v / 1e6) };
+    const ys = d.years;
+    const last = ys.at(-1);
+    const prev = ys.at(-2);
+
+    const items = [];
+    const roics = ys.map((y) => y.roic).filter((v) => v != null);
+    if (last.roic != null) {
+      items.push(stat(`Rendimiento del capital (ROIC) ${last.year}`, pct(last.roic), roics.length >= 3 ? `Promedio de ${roics.length} años: ${pct(roics.reduce((x, y) => x + y, 0) / roics.length)}` : null));
+    }
+    if (last.grossMargin != null) {
+      const dm = prev?.grossMargin != null ? last.grossMargin - prev.grossMargin : null;
+      items.push(stat(`Margen bruto ${last.year}`, pct(last.grossMargin), dm == null ? null : `${arrowOf(dm)} ${sign(dm)}${nf(1).format(Math.abs(dm * 100))} puntos frente a ${prev.year}`));
+    }
+    // Acciones: solo los tres últimos años, que el informe más nuevo trae ajustados por splits.
+    const withShares = ys.slice(-3).filter((y) => y.shares > 0);
+    const [s0, s1] = [withShares[0], withShares.at(-1)];
+    if (s0 && s1 && s1.year > s0.year) {
+      const g = (s1.shares / s0.shares) ** (1 / (s1.year - s0.year)) - 1;
+      const what = Math.abs(g) < 0.002 ? 'Casi sin cambios' : g < 0 ? 'Recompra: cada acción es una parte mayor de la empresa' : 'Emite: cada acción es una parte menor de la empresa';
+      items.push(stat('Acciones en circulación', `${arrowOf(g)} ${pctFrac(g)} al año`, `${what} (${s0.year}–${s1.year})`));
+    }
+    const back = (last.dividends ?? 0) + (last.buybacks ?? 0);
+    if (last.dividends != null || last.buybacks != null) {
+      const parts = [last.dividends != null ? `Dividendos ${money(last.dividends)}` : null, last.buybacks != null ? `recompras ${money(last.buybacks)}` : null].filter(Boolean);
+      items.push(stat(`Devuelto a los accionistas en ${last.year}`, money(back), parts.join(' · ').replace(/^r/, 'R')));
+    }
+    if (last.dividends > 0 && last.netIncome > 0) {
+      items.push(stat('Dividendos sobre la utilidad', pct(last.dividends / last.netIncome), last.fcf > 0 ? `${pct(last.dividends / last.fcf)} del flujo de caja libre` : null));
+    }
+    const mc = withPrice ? marketCapOf(sym) : null;
+    if (mc && back > 0) {
+      const y = (v) => pct(((v ?? 0) * mc.k) / mc.cap);
+      items.push(stat('Devuelto frente a lo que vale hoy', y(back), `Dividendos ${y(last.dividends)}${last.buybacks ? ` + recompras ${y(last.buybacks)}` : ''} · lo de ${last.year}, con tu precio`));
+    }
+    if (last.sbc > 0 && last.revenue > 0) items.push(stat('Pago a empleados en acciones', pct(last.sbc / last.revenue), 'De las ventas: no sale de la caja, pero diluye'));
+
+    const big = Math.max(0, ...ys.flatMap((y) => [y.dividends ?? 0, y.buybacks ?? 0])) >= 1e9;
+    const amount = (v) => (v == null ? '—' : nf(big ? 1 : 0).format(v / (big ? 1e9 : 1e6)));
+    const table = h(
+      'details',
+      { class: 'table-view' },
+      h('summary', {}, 'Ver por año'),
+      h(
+        'table',
+        { class: 'fin-table' },
+        h('thead', {}, h('tr', {}, ...['Año', 'ROIC', 'Margen bruto', 'Dividendos', 'Recompras', 'Acciones'].map((x) => h('th', { scope: 'col' }, x)))),
+        h(
+          'tbody',
+          {},
+          ...[...ys].reverse().map((y) =>
+            h(
+              'tr',
+              {},
+              h('th', { scope: 'row' }, String(y.year)),
+              h('td', {}, y.roic == null ? '—' : pct(y.roic)),
+              h('td', {}, y.grossMargin == null ? '—' : pct(y.grossMargin)),
+              h('td', {}, amount(y.dividends)),
+              h('td', {}, amount(y.buybacks)),
+              h('td', {}, y.shares == null ? '—' : nf(0).format(y.shares / 1e6)),
+            ),
+          ),
+        ),
+      ),
+      h('p', { class: 'hint' }, `Dividendos y recompras en ${big ? 'miles de millones' : 'millones'} de ${curName}; acciones en millones (promedio diluido de cada año, sin ajustar por splits más allá de tres años).`),
+    );
+
+    const pz = d.piotroski;
+    const pio = pz
+      ? [
+          h('h4', { class: 'dcf-h' }, `Puntaje de Piotroski: ${pz.score} de ${pz.of}`),
+          h('p', { class: 'hint' }, `Nueve señales de salud financiera de ${pz.year} frente a ${pz.prevYear}${pz.of < 9 ? `; ${9 - pz.of} sin datos en la SEC` : ''}.`),
+          h(
+            'ul',
+            { class: 'pio' },
+            ...pz.checks.map((c) => {
+              const [label, detail] = PIOTROSKI[c.key];
+              return h(
+                'li',
+                { class: c.ok == null ? 'na' : c.ok ? 'ok' : 'no' },
+                h('span', { class: 'pio-m', 'aria-hidden': 'true' }, c.ok == null ? '–' : c.ok ? '✓' : '✗'),
+                h('span', { class: 'pio-t' }, h('span', { class: 'vh' }, c.ok == null ? 'Sin datos: ' : c.ok ? 'Cumple: ' : 'No cumple: '), label),
+                h('span', { class: 'pio-d' }, c.ok == null ? 'sin datos' : (detail(c, f) ?? '')),
+              );
+            }),
+          ),
+        ]
+      : [h('p', { class: 'hint' }, 'Sin puntaje de Piotroski: la SEC no trae su activo corriente, su utilidad bruta o su flujo de caja (pasa con los bancos y las aseguradoras).')];
+    const tax = last.taxAssumed ? `asumiendo ${pct(last.taxRate)} de impuestos` : `con su tasa de impuestos de ${last.year}, ${pct(last.taxRate)}`;
+    return [
+      items.length ? h('dl', { class: 'stats fin-stats' }, ...items) : h('p', { class: 'muted' }, 'La SEC no trae estos datos en el formato estándar para esta empresa.'),
+      table,
+      ...pio,
+      h(
+        'p',
+        { class: 'hint' },
+        `ROIC: utilidad operativa después de impuestos (${tax}) sobre el capital invertido promedio (deuda + patrimonio − caja). Fuente: SEC EDGAR, informes anuales de ${d.name.replace(/\.$/, "")}. Son cuentas, no una recomendación. ${r.stale ? 'Guardado' : 'Actualizado'} ${ago(r.fetchedAt)}.`,
+      ),
+      staleHint(r),
+    ].filter(Boolean);
+  }
+
+  function showQuality(host, sym, withPrice) {
+    const r = qualityFor(sym);
+    if (!r) return host.replaceChildren(h('p', { class: 'muted' }, `Leyendo los informes de ${sym} en la SEC…`));
+    if (r.error) return host.replaceChildren(h('p', { class: 'err' }, r.error));
+    host.replaceChildren(...qualityView(r, sym, withPrice));
+  }
+
+  /** Bloque plegable de la ficha (solo acciones): se pide al abrirlo. */
+  function renderDetailQual() {
+    const box = $('d-qual');
+    const sym = state.selected;
+    box.hidden = !sym || sym.includes('/');
+    if (!box.hidden && box.open) showQuality($('d-qual-body'), sym, true);
+  }
+
+  // ---------- reportes a la SEC ----------
+  // 9 nov («la ficha al día»): lo que la empresa presentó (informes anuales y trimestrales, hechos, la junta), con
+  // enlace al documento en sec.gov. La lista de EDGAR es pública: está en la pestaña «Empresa» de la ficha y en
+  // «Resultados de empresas».
+  const filingsCache = new Map(); // símbolo → /api/filings | { error } | 'cargando'
+  const filingsOpen = new Set(); // símbolos con la lista completa a la vista
+  const FILINGS_SHOWN = 8;
+
+  function filingsFor(sym) {
+    const c = filingsCache.get(sym);
+    if (c) return c === 'cargando' ? undefined : c;
+    filingsCache.set(sym, 'cargando');
+    api(`/api/filings?symbol=${encodeURIComponent(sym)}`)
+      .then((r) => filingsCache.set(sym, r))
+      .catch((e) => filingsCache.set(sym, { error: e.message }))
+      .finally(() => {
+        if (state.selected === sym) {
+          renderDetailFilings();
+          renderDetailTabs();
+        }
+        if (state.finSym === sym) renderFinExtras();
+      });
+    return undefined;
+  }
+
+  /** Los temas de un 8-K, en castellano (los más comunes; los demás se muestran con su número). */
+  const ITEMS_8K = {
+    '1.01': 'Acuerdo importante',
+    '1.02': 'Fin de un acuerdo importante',
+    '1.03': 'Quiebra',
+    '1.05': 'Incidente de ciberseguridad',
+    '2.01': 'Compra o venta de activos',
+    '2.02': 'Resultados',
+    '2.03': 'Nueva deuda',
+    '2.04': 'Deuda exigible antes de tiempo',
+    '2.05': 'Reestructuración',
+    '2.06': 'Deterioro de activos',
+    '3.01': 'Aviso de la bolsa: riesgo de exclusión',
+    '3.02': 'Venta de acciones no registradas',
+    '3.03': 'Cambio en los derechos de los accionistas',
+    '4.01': 'Cambio de auditor',
+    '4.02': 'Estados financieros que ya no son confiables',
+    '5.01': 'Cambio de control',
+    '5.02': 'Cambio de directivos',
+    '5.03': 'Cambio de estatutos',
+    '5.07': 'Votación de accionistas',
+    '7.01': 'Comunicado al mercado',
+    '8.01': 'Otros hechos',
+  };
+
+  /** De qué trata un reporte, en una línea. */
+  function filingTitle(x) {
+    const fixed = x.form.endsWith('/A') ? ' (corregido)' : '';
+    if (x.kind === 'anual') return `Informe anual${x.period ? ` ${x.period.slice(0, 4)}` : ''}${fixed}`;
+    if (x.kind === 'trimestral') return `Informe trimestral${x.period ? ` a ${monYear(x.period)}` : ''}${fixed}`;
+    if (x.kind === 'junta') return 'Convocatoria a la junta de accionistas';
+    if (x.kind === 'tarde') return `Aviso: su informe ${x.form.includes('10-Q') ? 'trimestral' : 'anual'} llegará tarde`;
+    if (x.items.length) return listJoin(x.items.map((i) => ITEMS_8K[i] ?? `Tema ${i}`)) + fixed;
+    return `${x.form.startsWith('6-K') ? 'Reporte de emisor extranjero' : 'Hecho relevante'}${fixed}`;
+  }
+
+  /** Los nodos de la lista: la empresa según la SEC, los avisos de directivos y los reportes (los 8 más nuevos y «Ver más»). */
+  function filingsView(r, sym, rerender) {
+    const d = r.data;
+    if (!d.cik) return [h('p', { class: 'muted' }, 'La SEC no tiene reportes de este símbolo: pasa con los ETF y los fondos.')];
+    const link = (href, text) => h('a', { href, target: '_blank', rel: 'noopener noreferrer' }, text);
+    const co = d.company;
+    const fye = co?.fiscalYearEnd ? fmt({ day: 'numeric', month: 'long', timeZone: 'UTC' }).format(day(`2001-${co.fiscalYearEnd.slice(0, 2)}-${co.fiscalYearEnd.slice(2)}`)) : null;
+    const about = [co?.industry ? `Rubro según la SEC: ${co.industry}` : null, fye ? `su año fiscal cierra el ${fye}` : null, co?.exchanges?.length ? `cotiza en ${listJoin(co.exchanges)}` : null].filter(Boolean);
+    const ins = d.insiders;
+    const all = filingsOpen.has(sym);
+    const list = all ? d.filings : d.filings.slice(0, FILINGS_SHOWN);
+    const more = h('button', { type: 'button', class: 'csv-btn more-btn' }, all ? 'Ver menos' : `Ver los ${d.filings.length}`);
+    more.addEventListener('click', () => {
+      if (all) filingsOpen.delete(sym);
+      else filingsOpen.add(sym);
+      rerender();
+    });
+    return [
+      about.length ? h('p', { class: 'hint' }, `${about.join(' · ')}.`) : null,
+      d.filings.length
+        ? h(
+            'ol',
+            { class: 'filings' },
+            ...list.map((x) =>
+              h(
+                'li',
+                {},
+                h(
+                  'a',
+                  { href: x.url, target: '_blank', rel: 'noopener noreferrer', title: 'Abrir el documento en sec.gov (en inglés)' },
+                  h('span', { class: 'fl-date' }, fDayYear.format(day(x.date)).replace(/\./g, '')),
+                  h('span', { class: `fl-form k-${x.kind}` }, x.form),
+                  h('span', { class: 'fl-title' }, filingTitle(x)),
+                ),
+              ),
+            ),
+          )
+        : h('p', { class: 'muted' }, 'No presentó informes ni hechos en el último tiempo.'),
+      d.filings.length > FILINGS_SHOWN ? more : null,
+      ins?.d365
+        ? h(
+            'p',
+            { class: 'hint' },
+            `Directivos y grandes accionistas: ${ins.d90} ${ins.d90 === 1 ? 'aviso' : 'avisos'} de compra o venta de acciones en 90 días y ${ins.d365} en un año (el último, el ${fDayYear.format(day(ins.last)).replace(/\./g, '')}). `,
+            link(`https://www.sec.gov/cgi-bin/own-disp?action=getissuer&CIK=${d.cik}`, 'Ver quién y cuánto ↗'),
+          )
+        : null,
+      h(
+        'p',
+        { class: 'hint' },
+        'Fuente: SEC EDGAR. Los documentos están en inglés y se abren en sec.gov. ',
+        link(`https://www.sec.gov/cgi-bin/browse-edgar?action=getcompany&CIK=${d.cik}&type=&dateb=&owner=include&count=40`, 'Todos sus reportes ↗'),
+        ` · ${r.stale ? 'Guardado' : 'Actualizado'} ${ago(r.fetchedAt)}.`,
+      ),
+      staleHint(r),
+    ].filter(Boolean);
+  }
+
+  function showFilings(host, sym) {
+    const r = filingsFor(sym);
+    if (!r) return host.replaceChildren(h('p', { class: 'muted' }, `Buscando los reportes de ${sym} en la SEC…`));
+    if (r.error) return host.replaceChildren(h('p', { class: 'err' }, r.error));
+    host.replaceChildren(...filingsView(r, sym, () => showFilings(host, sym)));
+  }
+
+  /**
+   * En la pestaña «Empresa» de la ficha: aparece cuando llega la lista. Se pide recién cuando llegaron los resultados
+   * (para no juntar pedidos a la SEC) y solo si la empresa reporta allá: los ETF y la cripto no tienen.
+   */
+  function renderDetailFilings() {
+    const sym = state.selected;
+    const box = $('d-filings');
+    const fr = sym ? state.fin.get(sym) : null;
+    const reports = !!fr && fr !== 'cargando' && !fr.error && !!fr.data.cik;
+    const r = reports && !sym.includes('/') ? filingsFor(sym) : null;
+    const ok = !!r && !r.error && !!r.data.cik;
+    box.hidden = !ok;
+    if (ok) $('d-filings-body').replaceChildren(...filingsView(r, sym, renderDetailFilings));
   }
 
   // ---------- P/S (precio / ventas) ----------
@@ -3064,7 +3487,11 @@
       .then((r) => fundCache.set(sym, r))
       .catch((e) => fundCache.set(sym, { error: e.message }))
       .finally(() => {
-        if (state.selected === sym) renderDetailVal();
+        if (state.selected === sym) {
+          renderDetailVal();
+          renderDetailQual();
+        }
+        if (state.finSym === sym) renderFinExtras();
       });
     return undefined;
   }
@@ -3102,6 +3529,14 @@
         const rel = now / med - 1;
         tiles.push({ k: 'Valoración (P/S)', v: rel > 0.15 ? 'Sobre su historia' : rel < -0.15 ? 'Bajo su historia' : 'En su promedio', s: `${psFmt(now)} frente a ${psFmt(med)} de mediana (${years.length} cierres fiscales)` });
       } else tiles.push({ k: 'Valoración (P/S)', v: psFmt(now), s: `Con las ventas de ${b.year}` });
+    }
+    const t = fin.ttm;
+    const tp = fin.ttmPrev;
+    if (t?.revenue > 0 && tp?.revenue > 0) {
+      const g = t.revenue / tp.revenue - 1;
+      const m = t.netIncome != null ? ` · margen neto ${rate((t.netIncome / t.revenue) * 100, 1)}` : '';
+      tiles.push({ k: 'Fundamentales (12 meses)', v: `${arrowOf(g)} Ventas ${pctFrac(g)}`, cls: trend(g), s: `Frente a los 12 meses anteriores${m}` });
+      return tiles;
     }
     const last = fin.years.at(-1);
     const prev = fin.years.at(-2);
@@ -3167,12 +3602,20 @@
     if (k == null) return say('muted', `Reporta en ${fin.currency}: por ahora Rueda solo pasa a dólares los montos en soles.`);
     const last = fin.years.at(-1);
     const fy = xr.data.years.find((y) => y.end === last.end) ?? null;
+    // Lo más nuevo, si la empresa presenta trimestres: los flujos de los últimos 12 meses y el balance del último 10-Q.
+    const t = fin.ttm;
+    const lt = xr.data.latest;
+    const fresh = !!t && !!lt && lt.end === t.end;
+    const inc = fresh ? t : last;
+    const bal = fresh ? lt : fy;
+    const period = fresh ? `los últimos 12 meses (a ${monYear(t.end)})` : `el año fiscal ${last.year}`;
+    const tag = fresh ? '12 meses' : String(last.year);
     const adr = fin.adrRatio ?? 1;
     const sharesAdr = sh.value / adr;
     const cap = kp.price * sharesAdr;
     const usdOf = (v) => (v == null ? null : v * k);
-    const [ni, rev, op] = [usdOf(last.netIncome), usdOf(last.revenue), usdOf(last.operatingIncome)];
-    const [eq, assets, debt, cash, ocf, capex, da] = ['equity', 'assets', 'debt', 'cash', 'ocf', 'capex', 'da'].map((key) => usdOf(fy?.[key]));
+    const [ni, rev, op] = [usdOf(inc.netIncome), usdOf(inc.revenue), usdOf(inc.operatingIncome)];
+    const [eq, assets, debt, cash, ocf, capex, da] = ['equity', 'assets', 'debt', 'cash', 'ocf', 'capex', 'da'].map((key) => usdOf(bal?.[key]));
     const ebitda = op != null && da != null ? op + da : null;
     const ev = debt != null && cash != null ? cap + debt - cash : null;
     const fcf = ocf != null && capex != null ? ocf - capex : null;
@@ -3182,7 +3625,7 @@
 
     // Ratios con valor; los que no se pueden calcular se explican en una línea.
     const rows = [
-      ['P/E (precio / utilidad)', ni > 0 ? cap / ni : null, xTimes, `Utilidad ${last.year}: ${ni != null ? usdBig(ni) : '—'}`],
+      ['P/E (precio / utilidad)', ni > 0 ? cap / ni : null, xTimes, `Utilidad (${tag}): ${ni != null ? usdBig(ni) : '—'}`],
       ['P/B (precio / valor contable)', per(cap, eq), xTimes, eq != null ? `Patrimonio ${usdBig(eq)}` : null],
       ['EV / EBITDA', ev != null && ebitda > 0 ? ev / ebitda : null, xTimes, ev != null ? `Valor de la empresa ${usdBig(ev)}` : null],
       ['Rendimiento del flujo libre', fcf != null ? fcf / cap : null, pctV, fcf != null ? `Flujo de caja libre ${usdBig(fcf)}` : null],
@@ -3198,7 +3641,7 @@
 
     let dcf;
     if (fcf == null || fcf <= 0) {
-      dcf = h('p', { class: 'muted' }, fcf == null ? 'Sin flujo de caja en los datos de la SEC: no hay DCF.' : `Con flujo de caja libre negativo en ${last.year}, un DCF simple no sirve.`);
+      dcf = h('p', { class: 'muted' }, fcf == null ? 'Sin flujo de caja en los datos de la SEC: no hay DCF.' : `Con flujo de caja libre negativo en ${period}, un DCF simple no sirve.`);
     } else {
       const revs = fin.years.filter((y) => y.revenue > 0);
       const a = revs.at(-4) ?? revs[0];
@@ -3245,7 +3688,7 @@
       dcf = h(
         'div',
         { class: 'dcf' },
-        h('p', { class: 'hint' }, `Flujo de caja libre ${last.year}: ${usdBig(fcf)} (flujo operativo menos inversión en activo fijo).`),
+        h('p', { class: 'hint' }, `Flujo de caja libre de ${period}: ${usdBig(fcf)} (flujo operativo menos inversión en activo fijo).`),
         h(
           'div',
           { class: 'dcf-inputs' },
@@ -3262,7 +3705,7 @@
     // replaceChildren escribe «null» si le llega uno: lo que falta se deja fuera.
     host.replaceChildren(
       ...[
-        h('p', { class: 'hint' }, `Con tu precio (${fmtPrice(kp.price)}, ${kp.src}) y los informes de la SEC del año fiscal ${last.year}${fin.currency === 'PEN' ? ', pasados a dólares con el dólar de hoy' : ''}.`),
+        h('p', { class: 'hint' }, `Con tu precio (${fmtPrice(kp.price)}, ${kp.src}) y los informes de la SEC de ${period}${fresh ? '' : ': no presenta trimestres con cifras'}${fin.currency === 'PEN' ? ', pasados a dólares con el dólar de hoy' : ''}.`),
         ratios,
         missing.length ? h('p', { class: 'hint' }, `Sin datos suficientes en la SEC para: ${listJoin(missing.map((m) => m.toLowerCase()))}.`) : null,
         h('h4', { class: 'dcf-h' }, 'DCF simple'),
@@ -3290,6 +3733,12 @@
       if (!b.error && kp) lines.push(`- P/S de ${psFmt(psOf(b, kp.price))} con las ventas de ${b.year} (US$ ${millions(b.revenueUsd / 1e6)}).`);
       const [a, z] = [fin.years.at(-2), fin.years.at(-1)];
       if (z?.revenue > 0 && a?.revenue > 0) lines.push(`- Ventas ${z.year}: ${pctFrac(z.revenue / a.revenue - 1)} frente a ${a.year}${z.netIncome != null ? `; margen neto ${rate((z.netIncome / z.revenue) * 100, 1)}` : ''}.`);
+      const t = fin.ttm;
+      if (t?.revenue > 0) {
+        const cur = moneyPrefix(fin.currency);
+        const vs = fin.ttmPrev?.revenue > 0 ? ` (${pctFrac(t.revenue / fin.ttmPrev.revenue - 1)} frente a los 12 anteriores)` : '';
+        lines.push(`- Últimos 12 meses (a ${monYear(t.end)}): ventas ${cur}${millions(t.revenue / 1e6)}${vs}${t.netIncome != null ? `; utilidad neta ${cur}${millions(t.netIncome / 1e6)}` : ''}.`);
+      }
     }
     lines.push(
       'Explícame: 1) qué dicen la tendencia y el riesgo; 2) si se ve cara o barata frente a su historia y a empresas parecidas; 3) qué viene (resultados, noticias, riesgos); 4) qué revisar antes de decidir. Si tienes el conector de Rueda, úsalo para completar (historial, empresa, resultados_anuales, valorar_ps, noticias). No me des una recomendación de compra o venta.',
@@ -5002,7 +5451,6 @@
     $('fc-open').replaceChildren(
       ...(open.length ? open.map((q) => fcCard(q, v)) : [h('p', { class: 'muted' }, 'No hay preguntas abiertas: cada una se abre 45 días antes de su anuncio.')]),
     );
-    renderGameBadge();
     const past = v.questions.filter((q) => q.status !== 'open').reverse();
     $('fc-past').replaceChildren(...(past.length ? past.map(fcPast) : [h('p', { class: 'muted' }, 'Todavía no cerró ninguna pregunta.')]));
     renderFcRanking(v);
@@ -5182,18 +5630,7 @@
     renderChartDay(v);
     renderK23(v);
     renderLeague(v);
-    renderGameBadge();
     syncPanelKey(v);
-  }
-
-  /** La pestaña «Juego» cuenta lo que te falta: pronósticos abiertos, el gráfico de hoy y el número de la semana. */
-  function renderGameBadge() {
-    const fc = state.forecasts ? state.forecasts.questions.filter((q) => q.status === 'open' && q.mine == null).length : 0;
-    const g = state.games;
-    const n = fc + (g ? (g.grafico.available && !g.grafico.mine ? 1 : 0) + (g.dosTercios.mine == null ? 1 : 0) : 0);
-    $('game-badge').hidden = !n;
-    $('game-badge').textContent = String(n);
-    $('tab-juego').setAttribute('aria-label', n ? `Juego: ${n} ${n === 1 ? 'pendiente' : 'pendientes'}` : 'Juego');
   }
 
   function renderChartDay(v) {
@@ -5296,7 +5733,6 @@
     const mine = member ? [leaguePortfolio(l, m, err), leagueTicket(l, m, err)] : [leaguePitch(v, err)];
     $('lg-body').replaceChildren(leagueHeadline(l), raceHost, leagueRank(l), ...leagueChamps(l, err), h('div', { class: member ? 'lg-duo' : 'lg-solo' }, ...mine), err);
     drawRace(raceHost, l);
-    renderLeagueTeaser(v);
     if (state.openTutorial) {
       state.openTutorial = false;
       if (member || v.owner) $('league').scrollIntoView({ block: 'start' });
@@ -5498,15 +5934,10 @@
     }
   }
 
-  /** Aviso en «Mercados» para quien todavía no entró a la liga (se cierra con × y no vuelve en este equipo). */
-  function renderLeagueTeaser(v) {
-    $('lg-teaser').hidden = !!v.liga.me?.connected || prefs.get('mercados.liga-aviso', null) === 'cerrado';
-  }
-
   // ---------- tutorial para entrar a la liga (y conectar la clave) ----------
   // Una ventana aparte, paso a paso: tu nombre (si falta), crear la cuenta gratis, copiar la clave y pegarla. Se abre
-  // con «Entrar a la liga», con el aviso de «Mercados», con el enlace /#liga que se manda al grupo o con «Conectar mi
-  // clave» de «Mercados» (`from: 'panel'`): es una sola clave para la liga y para los precios.
+  // con «Conectar mi clave» de «Acciones» (`from: 'panel'`), que es lo principal: con su clave, un amigo ve sus precios.
+  // También con «Entrar a la liga» o con el enlace /#liga: es una sola clave para los precios y para la liga.
   const tut = { step: 0, steps: [], from: 'liga' };
 
   function openLeagueTutorial(from = 'liga') {
@@ -5540,8 +5971,8 @@
     let body;
     let next;
     if (id === 'nombre') {
-      const input = h('input', { type: 'text', maxlength: 20, autocomplete: 'nickname', placeholder: 'Tu nombre o apodo', 'aria-label': 'Tu nombre en el juego' });
-      body = [h('h3', { id: 'lt-h' }, '¿Cómo te llamas en el juego?'), h('p', {}, 'Es el nombre que verán los demás en el ranking.'), input];
+      const input = h('input', { type: 'text', maxlength: 20, autocomplete: 'nickname', placeholder: 'Tu nombre o apodo', 'aria-label': 'Tu nombre en Rueda' });
+      body = [h('h3', { id: 'lt-h' }, '¿Cómo te llamas en Rueda?'), h('p', {}, 'Es el nombre con el que te verá el grupo.'), input];
       next = button(
         'Seguir →',
         async () => {
@@ -5589,7 +6020,7 @@
       body = [
         h('h3', { id: 'lt-h' }, 'Pégala aquí'),
         row,
-        h('p', { class: 'hint' }, 'Se guarda cifrada y solo se usa para traer tus precios: tu lista, tus gráficos y tu cartera de la liga. Puedes quitarla cuando quieras.'),
+        h('p', { class: 'hint' }, 'Se guarda cifrada y solo se usa para traer tus precios: tu lista y tus gráficos. Puedes quitarla cuando quieras, al pie de tu lista.'),
       ];
       next = button(
         'Conectar',
@@ -5612,8 +6043,8 @@
       };
       body = [
         h('h3', { id: 'lt-h' }, '¡Listo! Ya ves tus precios'),
-        h('p', {}, 'En «Acciones» tienes tu lista de seguimiento con precios, los gráficos de 5 años, comparar y el termómetro del S&P 500. Con «Editar» eliges tus símbolos (hasta 8).'),
-        h('p', { class: 'hint' }, 'Con la misma clave ya estás en la liga de acciones: tienes US$ 10 000 para jugar cuando quieras, en la hoja «Juego».'),
+        h('p', {}, 'En «Acciones» tienes tu lista de seguimiento con precios y la ficha completa de cada acción: gráficos de 5 años, resultados, valoración y reportes. Con «Editar» eliges tus símbolos (hasta 8).'),
+        h('p', { class: 'hint' }, 'Con el buscador de arriba abres la ficha de cualquier otra acción.'),
       ];
       next = button('Ver mis precios', toPrices, 'cta');
     } else {
@@ -6311,24 +6742,26 @@
   }
 
   // ---------- hojas ----------
-  // Por tema (5 nov, pedido del usuario: «que la UI sea lo más fácil de usar posible, en PC y celular»): «Hoy», «Acciones»
-  // y «Mercados», más «Juego». La hoja va en la dirección (#acciones, #mercados, #juego), así se puede compartir, y se
+  // Por tema (5 nov, pedido del usuario: «que la UI sea lo más fácil de usar posible, en PC y celular»): «Hoy», «Acciones»,
+  // «Mercados» y «Cartera». La hoja va en la dirección (#acciones, #mercados, #cartera), así se puede compartir, y se
   // recuerda en este equipo. Cada una recuerda hasta dónde bajaste.
-  const SHEETS = ['hoy', 'acciones', 'mercados', 'juego'];
-  const SHEET_PANEL = { hoy: 'sheet-hoy', acciones: 'sheet-acciones', mercados: 'sheet-mercados', juego: 'game' };
+  // El juego del grupo quedó aparte (9 nov: «parece que nadie lo está usando mucho»): no tiene pestaña, se entra con el
+  // enlace del pie (#juego) y no se recuerda como hoja de inicio.
+  const SHEETS = ['hoy', 'acciones', 'mercados', 'cartera'];
+  const VIEWS = [...SHEETS, 'juego'];
+  const SHEET_PANEL = { hoy: 'sheet-hoy', acciones: 'sheet-acciones', mercados: 'sheet-mercados', cartera: 'sheet-cartera', juego: 'game' };
   const SHEET_KEY = 'mercados.hoja2';
   const sheetScroll = {}; // hoja → scrollY al dejarla
   const currentSheet = () => document.body.dataset.hoja || 'hoy';
 
-  /** La de la última visita. Antes había dos, «mercados» (el panel entero) y «juego»: el panel ahora empieza en «Hoy». */
+  /** La hoja de la última visita (el juego no cuenta: quien lo dejó abierto vuelve a «Hoy»). */
   function savedSheet() {
     const v = prefs.get(SHEET_KEY, null);
-    if (SHEETS.includes(v)) return v;
-    return prefs.get('mercados.hoja', null) === 'juego' ? 'juego' : 'hoy';
+    return SHEETS.includes(v) ? v : 'hoy';
   }
 
   function showSheet(name, focus = false) {
-    const sheet = SHEETS.includes(name) ? name : 'hoy';
+    const sheet = VIEWS.includes(name) ? name : 'hoy';
     const prev = document.body.dataset.hoja;
     const changed = sheet !== prev;
     if (changed && prev) sheetScroll[prev] = scrollY;
@@ -6336,18 +6769,19 @@
     for (const s of SHEETS) {
       const tab = $(`tab-${s}`);
       tab.setAttribute('aria-selected', String(s === sheet));
-      tab.tabIndex = s === sheet ? 0 : -1;
-      $(SHEET_PANEL[s]).hidden = s !== sheet;
+      // En el juego no hay pestaña elegida: se llega a las hojas con Tab desde la primera.
+      tab.tabIndex = s === sheet || (sheet === 'juego' && s === 'hoy') ? 0 : -1;
     }
-    if (focus) $(`tab-${sheet}`).focus();
-    prefs.set(SHEET_KEY, sheet);
+    for (const v of VIEWS) $(SHEET_PANEL[v]).hidden = v !== sheet;
+    if (focus) $(`tab-${sheet}`)?.focus();
+    if (SHEETS.includes(sheet)) prefs.set(SHEET_KEY, sheet);
     const hash = sheet === 'hoy' ? '' : `#${sheet}`;
     if (location.hash !== hash) history.replaceState(history.state, '', hash || location.pathname + location.search);
     if (!changed) return;
     fitColumns();
     // Los gráficos que se dibujaron con la hoja oculta quedan con el ancho de reserva: se rehacen al mostrarla.
     if (sheet !== 'juego') redrawCharts();
-    // Al entrar a «Juego», lo último que jugaron los demás.
+    // Al entrar al juego, lo último que jugaron los demás.
     if (sheet === 'juego' && state.games) loadGames();
     // Cada hoja vuelve a donde estabas (la primera vez, arriba). Con la ficha a pantalla completa, la hoja de abajo no se mueve.
     if (prev && !fichaFull()) window.scrollTo(0, sheetScroll[sheet] ?? 0);
@@ -6358,11 +6792,13 @@
     // Flechas entre pestañas, como en cualquier lista de pestañas.
     $('sheets').addEventListener('keydown', (e) => {
       if (e.key !== 'ArrowRight' && e.key !== 'ArrowLeft') return;
-      const i = SHEETS.indexOf(currentSheet());
+      const i = Math.max(0, SHEETS.indexOf(currentSheet()));
       showSheet(SHEETS[(i + (e.key === 'ArrowRight' ? 1 : SHEETS.length - 1)) % SHEETS.length], true);
       e.preventDefault();
     });
-    // /#liga (el enlace que se manda al grupo): la hoja «Juego» con el tutorial de la liga, si todavía no entraste.
+    // Del juego se vuelve a la hoja en la que estabas.
+    $('game-back').addEventListener('click', () => showSheet(savedSheet()));
+    // /#liga (el enlace que se mandó al grupo): el juego con el tutorial de la liga, si todavía no entraste.
     const toLeague = () => {
       state.openTutorial = true;
       showSheet('juego');
@@ -6371,10 +6807,10 @@
     const fromHash = () => {
       const want = location.hash.slice(1);
       if (want === 'liga') toLeague();
-      else showSheet(SHEETS.includes(want) ? want : 'hoy');
+      else showSheet(VIEWS.includes(want) ? want : 'hoy');
     };
     window.addEventListener('hashchange', fromHash);
-    if (location.hash === '#liga' || SHEETS.includes(location.hash.slice(1))) fromHash();
+    if (location.hash === '#liga' || VIEWS.includes(location.hash.slice(1))) fromHash();
     else showSheet(savedSheet());
     // Atrás en el teléfono con la ficha a pantalla completa: se cierra la ficha y no se sale de Rueda.
     window.addEventListener('popstate', () => {
@@ -6383,11 +6819,9 @@
     document.addEventListener('keydown', (e) => {
       if (e.key === 'Escape' && fichaFull() && !search.open && !document.querySelector('dialog[open]')) closeDetail();
     });
-    // El aviso de la liga: entrar abre el tutorial; la × lo cierra para siempre en este equipo.
-    $('lg-teaser-go').addEventListener('click', toLeague);
-    $('lg-teaser-x').addEventListener('click', () => {
-      prefs.set('mercados.liga-aviso', 'cerrado');
-      $('lg-teaser').hidden = true;
+    // Un amigo quita su clave desde su lista (antes solo se podía en la liga): se cierran sus precios.
+    $('wl-key-off').addEventListener('click', () => {
+      if (window.confirm('¿Quitar tu clave de Twelve Data? Dejas de ver tus precios hasta que conectes otra.')) sendGames('/api/games/liga', { action: 'desconectar' }, $('wl-key-err'));
     });
   }
 
@@ -6692,6 +7126,7 @@
     $('d-strat').addEventListener('toggle', renderStrategy);
     $('d-strat-kind').addEventListener('change', renderStrategy);
     $('d-fin').addEventListener('toggle', renderDetailFin);
+    $('d-qual').addEventListener('toggle', renderDetailQual);
     $('d-ps').addEventListener('toggle', renderDetailPs);
     $('d-val').addEventListener('toggle', renderDetailVal);
     $('pf-xray').addEventListener('toggle', loadXray);
@@ -6766,7 +7201,7 @@
       loadCalendar();
       loadForecasts();
       loadGames();
-      // Con su propia clave (la de la liga), su lista, sus precios y sus gráficos; sin ella, el aviso para conectarla.
+      // Con su propia clave de Twelve Data, su lista, sus precios y sus gráficos; sin ella, el aviso para conectarla.
       unlockPanel();
       setInterval(renderClock, 30_000);
       // Sin precios no hay pedidos periódicos: la rueda abre y cierra según el estado del servidor.
@@ -6826,7 +7261,7 @@
     });
   }
 
-  // Un amigo ve sus precios si conectó su propia clave de Twelve Data (la misma de la liga): el servidor se los trae
+  // Un amigo ve sus precios si conectó su propia clave de Twelve Data (sirve también para la liga): el servidor se los trae
   // con esa clave y los guarda aparte (game/panel.ts). Sin clave, /api/watchlist responde 403 y se muestra el aviso.
   let panelOpening = null;
 
@@ -6855,7 +7290,7 @@
     await startPrices();
   }
 
-  /** Quitó su clave en la liga: se cierran sus precios y se olvida lo que se veía (el servidor ya borró su caché). */
+  /** Quitó su clave (en su lista o en la liga): se cierran sus precios y se olvida lo que se veía (el servidor ya borró su caché). */
   function lockPanel() {
     if (fichaFull()) closeDetail();
     state.keyed = false;
@@ -6872,7 +7307,7 @@
     $('keycard').hidden = false;
   }
 
-  /** Un amigo que conecta (o quita) su clave en la liga: se abren (o se cierran) sus precios en «Mercados». */
+  /** Un amigo que conecta (o quita) su clave: se abren (o se cierran) sus precios en «Acciones». */
   function syncPanelKey(v) {
     if (state.role !== 'friend') return;
     const connected = !!v.liga?.me?.connected && !v.liga.me.appKey;

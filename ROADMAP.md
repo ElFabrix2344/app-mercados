@@ -444,6 +444,46 @@ Prompt de la tarea (si cambia aquí, hay que cambiarlo también en claude.ai):
 >
 > No hagas nada más.
 
+## 8i. Rumbo nuevo: una herramienta para decidir — 9 de noviembre
+
+El usuario: «intentemos desviarnos del aspecto juego del app, parece que nadie lo está usando mucho, la idea es que rueda sea una herramienta completa para poder tomar las decisiones de inversión más informadas posibles».
+
+Antes de proponer se revisó qué tan completa era Rueda frente a lo que uno se pregunta antes de invertir. Lo que faltaba:
+- **¿Qué reportó?** No había reportes de la SEC, y todo lo fundamental salía del informe anual, de hasta un año atrás.
+- **¿Es buen negocio?** Faltaban el ROIC, la dilución y las recompras, los dividendos y un puntaje de calidad.
+- **¿Cara o barata?** Solo el P/S tenía historia; no había DCF inverso ni pares lado a lado.
+- **¿Cómo encaja en mi cartera?** Los rayos X eran solo de la cartera simulada del dueño.
+- **¿Por qué la compré?** No había dónde anotar la tesis, ni precio objetivo, ni alertas.
+
+Eligió empezar por la fase 1 y apartar el juego. Las cuatro fases:
+
+- [x] **Fase 1 · La ficha al día** (9 nov). Con datos públicos de la SEC, para todos:
+  - **Trimestres y últimos 12 meses:** resultados, ratios y DCF con los 10-Q, no solo con el informe anual.
+  - **Calidad del negocio:** ROIC, margen bruto, dividendos, recompras, acciones y Piotroski.
+  - **Reportes a la SEC:** informes, hechos y la junta, con enlace al documento.
+  - Sin clave, lo mismo (menos lo que necesita precio) en «Resultados de empresas».
+  - Comprobado con la SEC de verdad: Southern Copper vendió US$ 17 100 millones en los 12 meses a setiembre de 2026, frente a los 13 400 de su informe anual de 2025.
+- [x] **«Cartera» en lugar de «Juego»** (9 nov). La cuenta Hapi y la cartera simulada pasaron de «Acciones» a su propia hoja. El juego no se borró: perdió su pestaña, el contador y el aviso de la liga, y se entra por el enlace del pie. La clave de un amigo ahora se quita desde su lista.
+- [ ] **Fase 2 · ¿Cara o barata?**
+  - Historia del P/E y del EV/EBITDA, como ya la tiene el P/S.
+  - DCF inverso: qué crecimiento ya descuenta el precio.
+  - Pares lado a lado: crecimiento, márgenes, ROE, deuda y múltiplos (ampliar el comparador por P/S).
+  - Rendimiento de las utilidades frente al bono a 10 años.
+  - El P/S con las ventas de los últimos 12 meses (hoy usa el año fiscal, igual que `valorar_ps`).
+- [ ] **Fase 3 · Tu cartera real** (en el navegador, porque la cuenta Hapi está cifrada).
+  - Rayos X de la cuenta: concentración, sector y correlación.
+  - Rendimiento que no se infla con los depósitos, y la peor caída.
+  - Frente al plazo fijo, la AFP, la inflación y el SPY (sección 8f, puntos 2 y 21).
+  - «¿Y si compro X?»: cómo cambian la concentración y el riesgo.
+- [ ] **Fase 4 · Decidir y seguir.**
+  - Tu tesis por acción, tu lista de verificación y tu precio objetivo, cifrados como la cuenta Hapi.
+  - Alertas al celular: tu precio objetivo, resultados mañana, reporte nuevo (sección 8f, punto 12).
+- [ ] **Después:** el filtro por fundamentos (`frames` de la SEC), el riesgo macro de FRED, los rendimientos en soles, y sumar al conector de Claude los trimestres, la calidad y los reportes.
+
+**Pendiente de la fase 1:**
+- Las que presentan 20-F en NIIF (BVN, Credicorp, IFS) siguen anuales, y la SEC todavía no suma sus informes de 2025.
+- El conector de Claude todavía no trae los trimestres, la calidad ni los reportes.
+
 ## 9. Ideas para después
 
 Las funciones posibles, con quién las tiene y de dónde saldrían los datos, están en la sección 8f: alertas, gráfico del día, reportes oficiales, dividendos y precios para los amigos. Además:

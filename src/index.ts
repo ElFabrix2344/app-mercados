@@ -15,9 +15,11 @@ import {
   mockCurve,
   mockEodView,
   mockFactors,
+  mockFilings,
   mockFinancials,
   mockForecastExtras,
   mockFundamentals,
+  mockQuality,
   fakeFinnhub,
   mockHistory,
   mockLookupQuote,
@@ -44,8 +46,10 @@ import { companyData } from './services/company';
 import { readSummaries } from './services/summary';
 import { portfolioXray, type ProfileOf } from './services/xray';
 import { factorGrades } from './services/factors';
+import { filings } from './services/filings';
 import { financials } from './services/financials';
 import { fundamentals } from './services/fundamentals';
+import { quality } from './services/quality';
 import { companyCalendar } from './services/earnings';
 import { EOD_NEW_NOW, eodView, knownSymbols, refreshEod, validateEodList } from './services/eod';
 import { forecastView, playerId, readAlias, resolveForecasts, setAlias, submitForecast, type Store } from './services/forecasts';
@@ -315,22 +319,29 @@ async function route(req: Request, env: Env, url: URL, role: Role, email: string
         return json(mock ? mockFactors(symbol, now) : await factorGrades(deps, symbol));
       }
 
-      // Resultados anuales de la SEC (dominio público): para todos y de cualquier acción, no solo las de las listas.
+      // Resultados de la SEC, anuales y trimestrales (dominio público): para todos y de cualquier acción, no solo las de
+      // las listas.
       case '/api/financials': {
-        const symbol = (url.searchParams.get('symbol') ?? '').trim().toUpperCase();
-        if (!SYMBOL_RE.test(symbol) || !isUsEquity(symbol)) {
-          throw new ApiError('bad_request', 400, 'Escribe el símbolo de una acción, como SCCO o AAPL.');
-        }
+        const symbol = secSymbol(url);
         return json(mock ? mockFinancials(symbol, now) : await financials(deps, symbol));
       }
 
       // Flujo de caja, inversión, deuda, caja y patrimonio de la SEC (públicos): para los ratios y el DCF de la ficha.
       case '/api/fundamentals': {
-        const symbol = (url.searchParams.get('symbol') ?? '').trim().toUpperCase();
-        if (!SYMBOL_RE.test(symbol) || !isUsEquity(symbol)) {
-          throw new ApiError('bad_request', 400, 'Escribe el símbolo de una acción, como SCCO o AAPL.');
-        }
+        const symbol = secSymbol(url);
         return json(mock ? mockFundamentals(symbol, now) : await fundamentals(deps, symbol));
+      }
+
+      // Calidad del negocio con los informes de la SEC (públicos): ROIC, Piotroski, dividendos, recompras y acciones.
+      case '/api/quality': {
+        const symbol = secSymbol(url);
+        return json(mock ? mockQuality(symbol, now) : await quality(deps, symbol));
+      }
+
+      // Lo que la empresa presentó a la SEC (la lista pública de EDGAR), con enlace a cada documento.
+      case '/api/filings': {
+        const symbol = secSymbol(url);
+        return json(mock ? mockFilings(symbol, now) : await filings(deps, symbol));
       }
 
       case '/api/peru':
@@ -610,6 +621,13 @@ async function listedOrLooked(kv: KVNamespace, url: URL, now: Date, what: string
   const symbol = (url.searchParams.get('symbol') ?? '').trim().toUpperCase();
   if ((await knownSymbols(kv)).includes(symbol) || (await lookedUp(kv, symbol, now))) return symbol;
   throw new ApiError('bad_request', 400, `Solo hay ${what} de los símbolos de tus listas y de los que abres con el buscador.`);
+}
+
+/** El símbolo de `?symbol=` para los datos de la SEC (públicos, de cualquier acción): solo acciones, no divisas ni cripto. */
+function secSymbol(url: URL): string {
+  const symbol = (url.searchParams.get('symbol') ?? '').trim().toUpperCase();
+  if (!SYMBOL_RE.test(symbol) || !isUsEquity(symbol)) throw new ApiError('bad_request', 400, 'Escribe el símbolo de una acción, como SCCO o AAPL.');
+  return symbol;
 }
 
 /** El correo de Access (en local, dev@localhost): identifica al jugador de los pronósticos. */

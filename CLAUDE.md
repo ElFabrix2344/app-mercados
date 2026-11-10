@@ -4,6 +4,15 @@ El nombre visible es **Rueda**. Los nombres técnicos (Workers, direcciones, KV,
 
 App de mercados (Cloudflare Worker + panel web + conector MCP para Claude). El README explica la arquitectura, la API y el despliegue: léelo antes de cambiar algo.
 
+## Rumbo (9 nov)
+
+El usuario: «intentemos desviarnos del aspecto juego del app, parece que nadie lo está usando mucho, la idea es que rueda sea una herramienta completa para poder tomar las decisiones de inversión más informadas posibles».
+
+- **Lo que se construye ahora es análisis para decidir**, no juegos. El plan va en cuatro fases (ROADMAP.md, sección 8i): 1) la ficha al día; 2) ¿cara o barata?; 3) tu cartera real; 4) decidir y seguir.
+- **Datos públicos primero** (SEC, BCRP, FRED): así le sirve a todo el grupo, también a quien no conectó su clave. Lo que no necesita precio va también en «Resultados de empresas» (`#fin`), que ven todos.
+- **Rueda muestra datos y cuentas, no dice qué comprar o vender.** Un puntaje (Piotroski) o una etiqueta («sobre su historia») describe; no recomienda. Explica cada indicador en su «?».
+- **El juego quedó aparte, no borrado:** sin pestaña ni avisos; se entra por el enlace del pie (`#juego`). No propongas juegos nuevos ni le sumes cosas salvo que el usuario lo pida.
+
 ## Cómo trabajar en este proyecto
 
 - Responde siempre en **español**.
@@ -35,20 +44,28 @@ App de mercados (Cloudflare Worker + panel web + conector MCP para Claude). El R
   - **El cian**, para lo que se toca (enlaces, la pestaña y la opción elegidas, el botón principal `.cta`), la marca, los gráficos y «tú» en la liga. No para títulos ni símbolos.
   - **Botones:** sin borde y con fondo `--raise`. Los grupos de opciones (`.ranges`) son un selector de una pieza.
   - Las explicaciones de uso van en el «?» de cada sección, no como texto suelto.
-- **Columnas** (29 oct, pedido del usuario: «datos en los costados y en el medio, para no scrollear tanto»): las secciones van dentro de `.col-left`, `.col-center` o `.col-right` de su hoja (`#sheet-hoy`, `#sheet-acciones` o `#sheet-mercados`) en `index.html`.
+- **SEC, trimestres y últimos 12 meses** (9 nov, `lib/quarters.ts`):
+  - Un 10-Q trae el trimestre y el acumulado del año en los resultados, pero **solo el acumulado en el flujo de caja**, y el cuarto trimestre no sale en ningún informe. `quarterValues` saca los trimestres sueltos restando acumulados que empiezan el mismo día; los 12 meses son cuatro trimestres seguidos (`contiguous`). No sumes periodos sin esa comprobación.
+  - **Las que presentan 20-F** (BVN, Credicorp, IFS) no tienen trimestres con datos: `quarters` viene vacío, `ttm` y `latest` en `null`, y el panel cae al año fiscal. No lo trates como error.
+  - **`companyfacts` no:** pesa varios MB y no entra en los 10 ms de procesador. Se lee concepto por concepto (`companyConcept`), con los pedidos repartidos en cuatro rutas para no pasar de 50 por pedido: resultados (8), fundamentales (16), calidad (13) y reportes (2). El panel pide la calidad recién cuando llegaron los fundamentales (`qualityFor`), para no repetir consultas.
+  - **Acciones y splits:** el promedio diluido de años viejos no viene ajustado por splits; solo los tres años del informe más nuevo son comparables. Por eso la dilución se mide con esos tres.
+  - **Enlaces a los reportes:** van a `www.sec.gov` y los abre el navegador de quien mira. Desde el Worker ese dominio responde 403 sin un correo en el User-Agent: no lo leas desde el servidor.
+- **Columnas** (29 oct, pedido del usuario: «datos en los costados y en el medio, para no scrollear tanto»): las secciones van dentro de `.col-left`, `.col-center` o `.col-right` de su hoja (`#sheet-hoy`, `#sheet-acciones`, `#sheet-mercados` o `#sheet-cartera`) en `index.html`.
   - **Al agregar una sección:** ponla en la hoja y la columna que le toca, y dale su `order` del celular en `styles.css` (cada hoja tiene su propia lista de `order`).
   - **Columna vacía:** si en una hoja una columna no tiene nada a la vista (un amigo sin clave no ve el termómetro), `fitColumns` en `app.js` la cierra con `.sin-left` o `.sin-right`. Mira la regla de cada sección (`display`), no la columna.
   - **Diseño que depende del ancho de la sección:** `.screen` es un contenedor, así que va con `@container`, no con `@media` (una sección puede ser angosta en una pantalla ancha).
   - **Columnas parejas:** si una crece mucho, la página entera se alarga. Mira la altura de cada una antes de mover algo.
 - **Termómetro del S&P 500** (`services/thermometer.ts`, 4 nov): describe la volatilidad del SPY frente a sus últimas 500 sesiones. **No agregues predicciones de dirección** sin que el usuario lo pida: la evaluación con esos 500 movimientos mostró que no hay un patrón aprovechable, y el panel lo dice en su «?». Con la clave de Rueda lo ve solo el dueño (`OWNER_ONLY`); un amigo lo ve con su propia clave (`FRIEND_KEYED`, ver «Precios con la clave de cada uno»).
 - **Materias primas y «Más del Perú»** (4 nov, pedido del usuario: «los datos de Perú muévelos a un espacio un poco más escondido y pon en su lugar datos de commodities»): `#cmd` (cobre, oro, plata, zinc y petróleo WTI del BCRP) va en la columna izquierda donde estaba lo del Perú; BVL, reservas, bonos y riesgo país quedaron en `#pm`, plegado (`#pm-fold`) debajo de Perú y EE. UU., y sus gráficos se dibujan recién al abrirlo. Todo sale del mismo pedido (`peruMarkets`, KV `peru-markets3`). Para sumar materias primas a la vista de los amigos usa solo fuentes públicas (BCRP o series de dominio público de FRED, como las de la EIA); las de Twelve Data no.
-- **Hojas** (2 nov: que lo cooperativo o competitivo tenga su propia hoja; 5 nov: «que la UI sea lo más fácil de usar posible, en PC y celular»). Son cuatro, por tema:
+- **Hojas** (5 nov: «que la UI sea lo más fácil de usar posible, en PC y celular»; 9 nov: «Cartera» en lugar de «Juego»). Son cuatro, por tema:
   - **Hoy:** resumen, noticias, agenda y Polymarket.
-  - **Acciones:** tu lista, la ficha, comparar, cartera, Hapi, SEC y P/S.
+  - **Acciones:** tu lista, la ficha, comparar, SEC y P/S.
   - **Mercados:** termómetro, materias primas, cripto, Perú y EE. UU.
-  - **Juego** (`#game`): lo que se juega en grupo va aquí, no en las columnas.
-  - **Cómo cambian:** cada panel lleva `hidden` cuando no se ve (`showSheet`, `body[data-hoja]`), y la dirección es `#acciones`, `#mercados` o `#juego` («Hoy» no lleva nada). Se recuerda en cada equipo (`mercados.hoja2`; la clave vieja `mercados.hoja` solo se lee para «juego») y cada hoja vuelve a donde bajaste.
+  - **Cartera** (`#sheet-cartera`): lo tuyo. Tu cuenta Hapi y, para el dueño, la cartera simulada al costado. Aquí va lo que mida la cartera real (fase 3).
+  - **El juego** (`#game`) no es una hoja: no tiene pestaña ni contador, se entra por el enlace del pie o con `#juego`, y «← Volver a Rueda» regresa a la hoja de antes. No se recuerda como hoja de inicio. `VIEWS` son las hojas más el juego; `SHEETS`, solo las hojas.
+  - **Cómo cambian:** cada panel lleva `hidden` cuando no se ve (`showSheet`, `body[data-hoja]`), y la dirección es `#acciones`, `#mercados` o `#cartera` («Hoy» no lleva nada). Se recuerda en cada equipo (`mercados.hoja2`) y cada hoja vuelve a donde bajaste.
   - **Gráficos:** al cambiar de hoja se redibujan, porque con la hoja oculta se dibujan con el ancho de reserva.
+  - **La clave de un amigo** se conecta desde «Acciones» (`#keycard`, que abre el tutorial) y se quita al pie de su lista (`#wl-key-off`). Antes eso solo estaba en la liga.
 - **Celular** (5 nov, elegido por el usuario):
   - **Arriba**, una sola barra fija (`.top`): logo, ↻, ↓ y la lupa, con la hora y «Actualizado» en una línea chica.
   - **Abajo**, las hojas, como en una app (el mismo `nav.sheets`, fijo).
@@ -58,8 +75,14 @@ App de mercados (Cloudflare Worker + panel web + conector MCP para Claude). El R
   - **Tu día:** S&P 500, dólar, cobre y bitcoin. Si el SPY no está en tu lista, se usa su último cierre del termómetro (`state.thermo`). El dólar sale del BCRP y bitcoin de CoinGecko.
   - **Tu lista:** las tres que más se movieron. En «Hoy» no va la cinta.
 - **La ficha** (5 nov): el precio en grande (`#d-price`), el selector de periodos a lo ancho, el gráfico y lo largo en pestañas: Resumen, Valor, Empresa y Noticias (`D_TABS`, se recuerda la última).
-  - Una pestaña sin nada se esconde (`renderDetailTabs`). «Valor» abre solos sus tres bloques de la SEC.
+  - Una pestaña sin nada se esconde (`renderDetailTabs`). «Valor» abre solos sus bloques de la SEC.
   - **Si agregas un bloque a la ficha,** ponlo en el panel de su pestaña (`dp-…`).
+- **La ficha al día** (9 nov, fase 1 del rumbo nuevo). Todo de la SEC y público:
+  - **Resultados** (`#d-fin`, `financialsView`): arriba, los últimos 12 meses y el último trimestre; el gráfico y la tabla, por año o por trimestre (`finMode`, se recuerda en `mercados.sec-vista`).
+  - **Ratios y DCF** (`renderDetailVal`): usan los últimos 12 meses y el balance del último 10-Q (`fundamentals.latest`) si su fecha coincide con la de los resultados (`fresh`); si no, el año fiscal. El texto dice siempre con qué periodo se calculó.
+  - **Calidad del negocio** (`#d-qual`, `services/quality.ts`): ROIC, margen bruto, acciones, dividendos y recompras, y Piotroski. Las cuentas las hace el servidor; el panel solo las muestra.
+  - **Reportes a la SEC** (`#d-filings`, en «Empresa»; `services/filings.ts`): los que importan, con su tema en castellano (`ITEMS_8K`) y enlace al documento.
+  - **Sin clave:** resultados, calidad y reportes están también en `#fin` (`renderFinExtras`), sin lo que necesita precio. Si sumas un bloque de datos públicos a la ficha, ponlo ahí también.
 - **Más fácil de usar** (5 nov, elegido por el usuario):
   - **Botones de unos 40 px** en el celular y en pantallas táctiles (`pointer:coarse`). Los enlaces dentro de una frase quedan como están.
   - **Secciones plegables:** tocar el título las pliega (`setupFolds`, se recuerda en `mercados.plegadas`). No se pliegan las de `NO_FOLD`: la ficha, la bienvenida, el aviso de la clave y la liga.

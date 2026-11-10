@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import type { Env } from '../src/env';
 import worker from '../src/index';
 import { instantValues } from '../src/lib/sec';
-import { fundamentals, mergeFundamentals } from '../src/services/fundamentals';
+import { fundamentals, latestRow, mergeFundamentals } from '../src/services/fundamentals';
 import { memoryKV } from './helpers';
 
 const NOW = new Date('2026-11-04T15:00:00Z');
@@ -63,6 +63,34 @@ describe('fundamentales de la SEC (ratios y DCF)', () => {
     expect(r.data.years.at(-1)).toEqual({ year: 2025, end: '2025-12-31', ocf: 200, capex: 50, da: 30, cash: 80, debt: 400, equity: 500, assets: 1500 });
     expect(r.data.years[0]).toMatchObject({ year: 2024, cash: 60, ocf: null });
     expect(calls.some((u) => u.includes('ifrs-full/CashAndCashEquivalents.json'))).toBe(false);
+  });
+
+  it('lo más nuevo: los flujos de los últimos 12 meses (el 10-Q los trae acumulados) y el balance del último trimestre', () => {
+    const p = (start: string, end: string, value: number) => ({ start, end, value });
+    const flow = (periods: { start: string; end: string; value: number }[]) => ({ currency: 'USD', values: [], periods });
+    const bal = (balances: { end: string; value: number }[]) => ({ currency: 'USD', values: [], balances });
+    // Flujo operativo: 2025 completo (acumulados de 3, 6 y 9 meses y el año) y los nueve meses de 2026.
+    const ocf = flow([
+      p('2025-01-01', '2025-03-31', 10),
+      p('2025-01-01', '2025-06-30', 25),
+      p('2025-01-01', '2025-09-30', 45),
+      p('2025-01-01', '2025-12-31', 70),
+      p('2026-01-01', '2026-03-31', 12),
+      p('2026-01-01', '2026-06-30', 30),
+      p('2026-01-01', '2026-09-30', 54),
+    ]);
+    const lines = {
+      ocf: [ocf],
+      capex: [flow([p('2026-07-01', '2026-09-30', -9)])], // un solo trimestre: no alcanza para 12 meses
+      da: [],
+      cash: [bal([{ end: '2025-12-31', value: 80 }, { end: '2026-09-30', value: 95 }])],
+      equity: [bal([{ end: '2026-06-30', value: 500 }])], // el del trimestre anterior no sirve
+      assets: [bal([{ end: '2026-09-30', value: 1600 }])],
+    };
+    const debt = { total: [bal([{ end: '2026-09-30', value: 380 }])], parts: [], short: [bal([{ end: '2026-09-30', value: 20 }])] };
+    // 12 meses a setiembre de 2026: el cuarto trimestre de 2025 (70 − 45) más los nueve meses de 2026.
+    expect(latestRow('2026-09-30', 'USD', lines, debt)).toEqual({ year: 2026, end: '2026-09-30', ocf: 25 + 54, capex: null, da: null, cash: 95, debt: 400, equity: null, assets: 1600 });
+    expect(latestRow(null, 'USD', lines, debt)).toBeNull();
   });
 
   it('la ruta es pública (datos de la SEC) y solo para acciones', async () => {

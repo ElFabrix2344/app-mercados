@@ -8,11 +8,13 @@ import type { EarningsRelease } from './lib/finnhub';
 import { CHOICES, questionsAt, readyToResolve, resolve, type ForecastValue } from './lib/forecasts';
 import { usMarketOpen } from './lib/market-hours';
 import { addDays, isoDate } from './lib/num';
-import type { SecMatch } from './lib/sec';
+import type { Filing, SecMatch } from './lib/sec';
 import type { DailyPoint, Quote, QuoteBatch } from './lib/twelvedata';
 import type { CompanyResult } from './services/company';
 import { gradeFactors, type FactorsResult } from './services/factors';
-import { SEC_YEARS, type FinancialsData } from './services/financials';
+import { fiscalYear, SEC_QUARTERS, SEC_YEARS, sumQuarters, type FinancialPeriod, type FinancialsData, type FinancialYear } from './services/financials';
+import type { FilingsData } from './services/filings';
+import { piotroski, qualityYears, type QualityData, type YearInputs } from './services/quality';
 import { getEodList, shapeEod, summarizeHistory, type EodRow, type EodView } from './services/eod';
 import { computeThermometer, THERMO_SYMBOL, type Thermometer } from './services/thermometer';
 import type { CryptoReply, CryptoSeries } from './services/crypto';
@@ -147,10 +149,10 @@ function fresh<T>(data: T, now: Date): Fresh<T> {
 export function mockFundamentals(symbol: string, now: Date): Fresh<FundamentalsData> {
   const fin = mockFinancials(symbol, now).data;
   const rand = rng(seedOf(`secx${symbol}`));
-  const years = fin.years.slice(-6).map((y) => {
+  const row = (y: { end: string; revenue: number | null; netIncome: number | null }) => {
     const rev = y.revenue;
     return {
-      year: y.year,
+      year: fiscalYear(y.end),
       end: y.end,
       ocf: rev === null ? null : Math.round((y.netIncome ?? 0) * 1.25 + rev * 0.05),
       capex: rev === null ? null : Math.round(rev * (0.05 + rand() * 0.04)),
@@ -160,8 +162,120 @@ export function mockFundamentals(symbol: string, now: Date): Fresh<FundamentalsD
       equity: Math.round((rev ?? 5e9) * (0.7 + rand() * 0.5)),
       assets: Math.round((rev ?? 5e9) * 2),
     };
+  };
+  const years = fin.years.slice(-6).map(row);
+  // Lo más nuevo: los flujos de los últimos 12 meses y el balance del último trimestre (sin trimestres, no hay).
+  const latest = fin.ttm ? row(fin.ttm) : null;
+  return fresh({ symbol, cik: fin.cik, standard: fin.standard, currency: fin.currency, years: fin.cik ? years : [], latest: fin.cik ? latest : null }, now);
+}
+
+/** Calidad de prueba: las líneas que faltan se inventan y el puntaje sale de las cuentas de verdad (services/quality.ts). */
+export function mockQuality(symbol: string, now: Date): Fresh<QualityData> {
+  const fin = mockFinancials(symbol, now).data;
+  const fund = mockFundamentals(symbol, now).data;
+  const rand = rng(seedOf(`secq${symbol}`));
+  const sharesNow = fin.shares.at(-1)?.value ?? 1e9;
+  const all = fin.years.slice(-6);
+  const inputs: YearInputs[] = all.map((y, i) => {
+    const f = fund.years.find((x) => x.end === y.end);
+    const rev = y.revenue;
+    const ni = y.netIncome;
+    const pretax = ni === null ? null : Math.round(ni / 0.74);
+    return {
+      year: y.year,
+      end: y.end,
+      revenue: rev,
+      operatingIncome: y.operatingIncome,
+      netIncome: ni,
+      ocf: f?.ocf ?? null,
+      capex: f?.capex ?? null,
+      cash: f?.cash ?? null,
+      debt: f?.debt ?? null,
+      equity: f?.equity ?? null,
+      assets: f?.assets ?? null,
+      assetsCurrent: rev === null || !f?.assets ? null : Math.round(f.assets * (0.3 + rand() * 0.1)),
+      liabilitiesCurrent: rev === null || !f?.assets ? null : Math.round(f.assets * (0.15 + rand() * 0.08)),
+      grossProfit: rev === null ? null : Math.round(rev * (0.38 + rand() * 0.08)),
+      tax: pretax === null ? null : Math.round(pretax * 0.26),
+      pretax,
+      buybacks: ni === null || rev === null ? null : Math.round(Math.max(0, ni) * 0.25),
+      dividends: ni === null ? null : Math.round(Math.max(0, ni) * 0.4),
+      sbc: rev === null ? null : Math.round(rev * 0.008),
+      // Menos acciones cada año: la empresa de prueba recompra.
+      shares: Math.round(sharesNow * (1 + 0.012 * (all.length - 1 - i))),
+    };
   });
-  return fresh({ symbol, cik: fin.cik, standard: fin.standard, currency: fin.currency, years: fin.cik ? years : [] }, now);
+  const [p, t] = [inputs.at(-2), inputs.at(-1)];
+  return fresh(
+    { symbol, cik: fin.cik, name: fin.name, standard: fin.standard, currency: fin.currency, years: fin.cik ? qualityYears(inputs) : [], piotroski: fin.cik && t && p ? piotroski(t, p) : null },
+    now,
+  );
+}
+
+/** Reportes de prueba: lo que una empresa de EE. UU. presenta en un año (o, para BAP, una extranjera con 20-F y 6-K). */
+export function mockFilings(symbol: string, now: Date): Fresh<FilingsData> {
+  if (MOCK_ETFS.has(symbol)) return fresh({ symbol, cik: null, company: null, filings: [], insiders: null }, now);
+  const fin = mockFinancials(symbol, now).data;
+  const today = isoDate(now);
+  const year = Number(today.slice(0, 4));
+  const foreign = fin.foreign;
+  const url = 'https://www.sec.gov/edgar/search/';
+  const f = (form: string, kind: Filing['kind'], date: string, period: string | null, items: string[] = []): Filing => ({ form, kind, date, period, items, url });
+  const list: Filing[] = foreign
+    ? [
+        f('6-K', 'evento', addDays(today, -6), addDays(today, -7)),
+        f('6-K', 'evento', addDays(today, -31), addDays(today, -31)),
+        f('6-K', 'evento', addDays(today, -95), addDays(today, -96)),
+        f('20-F', 'anual', `${year}-04-28`, `${year - 1}-12-31`),
+        f('6-K', 'evento', `${year}-02-10`, `${year}-02-09`),
+        f('20-F', 'anual', `${year - 1}-04-27`, `${year - 2}-12-31`),
+      ]
+    : [
+        f('10-Q', 'trimestral', `${year}-10-30`, `${year}-09-30`),
+        f('8-K', 'evento', `${year}-10-21`, `${year}-10-20`, ['2.02']),
+        f('8-K', 'evento', `${year}-09-02`, `${year}-08-29`, ['5.02']),
+        f('10-Q', 'trimestral', `${year}-07-31`, `${year}-06-30`),
+        f('8-K', 'evento', `${year}-07-22`, `${year}-07-21`, ['2.02']),
+        f('8-K', 'evento', `${year}-06-02`, `${year}-05-29`, ['5.07']),
+        f('10-Q', 'trimestral', `${year}-04-30`, `${year}-03-31`),
+        f('DEF 14A', 'junta', `${year}-04-17`, `${year}-05-29`),
+        f('10-K', 'anual', `${year}-02-27`, `${year - 1}-12-31`),
+        f('8-K', 'evento', `${year}-01-29`, `${year}-01-28`, ['2.02', '8.01']),
+        f('10-K', 'anual', `${year - 1}-02-28`, `${year - 2}-12-31`),
+      ];
+  const filings = list.filter((x) => x.date <= today).sort((a, b) => (a.date > b.date ? -1 : 1));
+  return fresh(
+    {
+      symbol,
+      cik: fin.cik,
+      company: { name: fin.name ?? symbol, industry: foreign ? 'Commercial Banks, NEC' : 'Metal Mining', fiscalYearEnd: '1231', website: null, exchanges: ['NYSE'] },
+      filings,
+      insiders: foreign ? { d90: 0, d365: 0, last: null } : { d90: 3, d365: 14, last: addDays(today, -12) },
+    },
+    now,
+  );
+}
+
+/** Trimestres de prueba: los de cada año suman el año, y los del año en curso crecen 8 %. Solo los que ya cerraron. */
+function mockQuarters(years: FinancialYear[], now: Date): FinancialPeriod[] {
+  const WEIGHTS = [0.23, 0.24, 0.25, 0.28];
+  const STARTS = ['01-01', '04-01', '07-01', '10-01'];
+  const ENDS = ['03-31', '06-30', '09-30', '12-31'];
+  const last = years.at(-1);
+  if (!last) return [];
+  const up = (v: number | null) => (v === null ? null : v * 1.08);
+  const rows = [...years.slice(-3), { ...last, year: last.year + 1, revenue: up(last.revenue), operatingIncome: up(last.operatingIncome), netIncome: up(last.netIncome) }];
+  const today = isoDate(now);
+  const out: FinancialPeriod[] = [];
+  for (const y of rows) {
+    for (let q = 0; q < 4; q++) {
+      const end = `${y.year}-${ENDS[q]}`;
+      if (end >= today) continue;
+      const part = (v: number | null) => (v === null ? null : Math.round(v * WEIGHTS[q]!));
+      out.push({ start: `${y.year}-${STARTS[q]}`, end, revenue: part(y.revenue), operatingIncome: part(y.operatingIncome), netIncome: part(y.netIncome) });
+    }
+  }
+  return out.slice(-SEC_QUARTERS);
 }
 
 /** Cripto de prueba (sin CoinGecko): un año de precios inventados de cada moneda. */
@@ -731,7 +845,7 @@ export function mockFactors(symbol: string, now: Date): FactorsResult {
 }
 /** Resultados anuales de prueba (inventados): 12 años con altibajos, un año con pérdidas y, para BAP, como banco en soles. */
 export function mockFinancials(symbol: string, now: Date): Fresh<FinancialsData> {
-  if (MOCK_ETFS.has(symbol)) return fresh({ symbol, cik: null, name: null, standard: null, currency: null, years: [], shares: [], foreign: false, adrRatio: 1 }, now);
+  if (MOCK_ETFS.has(symbol)) return fresh({ symbol, cik: null, name: null, standard: null, currency: null, years: [], shares: [], foreign: false, adrRatio: 1, quarters: [], ttm: null, ttmPrev: null }, now);
   const rand = rng(seedOf(`sec${symbol}`));
   const bank = symbol === 'BAP';
   const lastYear = Number(isoDate(now).slice(0, 4)) - 1;
@@ -754,6 +868,8 @@ export function mockFinancials(symbol: string, now: Date): Fresh<FinancialsData>
   const lastRevenue = years.at(-1)!.revenue ?? 5e9;
   const sharesNow = Math.round((ps * lastRevenue) / price);
   const shares = years.slice(-6).map((y, i, all) => ({ date: y.end, value: Math.round(sharesNow * (1 + 0.01 * (all.length - 1 - i))) }));
+  // Como las de verdad: las que presentan 20-F (el banco de prueba) no tienen trimestres.
+  const quarters = bank ? [] : mockQuarters(years, now);
   return fresh(
     {
       symbol,
@@ -765,6 +881,9 @@ export function mockFinancials(symbol: string, now: Date): Fresh<FinancialsData>
       shares,
       foreign: bank,
       adrRatio: 1,
+      quarters,
+      ttm: sumQuarters(quarters.slice(-4)),
+      ttmPrev: sumQuarters(quarters.slice(-8, -4)),
     },
     now,
   );

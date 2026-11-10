@@ -30,16 +30,17 @@ body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--f-mono);fo
 .rol-amigo:not(.con-clave) .keyed{display:none!important}
 .rol-amigo .friend-only{display:block}
 .wrap{max-width:1180px;margin:0 auto;padding:16px 16px 40px;display:flex;flex-direction:column;gap:24px}
-/* Hojas por tema (5 nov): «Hoy», «Acciones» y «Mercados», más «Juego». Se ve una a la vez (las demás llevan `hidden`).
-   Cada una en columnas, para no bajar tanto: en computadora, izquierda | lo principal | derecha; en tablet, lo
-   principal y una columna al costado; en el celular, una sola. */
+/* Hojas por tema (5 nov): «Hoy», «Acciones», «Mercados» y «Cartera» (9 nov, en lugar de «Juego»). Se ve una a la vez
+   (las demás llevan `hidden`). Cada una en columnas, para no bajar tanto: en computadora, izquierda | lo principal |
+   derecha; en tablet, lo principal y una columna al costado; en el celular, una sola. */
 .hojas,.cols,.col{display:contents}
 @media (max-width:899px){
   /* En una columna, este orden: en el HTML las secciones están repartidas por columna. */
-  .top,.teaser,#install-panel,.tape,.banner{order:-2}
+  .top,#install-panel,.tape,.banner{order:-2}
   #welcome{order:1} #dia{order:2} #milista{order:3} #summary{order:4} #news{order:5} #cal{order:6} #pmk{order:7} #people{order:8}
-  #keycard{order:1} #watchlist{order:2} #detail{order:3} #eod{order:4} #compare{order:5} #portfolio{order:6} #hapi{order:7} #fin{order:8} #ps{order:9}
+  #keycard{order:1} #watchlist{order:2} #detail{order:3} #eod{order:4} #compare{order:5} #fin{order:8} #ps{order:9}
   #thermo{order:1} #cmd{order:2} #cot{order:3} #cg{order:4} #macro{order:5} #pm{order:6}
+  #hapi{order:1} #portfolio{order:2}
   .foot{order:20}
 }
 @media (min-width:900px){
@@ -59,6 +60,15 @@ body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--f-mono);fo
   .cols.sin-left{grid-template-columns:minmax(0,1fr) minmax(280px,340px);grid-template-areas:"center right"}
   .cols.sin-right{grid-template-columns:minmax(260px,310px) minmax(0,1fr);grid-template-areas:"left center"}
 }
+/* «Cartera»: tu cuenta Hapi y, para el dueño, la cartera simulada al costado, a partes iguales (las dos traen tablas
+   anchas). Si solo se ve una (los amigos), a un ancho cómodo de leer. */
+@media (min-width:900px){
+  #sheet-cartera{grid-template-columns:minmax(0,1fr);grid-template-areas:"center" "right";grid-template-rows:auto}
+  #sheet-cartera.sin-right{grid-template-columns:minmax(0,880px);grid-template-areas:"center"}
+}
+@media (min-width:1100px){
+  #sheet-cartera:not(.sin-right){grid-template-columns:minmax(0,1fr) minmax(0,1fr);grid-template-areas:"center right"}
+}
 /* Pestañas de las hojas, bajo la barra (en el celular, abajo: ver «barra de arriba»). La activa, en cian y subrayada. */
 /* La fila de las hojas lleva a la derecha el buscador; las pestañas se apoyan en su línea de abajo. */
 .sheetbar{display:flex;align-items:flex-end;gap:8px 16px;border-bottom:1px solid var(--line)}
@@ -68,12 +78,13 @@ body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--f-mono);fo
 .sheets [role="tab"]:hover{color:var(--ink);background:none;border-color:transparent;border-bottom-color:var(--line)}
 .sheets [role="tab"][aria-selected="true"]{color:var(--accent);border-bottom-color:var(--accent)}
 .tab-ico{display:none;width:22px;height:22px;fill:none;stroke:currentColor;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round}
-/* Pronósticos que te faltan en las preguntas abiertas. */
-.sheet-badge{margin-left:2px;min-width:1.5em;padding:0 5px;border-radius:9px;background:var(--accent);color:var(--bg);font-size:.75rem;
-  font-weight:600;letter-spacing:0;line-height:1.5;text-align:center}
-/* Hoja «Juego»: sin la cinta ni el aviso de la liga. Pronósticos a lo ancho; ranking y lo resuelto al costado. */
+/* El juego del grupo (sin pestaña desde el 9 nov; se entra por el pie): sin la cinta. Arriba, su título y «Volver».
+   Pronósticos a lo ancho; ranking y lo resuelto al costado. */
 .game{display:flex;flex-direction:column;gap:24px}
-[data-hoja="juego"] .tape,[data-hoja="juego"] .teaser{display:none!important}
+.game-top{grid-column:1/-1;display:flex;align-items:baseline;justify-content:space-between;gap:12px;flex-wrap:wrap}
+.game-top h2{margin:0;font-family:var(--f-sans);font-size:1.25rem;font-weight:600;color:var(--ink)}
+.game-top .linkish{font-family:var(--f-sans);text-decoration:none}
+[data-hoja="juego"] .tape,[data-hoja="juego"] .foot-game{display:none!important}
 /* En «Hoy» no va la cinta: «Tu día» muestra lo mismo, más grande. */
 [data-hoja="hoy"] .tape{display:none!important}
 .game-main,.game-side{display:flex;flex-direction:column;gap:24px;min-width:0}
@@ -194,7 +205,6 @@ button[disabled]{opacity:.6;cursor:default}
   .sheets [role="tab"]:hover{border:0}
   .sheets [role="tab"][aria-selected="true"]{border:0;box-shadow:inset 0 2px 0 var(--accent)}
   .tab-ico{display:block}
-  .sheets .sheet-badge{position:absolute;top:5px;left:calc(50% + 7px);margin:0}
 }
 
 /* ---------- buscador de acciones ---------- */
@@ -618,6 +628,36 @@ a.news-title:hover{color:var(--accent);text-decoration:underline}
 .fin-table th{font-family:var(--f-sans);color:var(--muted);font-weight:400;font-size:.82rem}
 .fin-table th,.fin-table td{text-align:right;padding:4px 8px;border-bottom:1px solid var(--hair)}
 .fin-table th:first-child,.fin-table td:first-child{text-align:left}
+/* Resultados por año o por trimestre: un selector de una pieza, sobre el gráfico. */
+.fin-mode{margin:0 0 10px}
+/* Tablas anchas (trimestres, calidad): en una columna angosta se desplazan de costado en vez de romperse. */
+.table-view{overflow-x:auto}
+
+/* ---------- calidad del negocio (9 nov): las señales de Piotroski, una por línea ---------- */
+.pio{list-style:none;margin:6px 0 10px;padding:0}
+.pio li{display:grid;grid-template-columns:1.4em minmax(0,1fr);gap:0 6px;padding:5px 0;border-bottom:1px solid var(--hair);font-family:var(--f-sans);font-size:.92rem}
+.pio-m{grid-row:1/3;font-weight:600;text-align:center}
+.pio .ok .pio-m{color:var(--up)}
+.pio .no .pio-m{color:var(--down)}
+.pio .na .pio-m,.pio .na .pio-t{color:var(--muted)}
+.pio-d{grid-column:2;font-family:var(--f-mono);font-size:.82rem;color:var(--muted)}
+
+/* ---------- reportes a la SEC (9 nov): fecha, formulario y de qué trata; toda la fila abre el documento ---------- */
+.d-filings{margin:0 0 14px}
+.d-filings > .hint{margin:0 0 4px}
+.filings{list-style:none;margin:0;padding:0}
+.filings li{border-bottom:1px solid var(--hair)}
+.filings a{display:grid;grid-template-columns:auto auto minmax(0,1fr);align-items:baseline;gap:2px 10px;padding:7px 0;color:var(--ink);text-decoration:none}
+.filings a:hover .fl-title{color:var(--accent);text-decoration:underline}
+.fl-date{font-family:var(--f-mono);font-size:.82rem;color:var(--muted);white-space:nowrap}
+.fl-form{justify-self:start;font-family:var(--f-mono);font-size:.78rem;color:var(--muted);background:var(--raise);border-radius:999px;padding:1px 8px;white-space:nowrap}
+.fl-form.k-anual,.fl-form.k-trimestral{color:var(--accent);background:var(--accent-soft)}
+.fl-form.k-tarde{color:var(--down);background:var(--down-soft)}
+.fl-title{font-family:var(--f-sans);font-size:.95rem;line-height:1.4;min-width:0}
+@container (max-width:420px){
+  .filings a{grid-template-columns:auto minmax(0,1fr)}
+  .fl-title{grid-column:1/-1}
+}
 
 /* ---------- cartera simulada ---------- */
 .pf-form{display:flex;flex-wrap:wrap;gap:8px 12px;align-items:flex-end;margin-bottom:12px}
@@ -881,14 +921,7 @@ span.smv-co{color:var(--ink)}
 /* «Precios con tu clave»: para un amigo sin clave, donde iría su lista. */
 .kc-text{margin:0 0 12px;font-family:var(--f-sans);line-height:1.5}
 
-/* Aviso de la liga en «Mercados», para quien todavía no entró (en «Juego» no hace falta). */
-.teaser{display:flex;flex-wrap:wrap;align-items:center;gap:8px 12px;margin-top:-12px;padding:8px 12px;border:1px solid var(--accent);
-  border-radius:var(--r);background:var(--accent-soft)}
-.teaser p{flex:1 1 240px;margin:0;font-family:var(--f-sans)}
-.teaser strong{color:var(--accent);font-weight:600}
-.teaser-x{border:0;background:none;color:var(--muted);font-size:1.2rem;padding:0 4px}
-
-/* Tutorial para entrar a la liga: una ventana aparte, paso a paso (en el celular, a pantalla completa). */
+/* Tutorial para conectar la clave (y entrar a la liga): una ventana aparte, paso a paso (en el celular, a pantalla completa). */
 .tutorial{width:min(520px,calc(100% - 32px));padding:18px 20px 20px;border:1px solid var(--accent);border-radius:8px;
   background:var(--panel);color:var(--ink);font-family:var(--f-sans);line-height:1.5}
 .tutorial::backdrop{background:rgba(0,0,0,.72)}
@@ -936,6 +969,8 @@ span.smv-co{color:var(--ink)}
 
 .foot{font-family:var(--f-sans);font-size:.82rem;color:var(--muted);border-top:1px solid var(--hair);padding-top:12px}
 .foot p{margin:0 0 4px}
+/* El juego del grupo se abre desde aquí (no tiene pestaña). */
+.foot .foot-game{margin:8px 0}
 
 /* ---------- más fácil de usar (5 nov): secciones plegables, ficha a pantalla completa y botones grandes ---------- */
 /* Secciones plegables: tocar el título la pliega o la abre (app.js, setupFolds) y queda así en ese equipo. */
