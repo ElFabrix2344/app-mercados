@@ -61,6 +61,8 @@ describe('reportes de la SEC', () => {
     expect(s.filings.some((f) => f.form === '10-K')).toBe(false);
     // Avisos de directivos: 1 en 90 días (el 4/A es una corrección y no cuenta) y 2 en un año; el de hace 13 meses, no.
     expect(s.insiders).toEqual({ d90: 1, d365: 2, last: '2026-10-01' });
+    // Resultados: los 8-K con el tema 2.02 (el de votación, 5.07, no).
+    expect(s.earnings).toEqual(['2026-10-21']);
   });
 
   it('con muchos hechos, quedan los últimos y, aunque sean más viejos, los dos informes anuales más nuevos', () => {
@@ -69,11 +71,20 @@ describe('reportes de la SEC', () => {
     const s = parseSubmissions({ name: 'X', filings: { recent: recent(rows) } }, 1, NOW);
     expect(s.filings).toHaveLength(FILINGS_KEPT + 2);
     expect(s.filings.filter((f) => f.kind === 'anual').map((f) => f.period)).toEqual(['2025-12-31', '2024-12-31']);
+    // Las fechas de resultados salen de toda la lista, del más viejo al más nuevo, sin repetir y sin las correcciones.
+    const q: Row[] = [
+      ['8-K', '2026-07-22', '', '2.02,9.01', '0001104659-26-000007', 'a.htm'],
+      ['8-K/A', '2026-07-25', '', '2.02', '0001104659-26-000008', 'a.htm'],
+      ['8-K', '2026-04-22', '', '7.01, 2.02', '0001104659-26-000004', 'a.htm'],
+      ['8-K', '2026-04-22', '', '2.02', '0001104659-26-000005', 'a.htm'],
+      ['8-K', '2026-03-02', '', '12.02', '0001104659-26-000003', 'a.htm'],
+    ];
+    expect(parseSubmissions({ filings: { recent: recent([...many, ...q]) } }, 1, NOW).earnings).toEqual(['2026-04-22', '2026-07-22']);
     expect(s.company).toMatchObject({ industry: null, fiscalYearEnd: null, website: null, exchanges: [] });
   });
 
   it('una lista vacía o rota no rompe nada; un sitio web que no es una dirección simple no pasa', () => {
-    expect(parseSubmissions({}, 1, NOW)).toMatchObject({ filings: [], insiders: { d90: 0, d365: 0, last: null } });
+    expect(parseSubmissions({}, 1, NOW)).toMatchObject({ filings: [], insiders: { d90: 0, d365: 0, last: null }, earnings: [] });
     expect(parseSubmissions({ website: 'javascript:alert(1)' }, 1, NOW).company.website).toBeNull();
   });
 
@@ -99,7 +110,7 @@ describe('reportes de la SEC', () => {
     expect(calls).toHaveLength(2);
     await filings({ kv, now: new Date(NOW.getTime() + FILINGS_TTL_MS + 60_000), fetch: f }, 'SCCO');
     expect(calls).toHaveLength(4);
-    expect((await filings({ kv, now: NOW, fetch: f }, 'VTI')).data).toEqual({ symbol: 'VTI', cik: null, company: null, filings: [], insiders: null });
+    expect((await filings({ kv, now: NOW, fetch: f }, 'VTI')).data).toEqual({ symbol: 'VTI', cik: null, company: null, filings: [], insiders: null, earnings: [] });
     await filings({ kv, now: NOW, fetch: f }, 'VTI');
     expect(calls).toHaveLength(5);
     // Si los resultados ya encontraron la empresa (o que no existe), no se vuelve a buscar.

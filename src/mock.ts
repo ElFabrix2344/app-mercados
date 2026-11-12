@@ -214,7 +214,7 @@ export function mockQuality(symbol: string, now: Date): Fresh<QualityData> {
 
 /** Reportes de prueba: lo que una empresa de EE. UU. presenta en un año (o, para BAP, una extranjera con 20-F y 6-K). */
 export function mockFilings(symbol: string, now: Date): Fresh<FilingsData> {
-  if (MOCK_ETFS.has(symbol)) return fresh({ symbol, cik: null, company: null, filings: [], insiders: null }, now);
+  if (MOCK_ETFS.has(symbol)) return fresh({ symbol, cik: null, company: null, filings: [], insiders: null, earnings: [] }, now);
   const fin = mockFinancials(symbol, now).data;
   const today = isoDate(now);
   const year = Number(today.slice(0, 4));
@@ -244,6 +244,8 @@ export function mockFilings(symbol: string, now: Date): Fresh<FilingsData> {
         f('10-K', 'anual', `${year - 1}-02-28`, `${year - 2}-12-31`),
       ];
   const filings = list.filter((x) => x.date <= today).sort((a, b) => (a.date > b.date ? -1 : 1));
+  // Resultados de prueba: cuatro por año en los últimos 5 años (las extranjeras no los marcan en la SEC).
+  const earnings = foreign ? [] : Array.from({ length: 6 }, (_, k) => year - 5 + k).flatMap((y) => [`${y}-01-28`, `${y}-04-28`, `${y}-07-22`, `${y}-10-21`]).filter((d) => d <= today);
   return fresh(
     {
       symbol,
@@ -251,6 +253,7 @@ export function mockFilings(symbol: string, now: Date): Fresh<FilingsData> {
       company: { name: fin.name ?? symbol, industry: foreign ? 'Commercial Banks, NEC' : 'Metal Mining', fiscalYearEnd: '1231', website: null, exchanges: ['NYSE'] },
       filings,
       insiders: foreign ? { d90: 0, d365: 0, last: null } : { d90: 3, d365: 14, last: addDays(today, -12) },
+      earnings,
     },
     now,
   );

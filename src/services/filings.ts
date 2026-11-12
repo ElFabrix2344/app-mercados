@@ -17,6 +17,8 @@ export interface FilingsData {
   /** Del más nuevo al más viejo. */
   filings: Filing[];
   insiders: Submissions['insiders'] | null;
+  /** Días en que presentó resultados (8-K con el tema 2.02), del más viejo al más nuevo: para el banco de pruebas. */
+  earnings: string[];
 }
 
 /** La empresa del símbolo: la que ya encontraron los resultados (`sec:`, guardada una semana) o, si no, el buscador de EDGAR. */
@@ -28,11 +30,11 @@ async function companyOf(d: Deps, symbol: string): Promise<{ cik: number; name: 
 
 export async function filings(d: Deps, symbol: string): Promise<Fresh<FilingsData>> {
   return cached<FilingsData>(d, `secf:${symbol}`, FILINGS_TTL_MS, async () => {
-    const none: FilingsData = { symbol, cik: null, company: null, filings: [], insiders: null };
+    const none: FilingsData = { symbol, cik: null, company: null, filings: [], insiders: null, earnings: [] };
     const found = await companyOf(d, symbol);
     if (!found) return none;
     const sub = await companySubmissions(found.cik, d.now, d.fetch);
     if (!sub) return { ...none, cik: found.cik };
-    return { symbol, cik: found.cik, company: { ...sub.company, name: found.name }, filings: sub.filings, insiders: sub.insiders };
-  });
+    return { symbol, cik: found.cik, company: { ...sub.company, name: found.name }, filings: sub.filings, insiders: sub.insiders, earnings: sub.earnings };
+  }, { valid: (x) => Array.isArray(x.earnings) }); // lo guardado antes del 11 nov no traía las fechas de resultados: se renueva una vez
 }

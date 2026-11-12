@@ -33,7 +33,7 @@
     newsShown: 6,
     symbolNews: new Map(), // símbolo → { items } | { error } | 'cargando' (se piden al abrir la ficha)
     company: new Map(), // símbolo → respuesta de /api/company | { error } | 'cargando' (al abrir la ficha)
-    full: new Map(), // símbolo → { points } de 5 años | { error } | 'cargando' (estacionalidad y estrategia)
+    full: new Map(), // símbolo → { points } de 5 años | { error } | 'cargando' (estacionalidad, múltiplos y «después de resultados»)
     factors: new Map(), // símbolo → respuesta de /api/company/factors | { error } | 'cargando'
     fin: new Map(), // símbolo → respuesta de /api/financials | { error } | 'cargando' (SEC: ficha y sección pública)
     finSym: null, // símbolo que muestra la sección «Resultados de empresas»
@@ -62,6 +62,8 @@
   // Las cuentas de valoración (public/valuation-core.js, con pruebas; el servidor usa el mismo módulo). Se cargan una
   // vez al empezar: hasta entonces, los bloques que las usan esperan.
   let V = null;
+  // Las del banco de pruebas (public/bench-core.js, con pruebas): reglas de compra y venta y el estudio de resultados.
+  let B = null;
 
   /**
    * Los pedidos que terminan en la SEC (resultados, fundamentales, calidad y reportes) van de a uno: cada uno son
@@ -731,6 +733,7 @@
     clearTimeout(resizeTimer);
     resizeTimer = setTimeout(() => {
       redrawCharts();
+      if (state.selected) tabEdges();
       // La carrera de la liga se dibuja al ancho de su sección (solo si se está viendo el juego).
       if (raceHost?.isConnected && state.games && currentSheet() === 'juego') drawRace(raceHost, state.games.liga);
     }, 150);
@@ -1240,11 +1243,12 @@
         : `${arrowOf(pct)} ${abs != null ? `${sign(abs)}${nf(priceDec(price)).format(Math.abs(abs))} (${sign(pct)}${nf(2).format(Math.abs(pct))}%)` : `${sign(pct)}${nf(2).format(Math.abs(pct))}%`} ${when}`;
   }
 
-  // Lo largo de la ficha en pestañas (5 nov, «A · Limpio»). Desde el 10 nov son cinco: Resumen, Negocio (¿es buen
-  // negocio?: resultados y calidad), Valor (¿cara o barata?: múltiplos, P/S y DCF), Empresa y Noticias. Se recuerda la última.
-  const D_TABS = ['resumen', 'negocio', 'valor', 'empresa', 'noticias'];
+  // Lo largo de la ficha en pestañas (5 nov, «A · Limpio»). Desde el 11 nov son seis: Resumen, Negocio (¿es buen
+  // negocio?: resultados y calidad), Valor (¿cara o barata?: múltiplos, P/S y DCF), Probar (el banco de pruebas: una
+  // regla sobre 5 años y lo que pasó después de cada reporte), Empresa y Noticias. Se recuerda la última.
+  const D_TABS = ['resumen', 'negocio', 'valor', 'probar', 'empresa', 'noticias'];
   /** Los bloques de cada pestaña que se piden al abrirlos: en su pestaña se abren solos. */
-  const D_TAB_BLOCKS = { negocio: ['d-fin', 'd-qual'], valor: ['d-mult', 'd-ps', 'd-val'] };
+  const D_TAB_BLOCKS = { negocio: ['d-fin', 'd-qual'], valor: ['d-mult', 'd-ps', 'd-val'], probar: ['d-strat', 'd-events'] };
   const D_TAB_KEY = 'mercados.ficha-pestana';
   let dTab = prefs.get(D_TAB_KEY, 'resumen');
   let dTabShown = null;
@@ -1274,7 +1278,9 @@
       $(`dp-${t}`).hidden = t !== tab;
     }
     if (focus) $(`dt-${tab}`).focus();
-    // «Negocio» y «Valor»: cada bloque se pide al abrirlo; en su pestaña se abren solos.
+    if (tab !== dTabShown) revealTab(tab);
+    tabEdges();
+    // «Negocio», «Valor» y «Probar»: cada bloque se pide al abrirlo; en su pestaña se abren solos.
     for (const id of D_TAB_BLOCKS[tab] ?? []) {
       const d = $(id);
       if (!d.hidden && !d.open) d.open = true;
@@ -1286,8 +1292,26 @@
     }
   }
 
+  /** En el celular las seis pestañas no entran y la barra se desplaza: al cambiar de pestaña, la elegida queda a la vista. */
+  function revealTab(tab) {
+    const bar = $('d-tabs');
+    const b = $(`dt-${tab}`).getBoundingClientRect();
+    const r = bar.getBoundingClientRect();
+    if (b.left < r.left) bar.scrollLeft -= r.left - b.left + 24;
+    else if (b.right > r.right) bar.scrollLeft += b.right - r.right + 24;
+  }
+
+  /** Un degradé en el borde de la barra de pestañas avisa de qué lado quedan más (styles.css: more-left, more-right). */
+  function tabEdges() {
+    const bar = $('d-tabs');
+    const max = bar.scrollWidth - bar.clientWidth;
+    bar.classList.toggle('more-right', max > 1 && bar.scrollLeft < max - 1);
+    bar.classList.toggle('more-left', max > 1 && bar.scrollLeft > 1);
+  }
+
   function setupDetailTabs() {
     for (const t of D_TABS) $(`dt-${t}`).addEventListener('click', () => showDetailTab(t));
+    $('d-tabs').addEventListener('scroll', tabEdges, { passive: true });
     $('d-tabs').addEventListener('keydown', (e) => {
       if (e.key !== 'ArrowRight' && e.key !== 'ArrowLeft') return;
       const shown = D_TABS.filter((t) => !$(`dt-${t}`).hidden);
@@ -1351,7 +1375,10 @@
           );
         })
         .finally(() => {
-          if (state.selected === sym && state.range === range) renderDetail();
+          if (state.selected !== sym) return;
+          if (state.range === range) renderDetail();
+          // Las velas de 5 años también las usa el banco de pruebas, con el gráfico en cualquier rango.
+          else if (range === '5A') renderBench();
         });
     }
     return range === '1A' ? state.hist.get(sym) : undefined;
@@ -1441,7 +1468,7 @@
     renderEarnings(sym);
     renderCompany();
     renderSeason();
-    renderStrategy();
+    renderBench();
     renderDetailFin();
     renderDetailQual();
     renderDetailMult();
@@ -1680,10 +1707,10 @@
     }
   }
 
-  // ---------- estacionalidad y estrategia (ficha) ----------
-  // Usan los 5 años que el servidor ya tiene guardados: no gastan créditos. Se calculan aquí, al abrir cada bloque.
+  // ---------- estacionalidad (ficha, pestaña «Probar») ----------
+  // Usa los 5 años que el servidor ya tiene guardados: no gasta créditos. Se calcula aquí, al abrir el bloque.
 
-  /** Los 5 años de cierres de un símbolo, una vez por sesión. Al llegar se dibujan los dos bloques que estén abiertos. */
+  /** Los 5 años de cierres de un símbolo, una vez por sesión. Al llegar se dibujan los bloques abiertos que los esperan. */
   function fullHistory(sym) {
     const c = state.full.get(sym);
     // Esperando el próximo minuto de Twelve Data: para quien lo usa, todavía está cargando.
@@ -1706,9 +1733,11 @@
           );
         })
         .finally(() => {
+          // El SPY también es la referencia de «Después de resultados» en la ficha de otra acción.
+          if (sym === 'SPY' && state.selected && state.selected !== sym) renderEvents();
           if (state.selected !== sym) return;
           renderSeason();
-          renderStrategy();
+          renderEvents();
           renderDetailMult();
           renderDetailPs();
           renderQuick();
@@ -1812,170 +1841,464 @@
     );
   }
 
-  // Indicadores para la estrategia, calculados aquí (los mismos que el servidor: media simple y RSI de Wilder).
-  function smaOf(values, n) {
-    const out = new Array(values.length).fill(null);
-    let sum = 0;
-    values.forEach((v, i) => {
-      sum += v;
-      if (i >= n) sum -= values[i - n];
-      if (i >= n - 1) out[i] = sum / n;
-    });
-    return out;
+  // ---------- banco de pruebas (pestaña «Probar» de la ficha) ----------
+  // 11 nov: el usuario quiere operar en días («yo tradearía en días, no en minutos»). Antes de poner plata: qué habría
+  // pasado con una regla en los 5 años guardados, con su monto por operación y las comisiones de Hapi, frente a solo
+  // mantener y a entrar al azar; y cómo se movió la acción después de cada reporte de resultados. Las cuentas están en
+  // bench-core.js (`B`, con pruebas). Dice qué pasó: no recomienda comprar ni vender.
+  const BENCH_KEY = 'mercados.banco';
+  const BENCH_AMOUNT = 200;
+  /** Cada regla: cómo se nombra en una frase y qué hace exactamente (lo mismo que RULES en bench-core.js). */
+  const BENCH_RULES = {
+    ruptura: { name: 'la ruptura de máximos', how: () => 'Compra cuando el cierre supera el máximo de los 20 cierres anteriores y vende cuando cierra bajo el mínimo de los 10 anteriores.' },
+    retroceso: {
+      name: 'el retroceso en tendencia alcista',
+      how: () => 'Compra el día en que, con el precio sobre su media de 200 días, el RSI de 2 días baja de 10 (una caída corta dentro de una subida larga) y vende cuando cierra sobre su media de 5 días.',
+    },
+    resultados: {
+      name: 'comprar después de un buen reporte',
+      how: () => `Compra cuando la reacción a un reporte de resultados (del cierre anterior al cierre siguiente) fue de +${nf(0).format(B.EARNINGS_MIN * 100)} % o más y vende ${B.EARNINGS_HOLD} días hábiles después.`,
+    },
+    'ma20-50': { name: 'el cruce de medias de 20 y 50 días', how: () => 'Compra el día en que la media de 20 días pasa sobre la de 50 y vende cuando vuelve a quedar debajo.' },
+    'ma50-200': { name: 'el cruce de medias de 50 y 200 días', how: () => 'Compra el día en que la media de 50 días pasa sobre la de 200 y vende cuando vuelve a quedar debajo.' },
+    rsi: { name: 'el RSI de 14 días', how: () => 'Compra el día en que el RSI de 14 días baja de 30 y vende cuando pasa de 70.' },
+  };
+  const NO_EARNINGS = 'La SEC no tiene las fechas de sus resultados: pasa con los ETF, los fondos y las empresas extranjeras, que los presentan con otro formulario.';
+  const dayYear = (iso) => fDayYear.format(day(iso)).replace(/\./g, '');
+  /** «5» o «2.5»: un número escrito por el usuario, sin decimales de más. */
+  const plainNum = (v) => nf(Number.isInteger(v) ? 0 : 1).format(v);
+
+  /** Lo guardado en este navegador, saneado. `plan`: null mientras no lo elijas (vale el de tu cuenta de Hapi, si está abierta). */
+  function benchPrefs() {
+    const p = prefs.get(BENCH_KEY, null) ?? {};
+    const num = (v, lo, hi, fallback) => (typeof v === 'number' && v >= lo && v <= hi ? v : fallback);
+    return {
+      rule: typeof p.rule === 'string' && Object.hasOwn(BENCH_RULES, p.rule) ? p.rule : 'ruptura',
+      amount: num(p.amount, 10, 100_000, BENCH_AMOUNT),
+      stop: num(p.stop, 0, 50, 0),
+      days: Math.round(num(p.days, 0, 250, 0)),
+      plan: p.plan === 'prime' || p.plan === 'standard' ? p.plan : null,
+      spy: p.spy === true,
+    };
   }
-  function rsiOf(values, n = 14) {
-    const out = new Array(values.length).fill(null);
-    if (values.length <= n) return out;
-    let gain = 0;
-    let loss = 0;
-    for (let i = 1; i <= n; i++) {
-      const ch = values[i] - values[i - 1];
-      if (ch >= 0) gain += ch;
-      else loss -= ch;
-    }
-    let g = gain / n;
-    let l = loss / n;
-    const val = () => (l === 0 ? (g === 0 ? 50 : 100) : 100 - 100 / (1 + g / l));
-    out[n] = val();
-    for (let i = n + 1; i < values.length; i++) {
-      const ch = values[i] - values[i - 1];
-      g = (g * (n - 1) + Math.max(ch, 0)) / n;
-      l = (l * (n - 1) + Math.max(-ch, 0)) / n;
-      out[i] = val();
-    }
-    return out;
+
+  /** Lo escrito en el formulario. Un campo fuera de rango queda en null; el stop y los días, vacíos, son «sin ellos» (0). */
+  function benchForm() {
+    const num = (id, lo, hi, empty) => {
+      const el = $(id);
+      if (el.value.trim() === '') return el.validity.badInput ? null : empty;
+      const v = Number(el.value);
+      return Number.isFinite(v) && v >= lo && v <= hi ? v : null;
+    };
+    const kind = $('d-strat-kind').value;
+    const days = num('d-strat-days', 0, 250, 0);
+    return {
+      rule: Object.hasOwn(BENCH_RULES, kind) ? kind : 'ruptura',
+      amount: num('d-strat-amount', 10, 100_000, null),
+      stop: num('d-strat-stop', 0, 50, 0),
+      days: days == null ? null : Math.round(days),
+      plan: $('d-strat-plan').value === 'prime' ? 'prime' : 'standard',
+    };
+  }
+
+  /** Guarda el formulario; el plan, solo cuando lo eligió el usuario (si no, sigue al de su cuenta de Hapi). */
+  function saveBench(planChosen = false) {
+    const saved = benchPrefs();
+    const f = benchForm();
+    prefs.set(BENCH_KEY, { ...saved, rule: f.rule, amount: f.amount ?? saved.amount, stop: f.stop ?? saved.stop, days: f.days ?? saved.days, plan: planChosen ? f.plan : saved.plan });
   }
 
   /**
-   * Prueba una regla simple sobre los cierres: dentro o fuera del mercado cada día, según la señal del cierre
-   * ANTERIOR (sin mirar el futuro). Sin comisiones ni impuestos. Empieza el primer día con señal, igual que
-   * comprar y mantener, para comparar desde el mismo punto.
+   * Las velas de 5 años de un símbolo (las reglas compran y venden en la apertura): las mismas que pide el gráfico en
+   * «5A», que salen de lo guardado en el servidor, sin créditos. undefined mientras llegan; { error } si no se pudo.
    */
-  function backtest(points, kind) {
-    const closes = points.map(([, c]) => c);
-    let want; // (i) → true dentro, false fuera, null sin señal todavía
-    if (kind === 'rsi') {
-      const r = rsiOf(closes, 14);
-      let inside = false;
-      want = (i) => {
-        if (r[i] == null) return null;
-        if (r[i] < 30) inside = true;
-        else if (r[i] > 70) inside = false;
-        return inside;
-      };
-    } else {
-      const [fast, slow] = kind === 'ma20-50' ? [20, 50] : [50, 200];
-      const f = smaOf(closes, fast);
-      const s = smaOf(closes, slow);
-      want = (i) => (s[i] == null ? null : f[i] > s[i]);
+  const benchDaysOf = new WeakMap(); // lo que llegó del servidor → los días ya armados
+  function benchDays(sym) {
+    const c = detailHistory(sym, '5A');
+    if (!c || c.wait) return undefined;
+    if (c.error) return c;
+    if (!benchDaysOf.has(c)) {
+      const b = c.bars;
+      benchDaysOf.set(
+        c,
+        c.points.map(([date, close], i) => ({ date, open: b?.open[i] ?? null, high: b?.high[i] ?? null, low: b?.low[i] ?? null, close })),
+      );
     }
-    const start = closes.findIndex((_, i) => want(i) !== null);
-    if (start < 0 || start >= closes.length - 2) return null;
-    const dates = [];
-    const strat = [];
-    const hold = [];
-    const trades = [];
-    let eq = 100;
-    let inside = false;
-    let entry = null;
-    let daysIn = 0;
-    for (let i = start; i < closes.length; i++) {
-      if (i > start) {
-        const ret = closes[i] / closes[i - 1] - 1;
-        if (inside) {
-          eq *= 1 + ret;
-          daysIn++;
-        }
-      }
-      dates.push(points[i][0]);
-      strat.push(Math.round(eq * 100) / 100);
-      hold.push(Math.round((closes[i] / closes[start]) * 10000) / 100);
-      // La señal de hoy decide la posición de mañana.
-      const next = want(i);
-      if (next && !inside) entry = { date: points[i][0], price: closes[i] };
-      if (!next && inside && entry) trades.push({ ...entry, exit: points[i][0], ret: closes[i] / entry.price - 1 });
-      inside = !!next;
-    }
-    if (inside && entry) trades.push({ ...entry, exit: null, ret: closes.at(-1) / entry.price - 1 });
-    const drawdown = (xs) => {
-      let peak = xs[0];
-      let worst = 0;
-      for (const x of xs) {
-        peak = Math.max(peak, x);
-        worst = Math.min(worst, x / peak - 1);
-      }
-      return worst;
-    };
-    const years = (Date.parse(dates.at(-1)) - Date.parse(dates[0])) / (365.25 * 86_400_000);
-    const stats = (xs) => ({ total: xs.at(-1) / 100 - 1, cagr: years > 0 ? (xs.at(-1) / 100) ** (1 / years) - 1 : null, dd: drawdown(xs) });
-    return { dates, strat, hold, trades, s: stats(strat), b: stats(hold), share: daysIn / Math.max(1, dates.length - 1), years };
+    return { days: benchDaysOf.get(c) };
   }
+
+  /**
+   * Los días en que la empresa presentó resultados (los 8-K con el tema 2.02, de /api/filings): { wait }, { error } o
+   * { dates, none } (`none`: por qué no hay). Como los reportes de «Empresa», se piden cuando ya se sabe que la SEC
+   * tiene la empresa (lo dicen sus resultados): un ETF no gasta una consulta.
+   */
+  function earningsDates(sym) {
+    if (sym.includes('/')) return { dates: [], none: 'Las criptomonedas y las divisas no presentan resultados.' };
+    const fin = financialsFor(sym);
+    if (!fin) return { wait: true };
+    if (!fin.error && !fin.data.cik) return { dates: [], none: NO_EARNINGS };
+    const r = filingsFor(sym);
+    if (!r) return { wait: true };
+    if (r.error) return { error: r.error };
+    return { dates: r.data.earnings ?? [], none: NO_EARNINGS };
+  }
+
+  /** La prueba de una regla y su comparación con el azar: una vez por combinación (la ficha se redibuja seguido). */
+  let benchMemo = { key: '', out: null };
+  function benchRun(sym, hist, o, events, fees) {
+    const key = [sym, o.rule, o.amount, o.stop, o.days, fees ? o.plan : 'sin', hist.days.length, hist.days.at(-1)?.date ?? '', events.length, events.at(-1) ?? ''].join('|');
+    if (benchMemo.key !== key) {
+      const result = B.runRule(hist.days, o.rule, { amount: o.amount, stopPct: o.stop, maxDays: o.days, plan: o.plan, fees, events });
+      const random = result ? B.randomBaseline(hist.days, result, { plan: o.plan, fees, seed: B.seedOf(key) }) : null;
+      benchMemo = { key, out: { result, random } };
+    }
+    return benchMemo;
+  }
+
+  const BENCH_TRADES_SHOWN = 6;
+  let benchAllTrades = false;
+  const BENCH_WHY = { stop: 'stop', tiempo: 'tiempo' };
 
   function renderStrategy() {
     const box = $('d-strat');
     const body = $('d-strat-body');
     const sym = state.selected;
     if (!sym || !box.open) return;
-    const full = fullHistory(sym);
-    if (!full) return body.replaceChildren(h('p', { class: 'muted' }, 'Calculando con los 5 años guardados…'));
-    if (full.error) return body.replaceChildren(h('p', { class: 'err' }, full.error));
-    const kind = $('d-strat-kind').value;
-    const r = backtest(full.points, kind);
-    if (!r) return body.replaceChildren(h('p', { class: 'muted' }, 'No hay historia suficiente para esta estrategia.'));
+    const say = (cls, text) => {
+      delete body.dataset.shown;
+      body.replaceChildren(h('p', { class: cls }, text));
+    };
+    // Las comisiones de Hapi que Rueda conoce son las de acciones y ETF: la cripto y las divisas se prueban sin ellas.
+    const stock = !sym.includes('/');
+    $('d-strat-plan-row').hidden = !stock;
+    // Mientras no elijas el plan, vale el de tu cuenta de Hapi (si está abierta en este equipo).
+    if (!benchPrefs().plan) $('d-strat-plan').value = hp.account?.plan === 'prime' ? 'prime' : 'standard';
+    if (!B) return say('muted', 'Cargando…');
+    const o = benchForm();
+    if (o.amount == null) return say('muted', 'Escribe cuánto pondrías en cada operación: entre US$ 10 y US$ 100 000.');
+    if (o.stop == null) return say('muted', 'El stop va de 0 a 50 % (vacío: sin stop).');
+    if (o.days == null) return say('muted', 'El máximo de días va de 1 a 250 (vacío: sin límite).');
+    const hist = benchDays(sym);
+    let events = [];
+    if (o.rule === 'resultados') {
+      const ev = earningsDates(sym);
+      if (ev.wait) return say('muted', `Buscando en la SEC las fechas de los resultados de ${sym}…`);
+      if (ev.error) return say('err', ev.error);
+      if (!ev.dates.length) return say('muted', `${ev.none} Elige otra regla.`);
+      events = ev.dates;
+    }
+    if (!hist) return say('muted', 'Calculando con los 5 años guardados…');
+    if (hist.error) return say('err', hist.error);
+    const { key, out } = benchRun(sym, hist, o, events, stock);
+    const r = out.result;
+    if (!r) return say('muted', 'No hay historia suficiente para esta regla.');
+    const shown = `${key}|${benchAllTrades ? 'todas' : 'ultimas'}`;
+    if (body.dataset.shown === shown) return;
+    body.dataset.shown = shown;
+
+    const s = r.stats;
+    const hold = r.holdStats;
+    const rule = BENCH_RULES[o.rule];
+    const usd0 = (v) => `US$ ${nf(0).format(v)}`;
+    const money = (v) => h('span', { class: trend(v) }, signedUsd(v));
+    const span = `entre el ${dayYear(r.from)} y el ${dayYear(r.to)}`;
+    const holdLine = ['Solo mantener: ', h('strong', { class: trend(hold.total) }, signedUsd(hold.total)), ` (${pctFrac(hold.ret)}).`];
+    const lead = s.trades
+      ? h(
+          'p',
+          { class: 'bench-lead' },
+          `Con ${usd0(o.amount)} por operación, ${rule.name} habría dejado `,
+          h('strong', { class: trend(s.total) }, signedUsd(s.total)),
+          ` (${pctFrac(s.ret)}) ${span}, en ${s.trades} ${s.trades === 1 ? 'operación' : 'operaciones'}. `,
+          ...holdLine,
+        )
+      : h('p', { class: 'bench-lead' }, `La regla no dio ninguna compra ${span}. `, ...holdLine);
+    const exits = [
+      o.stop ? `Stop: vende si un cierre queda ${plainNum(o.stop)} % o más bajo el precio de compra (se revisa con el cierre; no es una orden stop puesta en Hapi, que saltaría durante el día).` : null,
+      o.days ? `Vende también al cumplir ${o.days} ${o.days === 1 ? 'día hábil' : 'días hábiles'} dentro.` : null,
+    ].filter(Boolean);
+    const cost = stock
+      ? `Comisiones de Hapi con el plan ${o.plan === 'prime' ? 'Prime (sin contar su cuota mensual)' : 'estándar'}: el cargo por orden y, al vender, los de la SEC y FINRA. No cuenta impuestos, ni dividendos (eso favorece un poco a la regla: quien mantiene los cobra todos), ni la diferencia entre el precio de compra y el de venta.`
+      : 'Sin comisiones (las de Hapi que Rueda conoce son las de acciones y ETF), sin impuestos y sin la diferencia entre el precio de compra y el de venta.';
+    const notes = [
+      h('p', { class: 'hint' }, h('strong', {}, 'La regla. '), [rule.how(), ...exits].join(' ')),
+      h(
+        'p',
+        { class: 'hint' },
+        h('strong', {}, 'Cómo se prueba. '),
+        `Cada día se decide con el cierre y la orden sale en la apertura del día siguiente; una posición a la vez y ${usd0(o.amount)} en cada compra (con fracciones de acción si hace falta). ${cost}`,
+      ),
+      h(
+        'p',
+        { class: 'hint' },
+        h('strong', {}, 'Qué no dice. '),
+        'Es lo que habría pasado, no lo que va a pasar. Con un solo símbolo y 5 años, una regla puede salir bien por suerte; y si pruebas muchas, alguna siempre gana. No es una recomendación de compra ni de venta.',
+      ),
+    ];
+    if (!s.trades) return body.replaceChildren(lead, ...notes);
+
+    const wins = r.trades.filter((t) => t.pnl > 0).length;
+    const random = out.random;
+    const statsEl = h(
+      'dl',
+      { class: 'stats bench-stats' },
+      stat('Con la regla', money(s.total), `${pctFrac(s.ret)} · peor caída ${pctFrac(s.drawdown)}`),
+      stat('Solo mantener', money(hold.total), `${pctFrac(hold.ret)} · peor caída ${pctFrac(hold.drawdown)}`),
+      stat('Operaciones', String(s.trades), `Ganó en ${wins} (${nf(0).format(s.winRate * 100)} %) · dentro el ${nf(0).format(s.exposure * 100)} % del tiempo`),
+      stat('Por operación', money(s.perTrade), `Cuando ganó, ${s.avgWin == null ? '—' : signedUsd(s.avgWin)}; cuando perdió, ${s.avgLoss == null ? '—' : signedUsd(s.avgLoss)}`),
+      stock
+        ? stat(
+            'Comisiones de Hapi',
+            usd(s.fees),
+            `${usd(s.fees / s.trades)} por operación · ${s.gross <= 0 ? 'se suman a lo perdido' : s.fees / s.gross < 0.01 ? 'menos del 1 % de lo ganado antes de pagarlas' : `el ${nf(0).format((s.fees / s.gross) * 100)} % de lo ganado antes de pagarlas`}`,
+          )
+        : null,
+      stat('Peor racha de pérdidas', s.worstStreak ? `${s.worstStreak} ${s.worstStreak === 1 ? 'operación' : 'seguidas'}` : 'Ninguna', null),
+    );
+    // ¿Le ganó a entrar al azar? La misma cantidad de operaciones, igual de largas, en días elegidos al azar.
+    const chance = random
+      ? h(
+          'p',
+          { class: 'bench-lead bench-chance' },
+          h('strong', {}, 'Frente al azar: '),
+          'quedó mejor que el ',
+          h('strong', {}, `${nf(0).format(random.beats * 100)} %`),
+          ` de ${nf(0).format(random.runs)} pruebas con las mismas ${s.trades} operaciones, igual de largas, puestas en días al azar. La del medio dejó ${signedUsd(random.median)}; nueve de cada diez, entre ${signedUsd(random.low)} y ${signedUsd(random.high)}. Cerca de 50 % es lo que da la suerte.`,
+        )
+      : h('p', { class: 'bench-lead bench-chance' }, h('strong', {}, 'Frente al azar: '), 'con menos de 5 operaciones no se puede comparar.');
     const chart = h('div', { class: 'chart' });
     const legend = h(
       'div',
       { class: 'legend' },
-      h('span', { class: 'legend-item s1' }, h('span', { class: 'key' }), 'Estrategia'),
-      h('span', { class: 'legend-item s4' }, h('span', { class: 'key' }), 'Comprar y mantener'),
+      h('span', { class: 'legend-item s1' }, h('span', { class: 'key' }), 'Con la regla'),
+      h('span', { class: 'legend-item s4' }, h('span', { class: 'key' }), 'Solo mantener'),
     );
-    const statsEl = h(
-      'dl',
-      { class: 'stats' },
-      stat('Estrategia', pctFrac(r.s.total), `${r.s.cagr != null ? `${pctFrac(r.s.cagr)} al año · ` : ''}peor caída ${pctFrac(r.s.dd)}`),
-      stat('Comprar y mantener', pctFrac(r.b.total), `${r.b.cagr != null ? `${pctFrac(r.b.cagr)} al año · ` : ''}peor caída ${pctFrac(r.b.dd)}`),
-      stat('Operaciones', String(r.trades.length), `Dentro del mercado el ${nf(0).format(r.share * 100)} % del tiempo`),
+    // El último año de precios con las compras y ventas de la regla, para ver qué hizo.
+    const n = hist.days.length;
+    const from = Math.max(0, n - 252);
+    const marks = r.trades
+      .flatMap((t) => [t.at >= from ? { i: t.at - from, v: t.entryPrice, kind: 'buy' } : null, t.exit && t.until >= from ? { i: t.until - from, v: t.exitPrice, kind: 'sell' } : null])
+      .filter(Boolean);
+    const priceChart = marks.length ? h('div', { class: 'chart' }) : null;
+    const yearTable = h(
+      'table',
+      { class: 'co-table bench-table' },
+      h('thead', {}, h('tr', {}, ...['Año', 'Operaciones', 'Resultado'].map((t) => h('th', { scope: 'col' }, t)))),
+      h('tbody', {}, ...s.byYear.map((y) => h('tr', {}, h('td', {}, y.year), h('td', {}, String(y.trades)), h('td', { class: trend(y.pnl) }, `${arrowOf(y.pnl)} ${signedUsd(y.pnl)}`)))),
     );
-    const recent = r.trades.slice(-6).reverse();
-    const trades = recent.length
-      ? h(
-          'table',
-          { class: 'co-table' },
-          h('thead', {}, h('tr', {}, ...['Entrada', 'Salida', 'Resultado'].map((t) => h('th', { scope: 'col' }, t)))),
+    const list = [...r.trades].reverse();
+    const tradeTable = h(
+      'table',
+      { class: 'co-table bench-table' },
+      h('thead', {}, h('tr', {}, ...['Entrada', 'Salida', 'Resultado'].map((t) => h('th', { scope: 'col' }, t)))),
+      h(
+        'tbody',
+        {},
+        ...(benchAllTrades ? list : list.slice(0, BENCH_TRADES_SHOWN)).map((t) =>
           h(
-            'tbody',
+            'tr',
             {},
-            ...recent.map((t) =>
-              h('tr', {}, h('td', {}, fDayYear.format(day(t.date))), h('td', {}, t.exit ? fDayYear.format(day(t.exit)) : 'sigue dentro'), h('td', { class: trend(t.ret) }, `${arrowOf(t.ret)} ${pctFrac(t.ret)}`)),
-            ),
+            h('td', {}, dayYear(t.entry), h('small', {}, `a ${fmtPrice(t.entryPrice)}`)),
+            h('td', {}, t.exit ? dayYear(t.exit) : 'Sigue dentro', h('small', {}, `${t.exit ? 'a' : 'cierre'} ${fmtPrice(t.exitPrice)}${BENCH_WHY[t.why] ? ` · ${BENCH_WHY[t.why]}` : ''}`)),
+            h('td', { class: trend(t.pnl) }, `${arrowOf(t.pnl)} ${signedUsd(t.pnl)}`, h('small', {}, `${pctFrac(t.ret)} · ${t.days} ${t.days === 1 ? 'día' : 'días'}`)),
           ),
-        )
-      : h('p', { class: 'muted' }, 'La regla no dio ninguna entrada en estos años.');
+        ),
+      ),
+    );
+    const more = h('button', { type: 'button', class: 'csv-btn' }, benchAllTrades ? 'Ver menos' : `Ver las ${list.length}`);
+    more.addEventListener('click', () => {
+      benchAllTrades = !benchAllTrades;
+      renderStrategy();
+    });
+    const csv = h('button', { type: 'button', class: 'csv-btn' }, 'Descargar CSV');
+    csv.addEventListener('click', () =>
+      downloadCsv(
+        `${sym.replace('/', '-')}_${o.rule}_${today()}.csv`,
+        ['entrada', 'precio_entrada', 'salida', 'precio_salida', 'dias', 'bruto_usd', 'comisiones_usd', 'resultado_usd', 'resultado_pct', 'salio_por'],
+        r.trades.map((t) => [t.entry, round6(t.entryPrice), t.exit ?? '', round6(t.exitPrice), t.days, round6(t.gross), round6(t.fees), round6(t.pnl), round6(t.ret * 100), t.why ?? 'sigue dentro']),
+      ),
+    );
     body.replaceChildren(
+      lead,
       legend,
       chart,
       statsEl,
-      h('p', { class: 'co-h' }, 'Últimas operaciones'),
-      trades,
-      h(
-        'p',
-        { class: 'hint' },
-        `Desde el ${fDayYear.format(day(r.dates[0]))} (el primer día con señal), con 100 al inicio. Cada día se está dentro o fuera según la señal del cierre anterior. Sin comisiones ni impuestos: es para aprender, no una recomendación.`,
-      ),
+      chance,
+      ...(priceChart ? [h('p', { class: 'co-h' }, 'El último año: ▲ compras y ▼ ventas de la regla'), priceChart] : []),
+      h('p', { class: 'co-h' }, 'Por año (el de la salida)'),
+      yearTable,
+      h('p', { class: 'co-h' }, benchAllTrades ? 'Todas las operaciones' : 'Últimas operaciones'),
+      h('div', { class: 'ps-wrap' }, tradeTable),
+      h('div', { class: 'bench-actions' }, list.length > BENCH_TRADES_SHOWN ? more : null, csv),
+      ...notes,
     );
+    // Desde la víspera de la primera mañana en que la regla pudo comprar: antes, las dos líneas son el monto, planas.
+    const k = Math.max(0, r.start - 1);
     drawChart(chart, {
-      dates: r.dates,
+      dates: r.dates.slice(k),
       series: [
-        { name: 'Estrategia', values: r.strat, cls: 's1' },
-        { name: 'Comprar y mantener', values: r.hold, cls: 's4' },
+        { name: 'Con la regla', values: r.value.slice(k), cls: 's1' },
+        { name: 'Solo mantener', values: r.hold.slice(k), cls: 's4' },
       ],
       height: 200,
       axis: true,
       interactive: true,
       measure: 'all',
-      fmt: (v) => nf(1).format(v),
-      endLabel: (sr, v) => nf(0).format(v),
-      aria: `${sym}: estrategia frente a comprar y mantener, base 100`,
+      fmt: (v) => `US$ ${nf(2).format(v)}`,
+      endLabel: (sr, v) => usd0(v),
+      aria: `${sym}: cuánto valdrían ${usd0(o.amount)} con la regla y solo manteniendo`,
+    });
+    if (priceChart) {
+      const last = hist.days.slice(from);
+      drawChart(priceChart, {
+        dates: last.map((d) => d.date),
+        series: [{ name: 'Cierre', values: last.map((d) => d.close), cls: 's1' }],
+        markers: marks,
+        height: 180,
+        axis: true,
+        interactive: true,
+        fmt: fmtPrice,
+        aria: `${sym}: cierre del último año con las compras y las ventas de la regla`,
+      });
+    }
+  }
+
+  // «Después de resultados»: la reacción a cada reporte y lo que siguió. Solo acciones; las fechas, de la SEC.
+  const eventsOpen = new Set(); // símbolos con la tabla completa a la vista
+  const EVENTS_SHOWN = 8;
+
+  function renderEvents() {
+    const box = $('d-events');
+    const body = $('d-events-body');
+    const sym = state.selected;
+    box.hidden = !sym || sym.includes('/');
+    if (box.hidden || !box.open) return;
+    const say = (cls, text) => body.replaceChildren(h('p', { class: cls }, text));
+    // Restarle el mercado: solo con el SPY ya en tus listas (su historia sale de lo guardado, sin créditos).
+    const canSpy = sym !== 'SPY' && inLists('SPY');
+    const full = fullHistory(sym);
+    const ev = B ? earningsDates(sym) : null;
+    // La casilla, solo cuando hay reportes que mostrar.
+    $('d-events-spy-row').hidden = !canSpy || !ev?.dates?.length;
+    if (!B) return say('muted', 'Cargando…');
+    if (ev.wait) return say('muted', `Buscando en la SEC las fechas de los resultados de ${sym}…`);
+    if (ev.error) return say('err', ev.error);
+    if (!ev.dates.length) return say('muted', ev.none);
+    if (!full) return say('muted', 'Calculando con los 5 años guardados…');
+    if (full.error) return say('err', full.error);
+    const wantSpy = canSpy && $('d-events-spy').checked;
+    const spy = wantSpy ? fullHistory('SPY') : null;
+    if (wantSpy && !spy) return say('muted', 'Trayendo la historia del SPY…');
+    const bench = spy?.points ?? null;
+    const st = B.eventStudy(full.points, ev.dates, { horizons: [5, 20], bench });
+    const x = !!bench;
+    const sum = x ? st.summaryX : st.summary;
+    if (!sum) return say('muted', 'Sus reportes son anteriores a los 5 años de precios guardados.');
+    const reactionOf = (r) => (x ? r.reactionX : r.reaction);
+    const afterOf = (r, hz) => (x ? r.afterX[hz] : r.after[hz]);
+    const rows = st.rows.filter((r) => reactionOf(r) !== null).reverse();
+    const pctCell = (v) => (v == null ? h('td', { class: 'flat', title: 'Todavía no pasan esos días' }, '—') : h('td', { class: trend(v) }, `${arrowOf(v)} ${pctFrac(v)}`));
+    const after = (hz) => `${hz} días después`;
+    const sideRow = (label, g) =>
+      h(
+        'tr',
+        {},
+        h('th', { scope: 'row' }, label),
+        h('td', {}, String(g.n)),
+        ...st.horizons.map((hz) => {
+          const c = g[hz];
+          return c.n ? h('td', { class: trend(c.mean) }, `${arrowOf(c.mean)} ${pctFrac(c.mean)}`, h('small', {}, `subió ${c.up} de ${c.n}`)) : h('td', { class: 'flat' }, '—');
+        }),
+      );
+    const sides = h(
+      'table',
+      { class: 'co-table bench-table' },
+      h('thead', {}, h('tr', {}, h('th', { scope: 'col' }, 'Lo que siguió'), h('th', { scope: 'col' }, 'Veces'), ...st.horizons.map((hz) => h('th', { scope: 'col' }, after(hz))))),
+      h('tbody', {}, sideRow('Tras una reacción buena', sum.good), sideRow('Tras una reacción mala', sum.bad)),
+    );
+    const all = eventsOpen.has(sym);
+    const table = h(
+      'table',
+      { class: 'co-table bench-table' },
+      h('thead', {}, h('tr', {}, h('th', { scope: 'col' }, 'Reporte'), h('th', { scope: 'col' }, 'Reacción'), ...st.horizons.map((hz) => h('th', { scope: 'col' }, after(hz))))),
+      h(
+        'tbody',
+        {},
+        ...(all ? rows : rows.slice(0, EVENTS_SHOWN)).map((r) => h('tr', {}, h('td', {}, dayYear(r.date)), pctCell(reactionOf(r)), ...st.horizons.map((hz) => pctCell(afterOf(r, hz))))),
+      ),
+    );
+    const more = h('button', { type: 'button', class: 'csv-btn more-btn' }, all ? 'Ver menos' : `Ver los ${rows.length}`);
+    more.addEventListener('click', () => {
+      if (all) eventsOpen.delete(sym);
+      else eventsOpen.add(sym);
+      renderEvents();
+    });
+    const next = nextEarnings(sym);
+    body.replaceChildren(
+      h(
+        'p',
+        { class: 'bench-lead' },
+        `En sus últimos ${sum.n} reportes (desde ${monYear(rows.at(-1).date)}), el precio se movió `,
+        h('strong', {}, rate(sum.meanAbs * 100, 1)),
+        ` en promedio, hacia arriba o hacia abajo, entre el cierre anterior y el siguiente${x ? ', descontado lo que hizo el SPY' : ''}. Subió en ${sum.up} de ${sum.n}. La mejor reacción, ${pctFrac(sum.best)}; la peor, ${pctFrac(sum.worst)}.`,
+        next ? ` Su próximo reporte: ${calDay(next.date)} (${untilText(next.date)}).` : '',
+      ),
+      h('div', { class: 'ps-wrap' }, sides),
+      h('p', { class: 'co-h' }, 'Reporte por reporte'),
+      h('div', { class: 'ps-wrap' }, table),
+      rows.length > EVENTS_SHOWN ? more : null,
+      h(
+        'p',
+        { class: 'hint' },
+        `La reacción va del último cierre antes del reporte al primer cierre después: son dos días porque unos reportan antes de la apertura y otros después del cierre. Lo que siguió se cuenta en días hábiles desde ese cierre, cuando la reacción ya se conocía. ${
+          x ? 'A cada número se le restó lo que hizo el SPY en los mismos días. ' : wantSpy ? 'No se pudo traer el SPY: va sin restar el mercado. ' : ''
+        }Fechas: los reportes de resultados que presentó a la SEC (8-K). Con ${sum.n} reportes, cada promedio sale de pocos datos: describe lo que pasó, no lo que va a pasar, y no es una recomendación.`,
+      ),
+    );
+  }
+
+  /** Los dos bloques de «Probar» que esperan datos (las velas de 5 años, las fechas de resultados). */
+  function renderBench() {
+    renderStrategy();
+    renderEvents();
+  }
+
+  function setupBench() {
+    const p = benchPrefs();
+    $('d-strat-kind').value = p.rule;
+    $('d-strat-amount').value = String(p.amount);
+    $('d-strat-stop').value = p.stop ? String(p.stop) : '';
+    $('d-strat-days').value = p.days ? String(p.days) : '';
+    if (p.plan) $('d-strat-plan').value = p.plan;
+    $('d-events-spy').checked = p.spy;
+    // Al escribir, la prueba se rehace cuando dejas de teclear un momento.
+    let timer = 0;
+    const typed = () => {
+      clearTimeout(timer);
+      timer = setTimeout(() => {
+        saveBench();
+        renderStrategy();
+      }, 250);
+    };
+    for (const id of ['d-strat-amount', 'd-strat-stop', 'd-strat-days']) $(id).addEventListener('input', typed);
+    $('d-strat-kind').addEventListener('change', () => {
+      saveBench();
+      benchAllTrades = false;
+      renderStrategy();
+    });
+    $('d-strat-plan').addEventListener('change', () => {
+      saveBench(true);
+      renderStrategy();
+    });
+    // Al reabrir el bloque se redibuja: lo dibujado mientras estaba cerrado quedó sin ancho.
+    $('d-strat').addEventListener('toggle', () => {
+      delete $('d-strat-body').dataset.shown;
+      renderStrategy();
+    });
+    $('d-events').addEventListener('toggle', renderEvents);
+    $('d-events-spy').addEventListener('change', () => {
+      prefs.set(BENCH_KEY, { ...benchPrefs(), spy: $('d-events-spy').checked });
+      renderEvents();
     });
   }
 
@@ -2596,6 +2919,7 @@
           renderDetailFilings();
           renderDetailTabs();
           renderQuick();
+          renderBench();
           $('d-claude').href = detailClaudeHref(sym);
         }
         if (psState.sym === sym || psState.peers.includes(sym)) renderPsSection();
@@ -3100,6 +3424,7 @@
         if (state.selected === sym) {
           renderDetailFilings();
           renderDetailTabs();
+          renderBench();
         }
         if (state.finSym === sym) renderFinExtras();
       });
@@ -7333,6 +7658,12 @@
         renderFinExtras();
       })
       .catch(() => {});
+    import('/bench-core.js')
+      .then((m) => {
+        B = m;
+        if (state.selected) renderBench();
+      })
+      .catch(() => {});
     renderClock();
     setupFolds();
     setupSheets();
@@ -7360,8 +7691,7 @@
     $('eod-form').addEventListener('submit', saveEod);
     $('d-close').addEventListener('click', () => select(state.selected));
     $('d-season').addEventListener('toggle', renderSeason);
-    $('d-strat').addEventListener('toggle', renderStrategy);
-    $('d-strat-kind').addEventListener('change', renderStrategy);
+    setupBench();
     $('d-fin').addEventListener('toggle', renderDetailFin);
     $('d-qual').addEventListener('toggle', renderDetailQual);
     $('d-mult').addEventListener('toggle', renderDetailMult);

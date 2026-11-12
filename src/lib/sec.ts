@@ -320,6 +320,12 @@ export interface Submissions {
   filings: Filing[];
   /** Avisos de compras y ventas de directivos (formulario 4): cuántos en 90 días y en un año, y el último. */
   insiders: { d90: number; d365: number; last: string | null };
+  /**
+   * Días en que presentó resultados: los 8-K con el tema 2.02, del más viejo al más nuevo (hasta EARNINGS_KEPT, unos
+   * 10 años). Para el banco de pruebas: cómo se movió el precio después de cada uno. Las extranjeras (6-K) no lo
+   * marcan, así que les queda vacío.
+   */
+  earnings: string[];
 }
 
 interface SubmissionsBody {
@@ -333,6 +339,8 @@ interface SubmissionsBody {
 
 /** Reportes que se guardan por empresa. */
 export const FILINGS_KEPT = 30;
+/** Fechas de resultados que se guardan por empresa. */
+export const EARNINGS_KEPT = 40;
 const ISO_DAY = /^\d{4}-\d{2}-\d{2}$/;
 
 /** Enlace al documento en sec.gov; si el nombre del archivo no es de fiar, a la carpeta del reporte. */
@@ -356,10 +364,13 @@ export function parseSubmissions(body: SubmissionsBody, cik: number, now: Date):
   const filings: Filing[] = [];
   const annual: Filing[] = [];
   const insiders = { d90: 0, d365: 0, last: null as string | null };
+  const earnings = new Set<string>();
   for (let i = 0; i < forms.length; i++) {
     const form = String(forms[i] ?? '');
     const date = String(dates[i] ?? '');
     if (!ISO_DAY.test(date)) continue;
+    // Resultados: el 8-K original con el tema 2.02 (una corrección, 8-K/A, no es otro reporte).
+    if (form === '8-K' && /(^|,)\s*2\.02\s*(,|$)/.test(String(items[i] ?? ''))) earnings.add(date);
     if (form === '4') {
       if (daysAgo(date) <= 365) insiders.d365++;
       if (daysAgo(date) <= 90) insiders.d90++;
@@ -384,7 +395,6 @@ export function parseSubmissions(body: SubmissionsBody, cik: number, now: Date):
     if (filings.length < FILINGS_KEPT) filings.push(filing);
     else if (kind === 'anual' && annual.length < 2) filings.push(filing);
     if (kind === 'anual') annual.push(filing);
-    if (filings.length >= FILINGS_KEPT && annual.length >= 2) break;
   }
   filings.sort((a, b) => (a.date > b.date ? -1 : a.date < b.date ? 1 : 0));
   const text = (v: unknown) => (typeof v === 'string' && v.trim() ? v.trim() : null);
@@ -399,6 +409,7 @@ export function parseSubmissions(body: SubmissionsBody, cik: number, now: Date):
     },
     filings,
     insiders,
+    earnings: [...earnings].sort().slice(-EARNINGS_KEPT),
   };
 }
 

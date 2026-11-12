@@ -199,7 +199,7 @@ Ideas sacadas de Bloomberg, Morningstar, Seeking Alpha, Simply Wall St y Trading
 - [x] **Expectativas de los analistas** (encuesta del BCRP), públicas, también en el juego.
 - [x] **Curva de rendimientos** de EE. UU. (FRED), pública. El BCRP no publica más plazos que el bono a 10 años.
 - [x] **Estacionalidad** en la ficha (rendimiento de cada mes por año, promedio y meses en alza).
-- [x] **Probar una estrategia**: cruce de medias 50/200 o 20/50, o RSI 30/70, frente a comprar y mantener.
+- [x] **Probar una estrategia**: cruce de medias 50/200 o 20/50, o RSI 30/70, frente a comprar y mantener. Desde el 11 nov es el banco de pruebas (sección 8i).
 - [x] **Rayos X de la cartera** (sector, país, beta, volatilidad, concentración y correlaciones).
 - [x] **Notas por factores A–F** frente a las comparables (Finnhub), con el detalle de cada indicador.
 - [x] **Historia financiera** desde la SEC (hasta 12 años), pública: sección para todos con cualquier símbolo, bloque en la ficha y herramienta `resultados_anuales` en el conector.
@@ -477,7 +477,16 @@ Eligió empezar por la fase 1 y apartar el juego. Las cuatro fases:
   - **Pendiente:**
     - Las empresas con varias clases de acciones que no informan un total en la portada (Alphabet) quedan sin acciones en circulación, así que no tienen P/S ni múltiplos.
     - El conector todavía no trae los múltiplos con historia ni los pares lado a lado.
-- [ ] **Fase 3 · Tu cartera real** (en el navegador, porque la cuenta Hapi está cifrada).
+- [x] **Banco de pruebas** (11 nov). El usuario quiere operar por su cuenta, en días y no en minutos («yo tradearía en días, no en minutos»). Entre el banco de pruebas y el marcador de su cuenta, eligió el banco de pruebas primero.
+  - **Pestaña «Probar»** en la ficha (la sexta), con la estacionalidad, que estaba en «Resumen».
+  - **Probar una regla** sobre 5 años: ruptura, retroceso, después de un buen reporte, cruces de medias y RSI; con su monto por operación, stop y máximo de días opcionales, y las comisiones de Hapi.
+  - **Frente a solo mantener y al azar,** para que una regla con suerte no parezca buena.
+  - **Después de resultados:** la reacción a cada reporte y lo que siguió a los 5 y 20 días. `/api/filings` ahora devuelve las fechas de los resultados (`earnings`).
+  - **Pendiente:**
+    - Probar la misma regla en toda la lista a la vez (hoy es una acción por vez).
+    - Las empresas extranjeras (BVN, Credicorp, IFS) no tienen fechas de resultados: presentan 6-K, sin la etiqueta.
+    - No cuenta dividendos ni impuestos.
+- [ ] **Fase 3 · Tu cartera real** (en el navegador, porque la cuenta Hapi está cifrada). **Sigue después del banco de pruebas**: es el marcador de lo que el usuario haga con su plata.
   - Rayos X de la cuenta: concentración, sector y correlación.
   - Rendimiento que no se infla con los depósitos, y la peor caída.
   - Frente al plazo fijo, la AFP, la inflación y el SPY (sección 8f, puntos 2 y 21).

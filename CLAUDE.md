@@ -74,13 +74,15 @@ El usuario: «intentemos desviarnos del aspecto juego del app, parece que nadie 
 - **«Hoy» empieza con «Tu día» y «Tu lista»** (`renderDia` y `renderMiLista`, con lo que el panel ya cargó: no piden nada nuevo).
   - **Tu día:** S&P 500, dólar, cobre y bitcoin. Si el SPY no está en tu lista, se usa su último cierre del termómetro (`state.thermo`). El dólar sale del BCRP y bitcoin de CoinGecko.
   - **Tu lista:** las tres que más se movieron. En «Hoy» no va la cinta.
-- **La ficha** (5 nov): el precio en grande (`#d-price`), el selector de periodos a lo ancho, el gráfico y lo largo en pestañas (`D_TABS`, se recuerda la última). Desde el 10 nov son cinco:
-  - **Resumen:** estadísticas del precio, estacionalidad y probar una estrategia.
+- **La ficha** (5 nov): el precio en grande (`#d-price`), el selector de periodos a lo ancho, el gráfico y lo largo en pestañas (`D_TABS`, se recuerda la última). Desde el 11 nov son seis:
+  - **Resumen:** estadísticas del precio.
   - **Negocio** (¿es buen negocio?): resultados y calidad. No usa precios.
   - **Valor** (¿cara o barata?): múltiplos frente a su historia, P/S y DCF. Necesita precio.
+  - **Probar** (el banco de pruebas): una regla sobre 5 años, lo que pasó después de cada reporte de resultados y la estacionalidad.
   - **Empresa:** datos de Finnhub (solo el dueño), reportes de la SEC y hechos de la SMV.
   - **Noticias.**
-  - Una pestaña sin nada se esconde (`renderDetailTabs`). Los bloques de «Negocio» y «Valor» se piden al abrirlos y en su pestaña se abren solos (`D_TAB_BLOCKS`).
+  - Una pestaña sin nada se esconde (`renderDetailTabs`). Los bloques de «Negocio», «Valor» y «Probar» se piden al abrirlos y en su pestaña se abren solos (`D_TAB_BLOCKS`).
+  - **En el celular las seis no entran:** la barra se desplaza, la elegida queda a la vista (`revealTab`) y un degradé avisa de qué lado hay más (`tabEdges`). No achiques la letra para que entren.
   - **Si agregas un bloque a la ficha,** ponlo en el panel de su pestaña (`dp-…`) y, si se pide al abrirlo, en `D_TAB_BLOCKS`.
 - **La ficha al día** (9 nov, fase 1 del rumbo nuevo). Todo de la SEC y público:
   - **Resultados** (`#d-fin`, `financialsView`): arriba, los últimos 12 meses y el último trimestre; el gráfico y la tabla, por año o por trimestre (`finMode`, se recuerda en `mercados.sec-vista`).
@@ -96,6 +98,16 @@ El usuario: «intentemos desviarnos del aspecto juego del app, parece que nadie 
   - **DCF** (`#d-val`, `renderDetailVal`): el DCF simple y, al revés, el crecimiento que ya descuenta el precio (`impliedGrowth`, entre −30 % y 60 %).
   - **Pares lado a lado** (`peersSide`, dentro de «Comparar con pares», `#ps`): para todos; se pide al abrirlo y los múltiplos salen si hay precio.
   - **Pedidos a la SEC de a uno** (`secQueue`): resultados, fundamentales, calidad y reportes pasan por una sola cola en el panel. Un pedido nuevo que termine en la SEC va por ahí.
+- **Banco de pruebas** (11 nov, pestaña «Probar»). El usuario quiere operar en días («yo tradearía en días, no en minutos») y eligió esto antes que el marcador de su cuenta:
+  - **Las cuentas viven en `public/bench-core.js`** (sin DOM, con pruebas en `test/bench-core.test.ts`); el panel lo carga al empezar (`B`). Una regla nueva va en `RULES`, con su prueba, su `<option>` en `#d-strat-kind` y su texto en `BENCH_RULES` (una prueba compara las opciones del formulario con `RULES`).
+  - **La convención, que no se cambia sin decirlo en pantalla:** se decide con el cierre de un día y se ejecuta en la apertura del siguiente; una posición a la vez; un monto fijo en dólares por operación. El stop también se revisa con el cierre.
+  - **Una señal de compra es un hecho de un día, no un estado** (`fresh`): después de un stop o del máximo de días, la regla espera a que la condición se dé de nuevo.
+  - **Comisiones:** las de Hapi (`orderFee` de `hapi-core.js`), con el plan elegido en el formulario o, mientras no se elija, el de la cuenta abierta en ese equipo. La cripto y las divisas van sin comisiones (`fees: false`) y se dice.
+  - **Siempre frente a dos referencias:** solo mantener (comprando la primera mañana en que la regla pudo decidir) y entrar al azar (`randomBaseline`: las mismas operaciones, igual de largas, en días al azar; con menos de 5 no se compara).
+  - **Velas de 5 años:** `benchDays` usa las mismas que el gráfico en «5A» (`detailHistory`, `state.rangeData`): no hay un pedido nuevo en el servidor.
+  - **Después de resultados** (`eventStudy`): las fechas son los 8-K con el tema 2.02, que `/api/filings` devuelve en `earnings` (hasta 40; las empresas extranjeras no tienen). La reacción va del cierre anterior al siguiente (dos días), y lo que siguió se cuenta desde ahí. Con el SPY en las listas se le puede restar el mercado.
+  - **Se pide como los reportes:** `earningsDates` espera a los resultados de la SEC para saber si hay empresa, y pasa por `secQueue`.
+  - **Dice qué pasó, no qué va a pasar.** Cada resultado lleva sus tres notas (la regla, cómo se prueba, qué no dice). No agregues una regla «recomendada», un puntaje ni una señal de compra para hoy.
 - **Más fácil de usar** (5 nov, elegido por el usuario):
   - **Botones de unos 40 px** en el celular y en pantallas táctiles (`pointer:coarse`). Los enlaces dentro de una frase quedan como están.
   - **Secciones plegables:** tocar el título las pliega (`setupFolds`, se recuerda en `mercados.plegadas`). No se pliegan las de `NO_FOLD`: la ficha, la bienvenida, el aviso de la clave y la liga.

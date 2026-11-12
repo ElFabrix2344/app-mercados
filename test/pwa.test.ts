@@ -1,5 +1,6 @@
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
+import { RULES } from '../public/bench-core.js';
 
 // App instalable: manifiesto, íconos y service worker (public/).
 const read = (path: string) => readFileSync(new URL(`../public${path}`, import.meta.url));
@@ -68,13 +69,21 @@ describe('index.html', () => {
     });
   });
 
-  it('la ficha de una acción: resultados y calidad en «Negocio»; múltiplos, P/S y DCF en «Valor»; los reportes de la SEC, en «Empresa»', () => {
-    const [negocio, valor, empresa, noticias] = ['dp-negocio', 'dp-valor', 'dp-empresa', 'dp-noticias'].map((id) => html.indexOf(`id="${id}"`)) as [number, number, number, number];
+  it('la ficha de una acción: resultados y calidad en «Negocio»; múltiplos, P/S y DCF en «Valor»; el banco de pruebas en «Probar»; los reportes de la SEC, en «Empresa»', () => {
+    const [negocio, valor, probar, empresa, noticias] = ['dp-negocio', 'dp-valor', 'dp-probar', 'dp-empresa', 'dp-noticias'].map((id) => html.indexOf(`id="${id}"`)) as [number, number, number, number, number];
     for (const id of ['d-fin', 'd-qual']) expect(html.slice(negocio, valor), id).toContain(`id="${id}"`);
-    for (const id of ['d-mult', 'd-ps', 'd-val']) expect(html.slice(valor, empresa), id).toContain(`id="${id}"`);
+    for (const id of ['d-mult', 'd-ps', 'd-val']) expect(html.slice(valor, probar), id).toContain(`id="${id}"`);
+    // «Probar» (11 nov): una regla sobre 5 años con las comisiones de Hapi, lo que pasó después de cada reporte y la estacionalidad.
+    for (const id of ['d-strat', 'd-strat-kind', 'd-strat-amount', 'd-strat-stop', 'd-strat-days', 'd-strat-plan', 'd-events', 'd-events-spy', 'd-season']) expect(html.slice(probar, empresa), id).toContain(`id="${id}"`);
     for (const id of ['d-co', 'd-filings', 'd-smv']) expect(html.slice(empresa, noticias), id).toContain(`id="${id}"`);
     // Cada pestaña de la ficha tiene su panel.
-    for (const t of ['resumen', 'negocio', 'valor', 'empresa', 'noticias']) expect(html, t).toMatch(new RegExp(`id="dt-${t}"[^>]*aria-controls="dp-${t}"`));
+    for (const t of ['resumen', 'negocio', 'valor', 'probar', 'empresa', 'noticias']) expect(html, t).toMatch(new RegExp(`id="dt-${t}"[^>]*aria-controls="dp-${t}"`));
+    // Las cuentas del banco de pruebas, como las de valoración, son un módulo aparte que el panel importa al empezar;
+    // cada regla que ofrece el formulario existe en el módulo.
+    expect(text('/bench-core.js')).toContain('export function runRule');
+    expect(text('/app.js')).toContain("import('/bench-core.js')");
+    const offered = [...html.slice(html.indexOf('id="d-strat-kind"'), html.indexOf('id="d-strat-amount"')).matchAll(/<option value="([^"]+)"/g)].map((m) => m[1]!);
+    expect(offered.sort()).toEqual(Object.keys(RULES).sort());
     // Las cuentas de valoración son un módulo aparte, servido tal cual (el panel lo importa al empezar).
     expect(text('/valuation-core.js')).toContain('export function multiplesHistory');
     expect(text('/app.js')).toContain("import('/valuation-core.js')");

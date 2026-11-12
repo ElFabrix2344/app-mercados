@@ -332,6 +332,7 @@
                 <p>«Calidad del negocio»: el ROIC es cuánto gana la empresa por cada dólar de capital puesto en el negocio. El puntaje de Piotroski suma nueve señales de salud financiera frente al año anterior; suele leerse así: de 7 a 9, finanzas sólidas; de 0 a 3, débiles. No sirve para bancos ni aseguradoras.</p>
                 <p>En «Empresa» están los reportes que presentó a la SEC, con enlace al documento (en inglés): informes, hechos (8-K) y la junta de accionistas.</p>
                 <p>«Valor» compara lo que pide el precio de hoy con la historia de la propia empresa: cada múltiplo (P/E, EV/EBITDA, P/S, P/B) frente a su mediana y su rango de 5 años. Un múltiplo alto no dice que esté cara: puede ser que se espere más crecimiento. El DCF es simple y sus supuestos se cambian a mano; al revés, dice qué crecimiento hace falta para justificar el precio de hoy.</p>
+                <p>«Probar» corre una regla de compra y venta sobre los 5 años guardados: se decide con el cierre de cada día y se ejecuta en la apertura del siguiente, una posición a la vez, con tu monto por operación y las comisiones de Hapi. La compara con solo mantener la acción y con entrar al azar la misma cantidad de veces. También muestra cómo se movió el precio después de cada reporte de resultados. Que una regla haya ganado en el pasado no dice que vaya a ganar.</p>
                 <p>El resumen de arriba describe lo que ya está en la ficha (tendencia, riesgo, valoración y fundamentales): no predice. Nada de esto es una recomendación de inversión.</p>
               </div>
             </details>
@@ -382,6 +383,7 @@
             <button type="button" role="tab" id="dt-resumen" aria-controls="dp-resumen" aria-selected="true">Resumen</button>
             <button type="button" role="tab" id="dt-negocio" aria-controls="dp-negocio" aria-selected="false" tabindex="-1">Negocio</button>
             <button type="button" role="tab" id="dt-valor" aria-controls="dp-valor" aria-selected="false" tabindex="-1">Valor</button>
+            <button type="button" role="tab" id="dt-probar" aria-controls="dp-probar" aria-selected="false" tabindex="-1">Probar</button>
             <button type="button" role="tab" id="dt-empresa" aria-controls="dp-empresa" aria-selected="false" tabindex="-1">Empresa</button>
             <button type="button" role="tab" id="dt-noticias" aria-controls="dp-noticias" aria-selected="false" tabindex="-1">Noticias</button>
           </div>
@@ -391,22 +393,6 @@
             <details class="table-view">
               <summary>Ver tabla (cierre de cada mes)</summary>
               <table id="d-table"><thead><tr><th scope="col">Mes</th><th scope="col">Cierre</th><th scope="col">Variación</th></tr></thead><tbody></tbody></table>
-            </details>
-            <details class="d-tool" id="d-season">
-              <summary>Estacionalidad: cómo le fue a cada mes (5 años)</summary>
-              <div id="d-season-body"></div>
-            </details>
-            <details class="d-tool" id="d-strat">
-              <summary>Probar una estrategia (5 años)</summary>
-              <div class="d-strat-pick">
-                <label for="d-strat-kind">Estrategia</label>
-                <select id="d-strat-kind">
-                  <option value="ma50-200">Cruce de medias 50 / 200 días</option>
-                  <option value="ma20-50">Cruce de medias 20 / 50 días</option>
-                  <option value="rsi">RSI: compra bajo 30, vende sobre 70</option>
-                </select>
-              </div>
-              <div id="d-strat-body"></div>
             </details>
           </div>
           <!-- «Negocio» (10 nov): ¿es buen negocio? Sus resultados y su calidad, con los informes de la SEC. No usa precios. -->
@@ -434,6 +420,51 @@
             <details class="d-tool" id="d-val">
               <summary>DCF: cuánto valdría y qué crecimiento descuenta el precio</summary>
               <div id="d-val-body"></div>
+            </details>
+          </div>
+          <!-- «Probar» (11 nov, el banco de pruebas para operar en días): qué habría pasado con una regla en estos 5 años,
+               con las comisiones de Hapi, y cómo se movió la acción después de cada reporte de resultados. Las cuentas
+               están en bench-core.js. Dice qué pasó, no qué va a pasar. -->
+          <div class="d-panel" id="dp-probar" role="tabpanel" aria-labelledby="dt-probar" hidden>
+            <details class="d-tool" id="d-strat">
+              <summary>Probar una regla: 5 años, con las comisiones de Hapi</summary>
+              <div class="dcf-inputs bench-form">
+                <label class="bench-rule">Regla
+                  <select id="d-strat-kind">
+                    <option value="ruptura">Ruptura de máximos de 20 días</option>
+                    <option value="retroceso">Retroceso en tendencia alcista</option>
+                    <option value="resultados">Después de un buen reporte de resultados</option>
+                    <option value="ma20-50">Cruce de medias 20 / 50 días</option>
+                    <option value="ma50-200">Cruce de medias 50 / 200 días</option>
+                    <option value="rsi">RSI: compra bajo 30, vende sobre 70</option>
+                  </select>
+                </label>
+                <label>Por operación (US$)
+                  <input type="number" id="d-strat-amount" class="ps-target" min="10" max="100000" step="10" inputmode="decimal" title="Cuántos dólares pondrías en cada compra">
+                </label>
+                <label>Stop (% de caída)
+                  <input type="number" id="d-strat-stop" class="ps-target" min="0" max="50" step="1" inputmode="decimal" placeholder="sin stop" title="Vende si un cierre queda ese porcentaje bajo tu precio de compra">
+                </label>
+                <label>Días como máximo
+                  <input type="number" id="d-strat-days" class="ps-target" min="0" max="250" step="1" inputmode="numeric" placeholder="sin límite" title="Vende al cumplir esa cantidad de días hábiles dentro, aunque la regla no haya dado salida">
+                </label>
+                <label id="d-strat-plan-row">Tu plan de Hapi
+                  <select id="d-strat-plan">
+                    <option value="standard">Estándar</option>
+                    <option value="prime">Prime</option>
+                  </select>
+                </label>
+              </div>
+              <div id="d-strat-body"></div>
+            </details>
+            <details class="d-tool" id="d-events">
+              <summary>Después de resultados: cómo reaccionó y qué pasó después</summary>
+              <label class="bench-check" id="d-events-spy-row" hidden><input type="checkbox" id="d-events-spy"> Restarle lo que hizo el mercado (SPY) en los mismos días</label>
+              <div id="d-events-body"></div>
+            </details>
+            <details class="d-tool" id="d-season">
+              <summary>Estacionalidad: cómo le fue a cada mes (5 años)</summary>
+              <div id="d-season-body"></div>
             </details>
           </div>
           <div class="d-panel" id="dp-empresa" role="tabpanel" aria-labelledby="dt-empresa" hidden>
