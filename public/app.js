@@ -57,6 +57,7 @@
     peopleBusy: false,
     notes: new Map(), // clave → { text, kind }
     thermo: null, // lo último del termómetro (SPY): «Tu día» usa su último cierre si el SPY no está en tu lista
+    ia: null, // /api/ia: si Claude está encendido en esta app, los topes del día y cuánto usó hoy quien mira
   };
 
   // Las cuentas de valoración (public/valuation-core.js, con pruebas; el servidor usa el mismo módulo). Se cargan una
@@ -1476,6 +1477,7 @@
     renderDetailVal();
     renderDetailFilings();
     renderQuick();
+    renderExplain();
     renderLook(sym);
     renderDetailTabs();
     $('d-claude').href = detailClaudeHref(sym);
@@ -3501,6 +3503,8 @@
                   h('span', { class: `fl-form k-${x.kind}` }, x.form),
                   h('span', { class: 'fl-title' }, filingTitle(x)),
                 ),
+                // Con Claude encendido: «Resumir con Claude» y, abierto, su resumen.
+                ...filingIa(x, sym),
               ),
             ),
           )
@@ -4311,6 +4315,344 @@
     if (pairs.length) lines.push(`- Correlación de los rendimientos diarios: ${pairs.join('; ')}.`);
     lines.push('Explícame cuál rindió mejor por el riesgo que tuvo, si se diversifican entre sí y qué mueve a cada uno. Si tienes el conector de Rueda, usa comparar y empresa. No me des una recomendación de compra o venta.');
     return `https://claude.ai/new?q=${encodeURIComponent(lines.join('\n'))}`;
+  }
+
+  // ---------- Claude dentro de Rueda (17 nov) ----------
+  // Con la clave de la API de Claude cargada en el servidor (si no, /api/ia responde `on: false` y nada de esto se ve):
+  // resumir un reporte de la SEC, explicar los números de la ficha y «Pregúntale a Rueda». Cada función tiene un tope
+  // por persona y por día, y la app un tope de gasto por mes; los lleva el servidor. Lo que escribe Claude se muestra
+  // siempre como texto (nunca como HTML ni como enlaces) y con el aviso de que puede equivocarse.
+  const IA_NOTE = 'Lo escribió Claude, una inteligencia artificial, y puede equivocarse. No es una recomendación de compra ni de venta.';
+  const iaReads = new Map(); // número del reporte → { cargando } | { error } | { lectura }
+  const iaShown = new Set(); // reportes con su resumen a la vista
+  const iaLeft = (tipo) => (state.ia?.on ? Math.max(0, state.ia.porDia[tipo] - (state.ia.hoy?.[tipo] ?? 0)) : 0);
+  /** El número del reporte en EDGAR (la carpeta de 18 dígitos), si es de los que Claude lee: informes y hechos. */
+  const iaFilingId = (x) => (['anual', 'trimestral', 'evento'].includes(x.kind) ? (/\/(\d{18})\//.exec(x.url)?.[1] ?? null) : null);
+
+  /**
+   * Un pedido a Claude. Puede tardar más de un minuto, así que la respuesta llega por líneas: una cada 10 segundos
+   * mientras espera y, al final, el resultado (`ok`) o el error.
+   */
+  async function apiLargo(path, body) {
+    let res;
+    try {
+      res = await fetch(path, { method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+    } catch {
+      setNote('net', 'No se pudo conectar. Si la sesión de Access venció, recarga la página.', 'crit');
+      throw Object.assign(new Error('Sin conexión'), { status: 0 });
+    }
+    setNote('net', null);
+    const text = await res.text().catch(() => '');
+    let last = null;
+    for (const line of text.split('\n')) {
+      if (!line.trim()) continue;
+      try {
+        last = JSON.parse(line);
+      } catch {
+        /* una línea cortada: vale la anterior */
+      }
+    }
+    if (!res.ok || !last || !('ok' in last)) {
+      throw Object.assign(new Error(last?.error?.message || (res.ok ? 'La respuesta de Claude llegó incompleta. Prueba de nuevo.' : `HTTP ${res.status}`)), { status: res.status, code: last?.error?.code });
+    }
+    return last.ok;
+  }
+
+  async function loadIa() {
+    try {
+      state.ia = await api('/api/ia');
+    } catch {
+      state.ia = { on: false };
+    }
+    renderIa();
+  }
+
+  /** Todo lo que cambia al saber si Claude está encendido. */
+  function renderIa() {
+    renderAsk();
+    renderExplain();
+    renderIaFilings();
+  }
+
+  /** Las dos listas de reportes: la de la ficha y la de «Resultados de empresas». */
+  function renderIaFilings() {
+    if (state.selected) renderDetailFilings();
+    if (state.finSym) renderFinExtras();
+  }
+
+  /** Con cada respuesta el servidor dice cuánto queda hoy. */
+  function iaUpdate(ia) {
+    if (!ia) return;
+    state.ia = ia;
+    renderAsk();
+    renderExplain();
+  }
+
+  // 1) Resumir un reporte: un botón en cada informe o hecho de la lista. Un reporte ya leído (por cualquiera) sale de
+  //    lo guardado en el servidor, sin gastar.
+  async function readFiling(sym, id) {
+    if (iaShown.has(id)) {
+      iaShown.delete(id);
+      return renderIaFilings();
+    }
+    iaShown.add(id);
+    if (iaReads.get(id)?.lectura || iaReads.get(id)?.cargando) return renderIaFilings();
+    iaReads.set(id, { cargando: true });
+    renderIaFilings();
+    try {
+      const r = await apiLargo('/api/ia/reporte', { symbol: sym, id });
+      iaReads.set(id, { lectura: r.lectura });
+      iaUpdate(r.ia);
+    } catch (e) {
+      iaReads.set(id, { error: e.message });
+    }
+    renderIaFilings();
+  }
+
+  function filingReading(st) {
+    if (!st || st.cargando) return h('div', { class: 'ia-box' }, h('p', { class: 'muted' }, 'Claude está leyendo el documento en sec.gov. Un informe largo puede tardar un par de minutos…'));
+    if (st.error) return h('div', { class: 'ia-box' }, h('p', { class: 'err' }, st.error));
+    const l = st.lectura;
+    const n = l.citas.length;
+    return h(
+      'div',
+      { class: 'ia-box' },
+      h('p', { class: 'ia-title' }, l.titulo),
+      h('ul', { class: 'ia-points' }, ...l.puntos.map((p) => h('li', {}, p))),
+      n ? h('details', { class: 'ia-cites' }, h('summary', {}, `Del documento, tal como está (${n} ${n === 1 ? 'frase' : 'frases'}, en inglés)`), ...l.citas.map((c) => h('blockquote', {}, c))) : null,
+      h('p', { class: 'hint' }, `Resumen del documento que presentó la empresa, leído el ${dayYear(l.leidoEl.slice(0, 10))} con ${l.modelo}. ${IA_NOTE} Las cifras que te importen, míralas en el reporte.`),
+    );
+  }
+
+  /** El botón de un reporte y, si está abierto, su resumen. null si Claude no está encendido o el reporte no se lee. */
+  function filingIa(x, sym) {
+    const id = state.ia?.on ? iaFilingId(x) : null;
+    if (!id) return [];
+    const st = iaReads.get(id);
+    const open = iaShown.has(id);
+    const b = h(
+      'button',
+      { type: 'button', class: 'csv-btn ia-btn', 'aria-expanded': String(open), title: 'Claude lee el documento y cuenta lo principal. Si alguien ya lo pidió, sale al instante y no gasta tus lecturas de hoy.' },
+      open ? 'Ocultar resumen' : st?.lectura ? 'Ver resumen' : 'Resumir con Claude',
+    );
+    b.addEventListener('click', () => readFiling(sym, id));
+    return [b, open ? filingReading(st) : null];
+  }
+
+  // 2) Explicar la ficha: los números que ya se ven, en claro. La explicación del día queda en este navegador.
+  const IA_FICHA_KEY = 'mercados.ia.fichas';
+  const explainOpen = new Set(); // símbolos con la explicación a la vista
+  const explainNow = new Map(); // símbolo → { cargando: texto } | { error }
+  const savedExplain = (sym) => {
+    const e = prefs.get(IA_FICHA_KEY, {})?.[sym];
+    return e && e.guardado === today() && Array.isArray(e.puntos) ? e : null;
+  };
+
+  /** Los números de la ficha como pares «qué es → cuánto», tal como los ve la persona. Solo lo que ya cargó. */
+  function fichaFacts(sym) {
+    const out = [];
+    const add = (k, v) => {
+      if (v != null && v !== '') out.push({ k, v: String(v) });
+    };
+    const q = quoteFor(sym);
+    const hist = state.hist.get(sym);
+    const st = hist?.stats;
+    const l = hist?.latest;
+    add('Nombre', q?.name ?? eodRowFor(sym)?.name ?? null);
+    if (q?.price != null) add('Precio', `${fmtPrice(q.price)} ${q.currency ?? ''}${q.changePct != null ? ` (${pctFrac(q.changePct / 100, 2)} hoy)` : ''}`);
+    if (st) {
+      add('Rendimiento del último año', pctFrac(st.totalReturn));
+      if (st.annualVol != null) add('Volatilidad anual', pctFrac(st.annualVol).replace('+', ''));
+      if (st.maxDrawdown) add('Mayor caída del último año', pctFrac(st.maxDrawdown.value));
+    }
+    if (l?.sma200) add('Precio frente a su media de 200 días', pctFrac(l.close / l.sma200 - 1));
+    if (l?.sma50 && l?.sma200) add('Media de 50 días frente a la de 200', l.sma50 > l.sma200 ? 'por encima' : 'por debajo');
+    if (l?.rsi14 != null) add('RSI de 14 días', nf(0).format(l.rsi14));
+    if (sym.includes('/')) return out;
+    const fr = state.fin.get(sym);
+    const fin = fr && fr !== 'cargando' && !fr.error ? fr.data : null;
+    if (!fin?.cik) return out;
+    const cur = moneyPrefix(fin.currency);
+    const money = (v) => `${v < 0 ? '−' : ''}${cur}${millions(Math.abs(v) / 1e6)}`;
+    const grew = (a, b) => (a != null && b > 0 ? ` (${pctFrac(a / b - 1)} frente al periodo anterior)` : '');
+    const t = fin.ttm;
+    const tp = fin.ttmPrev;
+    if (t?.revenue != null) add(`Ventas de los últimos 12 meses (a ${monYear(t.end)})`, `${money(t.revenue)}${grew(t.revenue, tp?.revenue)}`);
+    if (t?.netIncome != null) add('Utilidad neta de los últimos 12 meses', `${money(t.netIncome)}${grew(t.netIncome, tp?.netIncome)}`);
+    for (const y of fin.years.slice(-3)) {
+      if (y.revenue != null) add(`Año fiscal ${y.year}`, `ventas ${money(y.revenue)}${y.operatingIncome != null ? `, utilidad operativa ${money(y.operatingIncome)}` : ''}${y.netIncome != null ? `, utilidad neta ${money(y.netIncome)}` : ''}`);
+    }
+    const xr = fundCache.get(sym);
+    const fund = xr && xr !== 'cargando' && !xr.error ? xr.data : null;
+    const k = usdRate(fin);
+    if (V && fund && k != null) {
+      const pct = (v) => rate(v * 100, 1);
+      const pm = V.peerMetrics(fin, fund, k, null);
+      const when = pm.ttm ? 'últimos 12 meses' : `año fiscal ${fin.years.at(-1)?.year}`;
+      if (pm.opMargin != null) add(`Margen operativo (${when})`, pct(pm.opMargin));
+      if (pm.netMargin != null) add(`Margen neto (${when})`, pct(pm.netMargin));
+      if (pm.fcfMargin != null) add(`Flujo de caja libre sobre ventas (${when})`, pct(pm.fcfMargin));
+      if (pm.roe != null) add(`ROE (${when})`, pct(pm.roe));
+      if (pm.netDebtToEbitda != null) add('Deuda neta ÷ EBITDA', pm.netDebtToEbitda < 0 ? 'tiene más caja que deuda' : `${nf(1).format(pm.netDebtToEbitda)}×`);
+      if (pm.debtToEquity != null) add('Deuda ÷ patrimonio', `${nf(2).format(pm.debtToEquity)}×`);
+      // Lo que pide el precio de hoy, frente a lo que pidió en cada cierre fiscal de los últimos 5 años.
+      const kp = knownPrice(sym);
+      const sh = fin.shares?.at(-1);
+      if (kp && sh) {
+        const c = V.latestOf(fin, fund);
+        const now = V.multiples({ price: kp.price, shares: sh.value, adr: fin.adrRatio ?? 1, k }, c.inc, c.bal);
+        const full = state.full.get(sym);
+        const past = full?.points ? V.multiplesHistory(fin, fund, full.points, k) : [];
+        for (const m of MULT_ROWS) {
+          const v = now[m.key];
+          if (v == null) continue;
+          const s5 = V.standing(v, past.map((y) => y[m.key]));
+          add(`${m.label} (${m.name})`, s5 ? `${m.fmt(v)} hoy; en ${s5.n} cierres fiscales, mediana ${m.fmt(s5.median)}, de ${m.fmt(s5.min)} a ${m.fmt(s5.max)}` : `${m.fmt(v)} hoy, sin historia para comparar`);
+        }
+        const rf = state.usaData?.treasury10y?.at(-1)?.value ?? null;
+        if (now.earningsYield > 0 && rf != null) add('Rendimiento de las utilidades frente al bono del Tesoro a 10 años', `${pct(now.earningsYield)} frente a ${rate(rf, 2)}`);
+      }
+    }
+    const qr = qualCache.get(sym);
+    const qual = qr && qr !== 'cargando' && !qr.error ? qr.data : null;
+    const ly = qual?.years?.at(-1);
+    if (ly?.roic != null) add(`Rendimiento del capital invertido (ROIC) ${ly.year}`, rate(ly.roic * 100, 1));
+    if (ly?.grossMargin != null) add(`Margen bruto ${ly.year}`, rate(ly.grossMargin * 100, 1));
+    if (qual?.piotroski?.score != null) add('Puntaje de Piotroski (señales de salud financiera)', `${qual.piotroski.score} de ${qual.piotroski.of}`);
+    return out;
+  }
+
+  /** Espera (hasta unos 15 s) a que carguen los números de la SEC y los 5 años de precios: con ellos la explicación es mejor. */
+  async function fichaReady(sym) {
+    for (let i = 0; i < 50 && state.selected === sym; i++) {
+      const fr = sym.includes('/') ? null : financialsFor(sym);
+      const sec = sym.includes('/') || (fr !== undefined && (fr.error || !fr.data.cik || (fundamentalsFor(sym) !== undefined && qualityFor(sym) !== undefined)));
+      if (sec && fullHistory(sym) !== undefined) return;
+      await new Promise((r) => setTimeout(r, 300));
+    }
+  }
+
+  async function explainFicha() {
+    const sym = state.selected;
+    if (!sym || explainNow.get(sym)?.cargando) return;
+    if (explainOpen.has(sym)) {
+      explainOpen.delete(sym);
+      return renderExplain();
+    }
+    explainOpen.add(sym);
+    explainNow.delete(sym);
+    if (savedExplain(sym)) return renderExplain();
+    explainNow.set(sym, { cargando: 'Juntando los números de la ficha…' });
+    renderExplain();
+    try {
+      await fichaReady(sym);
+      const hechos = fichaFacts(sym);
+      if (hechos.length < 3) throw new Error('Todavía no cargan los números de esta ficha. Prueba en un momento.');
+      explainNow.set(sym, { cargando: 'Claude está leyendo los números…' });
+      renderExplain();
+      const r = await apiLargo('/api/ia/ficha', { symbol: sym, hechos });
+      const all = prefs.get(IA_FICHA_KEY, {}) ?? {};
+      // Se guardan las de hoy, hasta 12 símbolos.
+      const keep = Object.fromEntries(Object.entries(all).filter(([, e]) => e?.guardado === today()).slice(-11));
+      prefs.set(IA_FICHA_KEY, { ...keep, [sym]: { ...r.explicacion, guardado: today() } });
+      explainNow.delete(sym);
+      iaUpdate(r.ia);
+    } catch (e) {
+      explainNow.set(sym, { error: e.message });
+    }
+    renderExplain();
+  }
+
+  function renderExplain() {
+    const btn = $('d-explain');
+    const box = $('d-explain-box');
+    const sym = state.selected;
+    const on = !!state.ia?.on && !!sym;
+    btn.hidden = !on;
+    const open = on && explainOpen.has(sym);
+    box.hidden = !open;
+    if (!on) return;
+    const now = explainNow.get(sym);
+    const saved = savedExplain(sym);
+    btn.disabled = !!now?.cargando;
+    btn.setAttribute('aria-expanded', String(open));
+    btn.textContent = now?.cargando ? 'Explicando…' : open ? 'Ocultar explicación' : saved ? 'Ver explicación' : 'Explicar con Claude';
+    if (!open) return;
+    if (now?.cargando) return box.replaceChildren(h('p', { class: 'muted' }, now.cargando));
+    if (now?.error) return box.replaceChildren(h('p', { class: 'err' }, now.error));
+    if (!saved) return box.replaceChildren(h('p', { class: 'muted' }, 'Sin explicación todavía.'));
+    box.replaceChildren(
+      h('p', { class: 'ia-title' }, saved.titulo),
+      h('ul', { class: 'ia-points' }, ...saved.puntos.map((p) => h('li', {}, p))),
+      saved.revisar ? h('p', { class: 'ia-check' }, h('strong', {}, 'Antes de decidir: '), saved.revisar) : null,
+      h('p', { class: 'hint' }, `Explicación de hoy con los números de esta ficha (${saved.modelo}). ${IA_NOTE}`),
+    );
+  }
+
+  // 3) «Pregúntale a Rueda»: una pregunta, una respuesta, con los datos públicos del panel. Sin memoria entre preguntas.
+  const askLog = []; // las de esta sesión, la más nueva primero: { pregunta, cargando | error | respuesta, fuentes }
+
+  function renderAsk() {
+    const sec = $('ask');
+    const ia = state.ia;
+    // Apagado (falta la clave de la API): al dueño se le dice cómo prenderlo; los demás no ven nada.
+    const setup = !!ia && !ia.on && state.role === 'owner';
+    sec.hidden = !ia?.on && !setup;
+    $('ask-setup').hidden = !setup;
+    $('ask-form').hidden = setup;
+    if (!ia?.on) return;
+    const left = iaLeft('chat');
+    const busy = !!askLog[0]?.cargando;
+    $('ask-q').maxLength = ia.preguntaMax ?? 300;
+    $('ask-go').disabled = busy || left <= 0 || !!ia.agotado?.chat;
+    $('ask-go').textContent = busy ? 'Pensando…' : 'Preguntar';
+    $('ask-left').textContent = ia.agotado?.chat
+      ? 'Las preguntas llegaron a su tope de gasto de este mes. El día 1 se reinicia.'
+      : left > 0
+        ? `Te ${left === 1 ? 'queda 1 pregunta' : `quedan ${left} preguntas`} hoy.`
+        : 'Ya usaste tus preguntas de hoy. Mañana se reinicia.';
+    $('ask-out').replaceChildren(
+      ...askLog.slice(0, 3).map((a) =>
+        h(
+          'div',
+          { class: 'ask-item' },
+          h('p', { class: 'ask-q' }, a.pregunta),
+          a.cargando ? h('p', { class: 'muted' }, 'Claude está buscando los datos…') : a.error ? h('p', { class: 'err' }, a.error) : h('p', { class: 'ask-a' }, a.respuesta),
+          a.fuentes?.length ? h('p', { class: 'hint' }, `Con datos de: ${listJoin(a.fuentes)}.`) : null,
+        ),
+      ),
+    );
+    // Solo el dueño: cuánto va gastando la app en el mes.
+    const m = ia.mes;
+    $('ask-spend').hidden = !m;
+    if (m) $('ask-spend').textContent = `Gasto del mes en la API de Claude: ${usd(m.usd)} de ${usd(m.tope)} · reportes ${usd(m.tipo.reporte)}, fichas ${usd(m.tipo.ficha)}, preguntas ${usd(m.tipo.chat)} · modelo ${ia.modelo}.`;
+  }
+
+  async function submitAsk(e) {
+    e.preventDefault();
+    const input = $('ask-q');
+    const pregunta = input.value.replace(/\s+/g, ' ').trim();
+    if (pregunta.length < 8 || askLog[0]?.cargando) return;
+    const item = { pregunta, cargando: true };
+    askLog.unshift(item);
+    renderAsk();
+    try {
+      const r = await apiLargo('/api/ia/pregunta', { pregunta });
+      Object.assign(item, { cargando: false, respuesta: r.respuesta, fuentes: r.fuentes });
+      input.value = '';
+      iaUpdate(r.ia);
+    } catch (err) {
+      Object.assign(item, { cargando: false, error: err.message });
+      // El tope pudo cambiar (otra pestaña, otro equipo): se vuelve a leer.
+      if (err.code === 'daily_limit') loadIa();
+    }
+    renderAsk();
+  }
+
+  function setupIa() {
+    $('d-explain').addEventListener('click', explainFicha);
+    $('ask-form').addEventListener('submit', submitAsk);
+    loadIa();
   }
 
   // ---------- cartera simulada ----------
@@ -7750,6 +8092,8 @@
     setupPmk();
     // Cuenta de Hapi: cada uno la suya, cifrada (también los amigos).
     setupHapi();
+    // Claude dentro de Rueda: para todos, si la app tiene la clave de la API.
+    setupIa();
     if (role !== 'owner') {
       document.body.classList.add('rol-amigo');
       // La bienvenida se cierra con «Entendido» y, ya leída, no vuelve a ocupar la parte de arriba.

@@ -2,7 +2,8 @@ import { roleFor, verifyAccess, type Role } from './auth/access';
 import { isLocalDev, isMock, trimSecrets, type Env } from './env';
 import { CALENDAR_UNTIL, EVENTS, sourcesFor, upcoming } from './lib/calendar';
 import { isBirthday, nextBirthday, parseBirthday } from './lib/cumple';
-import { ApiError, errorResponse, escapeHtml, htmlPage, json } from './lib/http';
+import { claudeApi, claudeMock, iaModel } from './lib/claude';
+import { ApiError, errorBody, errorResponse, escapeHtml, htmlPage, json } from './lib/http';
 import { NYSE_CALENDAR_UNTIL, usMarketOpen } from './lib/market-hours';
 import { isoDate } from './lib/num';
 import { signPayload } from './lib/signed';
@@ -47,6 +48,8 @@ import { readSummaries } from './services/summary';
 import { portfolioXray, type ProfileOf } from './services/xray';
 import { factorGrades } from './services/factors';
 import { filings } from './services/filings';
+import { explicarFicha, IA_LIMITS, iaVista, lecturaGuardada, leerReporte, preguntar, type IaDeps } from './services/ia';
+import type { Fuentes } from './services/ia-datos';
 import { financials } from './services/financials';
 import { fundamentals } from './services/fundamentals';
 import { quality } from './services/quality';
@@ -107,7 +110,7 @@ const CSP = [
 ].join('; ');
 
 export default {
-  async fetch(req: Request, rawEnv: Env, _ctx: ExecutionContext): Promise<Response> {
+  async fetch(req: Request, rawEnv: Env, ctx: ExecutionContext): Promise<Response> {
     const env = trimSecrets(rawEnv);
     const url = new URL(req.url);
     const local = isLocalDev(url, env);
@@ -128,7 +131,7 @@ export default {
 
     let res: Response;
     try {
-      res = (await route(req, env, url, role, email)) ?? (await env.ASSETS.fetch(req));
+      res = (await route(req, env, url, role, email, ctx)) ?? (await env.ASSETS.fetch(req));
     } catch (e) {
       res = errorResponse(e);
     }
@@ -173,7 +176,7 @@ const OWNER_ONLY = new Set(['/api/watchlist', '/api/eod', '/api/quotes', '/api/h
  */
 const FRIEND_KEYED = new Set(['/api/watchlist', '/api/quotes', '/api/history', '/api/compare', '/api/thermometer', '/api/news/symbol', '/api/lookup']);
 
-async function route(req: Request, env: Env, url: URL, role: Role, email: string | null): Promise<Response | null> {
+async function route(req: Request, env: Env, url: URL, role: Role, email: string | null, ctx: ExecutionContext): Promise<Response | null> {
   const p = url.pathname;
   // Paso del login del conector de Claude (el conector vive en el Worker mercados-mcp).
   if (p === '/conector/identidad' && req.method === 'GET') return connectorIdentity(url, env, role, email);
@@ -202,6 +205,7 @@ async function route(req: Request, env: Env, url: URL, role: Role, email: string
     throw new ApiError('forbidden', 403, 'Solo el dueño de la app decide quién entra.');
   }
   if (p === '/api/games' || p.startsWith('/api/games/')) return games(req, env, url, role, email, deps, mock);
+  if (p === '/api/ia' || p.startsWith('/api/ia/')) return iaRoutes(req, env, url, role, email, deps, mock, ctx);
 
   if (req.method === 'GET') {
     switch (p) {
@@ -583,6 +587,104 @@ async function games(req: Request, env: Env, url: URL, role: Role, email: string
 }
 
 /**
+ * Claude dentro de Rueda (services/ia.ts), para el dueño y los amigos: GET /api/ia dice si está encendido y cuánto le
+ * queda hoy a quien pregunta; POST /reporte lee un reporte de la SEC, /ficha explica los números de una ficha y
+ * /pregunta responde con los datos públicos del panel. Todo pasa por el libro del gasto (Durable Object del juego).
+ * Sin ANTHROPIC_API_KEY responde `on: false` y la pantalla no muestra nada de esto.
+ */
+async function iaRoutes(req: Request, env: Env, url: URL, role: Role, email: string | null, deps: Deps, mock: boolean, ctx: ExecutionContext): Promise<Response> {
+  const p = url.pathname;
+  const who = needEmail(email);
+  const key = env.ANTHROPIC_API_KEY;
+  const juego = env.JUEGO ? env.JUEGO.get(env.JUEGO.idFromName('grupo')) : null;
+  const on = !!juego && (mock || !!key);
+  if (req.method === 'GET' && p === '/api/ia' && !on) return json({ on: false });
+  if (!on || !juego) throw new ApiError('not_configured', 503, 'Las funciones con Claude no están encendidas en esta app.', 'claude');
+
+  const now = deps.now;
+  const model = iaModel(env.IA_MODEL);
+  const pid = await playerId(who);
+  const ia: IaDeps = {
+    kv: env.CACHE,
+    now,
+    timeZone: env.TIMEZONE || 'America/Lima',
+    // En local, respuestas de prueba: no se llama a la API ni se gasta.
+    claude: mock ? claudeMock(model) : claudeApi(key!, model),
+    libro: {
+      reservar: (id, tipo, at, lim, clave) => juego.iaReservar(id, tipo, at.toISOString(), lim, clave ?? null),
+      cerrar: (id, usd) => juego.iaCerrar(id, usd),
+      estado: (id, at) => juego.iaEstado(id, at.toISOString()),
+    },
+    limites: IA_LIMITS,
+    fuentes: fuentesIa(deps, mock),
+  };
+
+  if (req.method === 'GET' && p === '/api/ia') return json(iaVista(await ia.libro.estado(pid, now), IA_LIMITS, model, role === 'owner'));
+  // Un reporte ya leído (por cualquiera) se muestra sin gastar ni contar.
+  if (req.method === 'GET' && p === '/api/ia/reporte') return json({ lectura: await lecturaGuardada(env.CACHE, url.searchParams.get('id') ?? '') });
+  if (req.method === 'POST' && ['/api/ia/reporte', '/api/ia/ficha', '/api/ia/pregunta'].includes(p)) {
+    sameOrigin(req, url);
+    const body = (await req.json().catch(() => null)) as { symbol?: unknown; id?: unknown } | null;
+    const estado = async () => iaVista(await ia.libro.estado(pid, now), IA_LIMITS, model, role === 'owner');
+    if (p === '/api/ia/reporte') return largo(ctx, async () => ({ ...(await leerReporte(ia, pid, body?.symbol, body?.id)), ia: await estado() }));
+    if (p === '/api/ia/ficha') return largo(ctx, async () => ({ explicacion: await explicarFicha(ia, pid, body), ia: await estado() }));
+    return largo(ctx, async () => ({ ...(await preguntar(ia, pid, body)), ia: await estado() }));
+  }
+  return json({ error: { code: 'not_found', message: 'Ruta desconocida', provider: null } }, { status: 404 });
+}
+
+/** Los datos públicos que puede usar Claude: los servicios del panel o, en local, los de prueba. */
+function fuentesIa(deps: Deps, mock: boolean): Fuentes {
+  const now = deps.now;
+  return mock
+    ? {
+        peru: async () => mockPeru(now),
+        mercados: async () => mockPeruMarkets(now),
+        usa: async () => mockUsa(now),
+        curva: async () => mockCurve(now),
+        noticias: async () => mockNews(now),
+        resultados: async (symbol) => mockFinancials(symbol, now),
+        reportes: async (symbol) => mockFilings(symbol, now),
+      }
+    : {
+        peru: () => peru(deps),
+        mercados: () => peruMarkets(deps),
+        usa: () => usa(deps),
+        curva: () => curve(deps),
+        noticias: () => marketNews(deps),
+        resultados: (symbol) => financials(deps, symbol),
+        reportes: (symbol) => filings(deps, symbol),
+      };
+}
+
+/**
+ * Un pedido que puede tardar más de un minuto (Claude leyendo un informe). La respuesta empieza enseguida y manda una
+ * línea cada 10 segundos mientras espera, para que ninguna red corte una conexión callada; la última línea trae el
+ * resultado (`ok`) o el error. Va como JSON por líneas y siempre con 200: el error viaja adentro.
+ */
+function largo(ctx: ExecutionContext, work: () => Promise<unknown>): Response {
+  const { readable, writable } = new TransformStream<Uint8Array, Uint8Array>();
+  const w = writable.getWriter();
+  const enc = new TextEncoder();
+  const line = (o: unknown) => w.write(enc.encode(`${JSON.stringify(o)}\n`));
+  const beat = setInterval(() => void line({ espera: true }).catch(() => {}), 10_000);
+  const done = (async () => {
+    try {
+      await line({ ok: await work() });
+    } catch (e) {
+      if (!(e instanceof ApiError)) console.error('Claude:', e);
+      await line(e instanceof ApiError ? errorBody(e) : { error: { code: 'upstream_error', message: 'No se pudo completar el pedido a Claude.', provider: 'claude' } }).catch(() => {});
+    } finally {
+      clearInterval(beat);
+      await w.close().catch(() => {});
+    }
+  })();
+  // En las pruebas no hay `waitUntil`: el trabajo igual termina mientras se lee la respuesta.
+  ctx.waitUntil?.(done);
+  return new Response(readable, { headers: { 'Content-Type': 'application/x-ndjson; charset=utf-8', 'Cache-Control': 'no-store' } });
+}
+
+/**
  * Un amigo con su propia clave de Twelve Data (game/panel.ts): las mismas rutas que el dueño, pero con su clave y su
  * caché, en el Durable Object del juego. Sin clave, 403.
  */
@@ -671,6 +773,7 @@ export function configStatus(env: Env): Record<string, SecretInfo | number> {
     FRED_API_KEY: info(env.FRED_API_KEY, (s) => /^[a-z0-9]{32}$/.test(s)),
     FINNHUB_API_KEY: info(env.FINNHUB_API_KEY, (s) => /^[A-Za-z0-9]{10,64}$/.test(s)),
     COINGECKO_API_KEY: info(env.COINGECKO_API_KEY, (s) => /^CG-[A-Za-z0-9]{10,64}$/.test(s)),
+    ANTHROPIC_API_KEY: info(env.ANTHROPIC_API_KEY, (s) => /^sk-ant-[A-Za-z0-9_-]{20,300}$/.test(s)),
     OWNER_BIRTHDAY: info(env.OWNER_BIRTHDAY, (s) => parseBirthday(s) !== null),
   };
 }

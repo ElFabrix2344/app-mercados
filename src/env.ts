@@ -44,6 +44,13 @@ export interface Env {
    * secreto y no en wrangler.jsonc porque el repositorio es público.
    */
   OWNER_BIRTHDAY?: string;
+  /**
+   * Clave de la API de Claude (Anthropic), para las funciones con Claude dentro de Rueda: leer reportes, explicar la
+   * ficha y «Pregúntale a Rueda». Se cobra aparte del plan Max. Sin ella, esas funciones no aparecen.
+   */
+  ANTHROPIC_API_KEY?: string;
+  /** Modelo para esas funciones (no es secreto; va en wrangler.jsonc). Vacío: Opus 5.5. Ver IA_PRICES en lib/claude.ts. */
+  IA_MODEL?: string;
 
   // solo desarrollo local (se ignoran fuera de localhost)
   DEV_MODE?: string;
@@ -64,6 +71,7 @@ export const SECRET_KEYS = [
   'LOGIN_LINK_SECRET',
   'ACCESS_API_TOKEN',
   'OWNER_BIRTHDAY',
+  'ANTHROPIC_API_KEY',
 ] as const;
 
 const LOCAL_HOSTS = new Set(['localhost', '127.0.0.1', '[::1]']);

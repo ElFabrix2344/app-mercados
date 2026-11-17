@@ -219,8 +219,13 @@ export function mockFilings(symbol: string, now: Date): Fresh<FilingsData> {
   const today = isoDate(now);
   const year = Number(today.slice(0, 4));
   const foreign = fin.foreign;
-  const url = 'https://www.sec.gov/edgar/search/';
-  const f = (form: string, kind: Filing['kind'], date: string, period: string | null, items: string[] = []): Filing => ({ form, kind, date, period, items, url });
+  // Direcciones con la forma de las de EDGAR (…/data/<empresa>/<número del reporte, 18 dígitos>/<documento>), inventadas.
+  const f = (form: string, kind: Filing['kind'], date: string, period: string | null, items: string[] = []): Filing => {
+    const [y, m, d] = date.split('-') as [string, string, string];
+    const id = `0001104659${y.slice(2)}${m}${d}${String(form.length).padStart(2, '0')}`;
+    const doc = `${symbol.toLowerCase()}-${y}${m}${d}x${form.toLowerCase().replace(/[^a-z0-9]/g, '')}.htm`;
+    return { form, kind, date, period, items, url: `https://www.sec.gov/Archives/edgar/data/${fin.cik ?? 0}/${id}/${doc}` };
+  };
   const list: Filing[] = foreign
     ? [
         f('6-K', 'evento', addDays(today, -6), addDays(today, -7)),

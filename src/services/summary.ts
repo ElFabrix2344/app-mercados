@@ -1,5 +1,5 @@
 // Resumen del día: lo escribe Claude cada mañana (una tarea programada del dueño que usa el conector) con titulares y
-// datos públicos, y lo ven todos. Este servidor no llama a ninguna IA: valida lo que llega, arma los enlaces con la
+// datos públicos, y lo ven todos. Para el resumen este servidor no llama a ninguna IA: valida lo que llega, arma los enlaces con la
 // caché de noticias y guarda los últimos días en un solo registro de KV (una escritura por resumen).
 
 import { ApiError } from '../lib/http';

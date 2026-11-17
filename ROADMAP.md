@@ -114,6 +114,7 @@ Las tres preguntas pendientes las respondió Claude con la opción más simple, 
   - la frontera eficiente de la lista;
   - un estudio de eventos (reacción del precio a los resultados y a los hechos de la SMV);
   - alertas al celular.
+- [ ] **Cargar `ANTHROPIC_API_KEY`** (lo hace el dueño): la clave de la API de Claude, tipo Secret. Sin ella no aparecen las funciones con Claude (sección 8j).
 - [ ] **Cargar `COINGECKO_API_KEY`** (lo hace el dueño): crear la clave Demo en el panel de desarrolladores de CoinGecko y cargarla en Cloudflare, tipo Secret. Sin ella, «Cripto» no aparece.
 - [x] **Valorar por P/S** (4 nov). El usuario pidió «facilita con alguna herramienta el método P/S» y eligió las tres opciones:
   - **Calculadora en la ficha:** P/S de hoy, el de cada cierre fiscal y un P/S objetivo.
@@ -500,6 +501,25 @@ Eligió empezar por la fase 1 y apartar el juego. Las cuatro fases:
 - Las que presentan 20-F en NIIF (BVN, Credicorp, IFS) siguen anuales, y la SEC todavía no suma sus informes de 2025.
 - El conector de Claude todavía no trae los trimestres, la calidad ni los reportes.
 
+## 8j. Claude dentro de Rueda, con la API — 17 de noviembre
+
+El usuario pidió «ver otras maneras de integrar claude api». Antes de elegir se aclaró:
+- El resumen del día no usa la API: corre con su plan Max (una tarea programada) y no cuesta. Ese día pasó de Sonnet 5.5 a Fable 5.2, a su pedido.
+- Regla que quedó: lo programado, por tareas del plan; la API, para lo que la app pide en el momento y para cualquiera del grupo.
+
+Eligió tres usos y un tope de US$ 20 al mes:
+
+- [x] **Resumir un reporte de la SEC** con citas del documento.
+- [x] **Explicar la ficha** con los números que ya se ven.
+- [x] **«Pregúntale a Rueda»**, «con límites súper estrictos»: 3 preguntas por persona y por día, de hasta 300 caracteres, sin memoria.
+- [x] **Topes y libro del gasto** en el Durable Object: por persona y día, y por mes (total y por función).
+- [ ] **Lo hace el dueño:** crear una clave en la consola de la API (mejor en un espacio de trabajo propio de Rueda, con su límite de gasto) y cargarla en Cloudflare como secreto `ANTHROPIC_API_KEY`.
+- [ ] **Probar con la API de verdad.** En local todo corre con respuestas de prueba. Falta ver, sobre todo, que la lectura de sec.gov funcione desde la API (una prueba manual desde Claude sí pudo abrir un 8-K y su carpeta).
+- **Para después:**
+  - Leer solo los reportes nuevos de la lista del dueño, de noche y por lotes (la mitad de precio).
+  - Que la lectura de un 10-K largo no se corte: hoy lee hasta unos 120 mil tokens del documento.
+  - Sumar a «Pregúntale a Rueda» la calidad del negocio, la posición de los fondos y la cripto.
+
 ## 9. Ideas para después
 
 Las funciones posibles, con quién las tiene y de dónde saldrían los datos, están en la sección 8f: alertas, gráfico del día, reportes oficiales, dividendos y precios para los amigos. Además:
@@ -508,7 +528,7 @@ Las funciones posibles, con quién las tiene y de dónde saldrían los datos, es
   - **Recomendada:** la tarea en la nube corre también a las 12:00 y reescribe la tarjeta de hoy, sin tocar el código.
   - **Alternativa:** un bloque «Últimos datos», sin IA, con los resultados que ya calcula el juego.
 
-- **«Pregúntale a Rueda»: consultas a Claude para los amigos** (pedido el 29 oct, «luego vemos»). Sería con la API de Claude, que se cobra aparte del plan Max. Serían 7 personas: el dueño usa su propio Claude.
+- **«Pregúntale a Rueda»: consultas a Claude para los amigos** (pedido el 29 oct, «luego vemos»; **hecho el 17 nov, sección 8j**). Sería con la API de Claude, que se cobra aparte del plan Max. Serían 7 personas: el dueño usa su propio Claude.
   - **Topes estrictos** para no gastar de más: por persona y por día, y uno total.
   - **Solo datos públicos:** nada de Twelve Data ni de Finnhub, y nunca la cuenta Hapi.
   - **Aviso en los términos:** las preguntas se mandan a Anthropic.

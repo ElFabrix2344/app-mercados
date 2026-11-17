@@ -7,6 +7,7 @@ import { DurableObject } from 'cloudflare:workers';
 import { trimSecrets, type Env } from '../env';
 import { fakeTwelve, seedDemoMinigames } from '../mock';
 import { Acciones } from './acciones';
+import { LibroIA, type IaEstado, type IaLimites, type IaReserva, type IaTipo } from './ia';
 import { Jugadores, reply, type Reply, type Who } from './juego';
 import { Minijuegos, type GamesView } from './minijuegos';
 import { PanelAmigo, panelReply, type PanelReply, type PanelRequest } from './panel';
@@ -25,6 +26,20 @@ export class JuegoDO extends DurableObject<Env> {
     );
   };
   private readonly minis = new Minijuegos(this.ctx.storage, this.players, this.stocks);
+  /** El gasto en la API de Claude y los usos del día de cada uno (game/ia.ts): aquí, porque se atiende de a uno. */
+  private readonly ia = new LibroIA(this.ctx.storage);
+
+  iaReservar(pid: string, tipo: IaTipo, at: string, lim: IaLimites, clave: string | null): Promise<IaReserva> {
+    return this.ia.reservar(pid, tipo, new Date(at), lim, clave);
+  }
+
+  iaCerrar(id: string, usd: number | null): Promise<void> {
+    return this.ia.cerrar(id, usd);
+  }
+
+  iaEstado(pid: string, at: string): Promise<IaEstado> {
+    return this.ia.estado(pid, new Date(at));
+  }
 
   games(who: Who, at: string, input: GamesInput): Promise<Reply<GamesView>> {
     return reply(() => this.minis.view(who, new Date(at), input));

@@ -21,6 +21,7 @@
     "wrangler": "^4.147.0"
   },
   "dependencies": {
+    "@anthropic-ai/sdk": "^1.9.0",
     "@cloudflare/workers-oauth-provider": "^1.2.3",
     "@modelcontextprotocol/server": "^2.3.1",
     "jose": "^6.2.12",
