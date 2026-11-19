@@ -21,6 +21,8 @@ import {
   DAILY_CREDIT_CAP,
   getWatchlist,
   history,
+  intraday,
+  isIntradayRange,
   isRange,
   MAX_SYMBOLS,
   quotes,
@@ -45,6 +47,8 @@ export type PanelRequest =
   | { op: 'save-watchlist'; body: unknown }
   | { op: 'quotes'; refresh: boolean }
   | { op: 'history'; symbol: string; range: string; ind: boolean }
+  /** Velas dentro del día (rangos 1D y 5D de la ficha). */
+  | { op: 'intraday'; symbol: string; range: string }
   | { op: 'compare'; symbols: string[]; range: string }
   | { op: 'thermometer' }
   | { op: 'news'; symbol: string }
@@ -124,6 +128,11 @@ export class PanelAmigo {
         const r = await history(d, symbol, rangeOf(req.range));
         // Indicadores, velas y volumen pesan más que los cierres: van solo si se piden (como para el dueño).
         return req.ind ? r : { ...r, indicators: undefined, bars: undefined };
+      }
+      case 'intraday': {
+        const symbol = await inList(req.symbol);
+        if (!isIntradayRange(req.range)) throw new ApiError('bad_request', 400, 'Rango no válido. Usa 1D o 5D.');
+        return intraday(d, symbol, req.range);
       }
       case 'compare': {
         const own = await list();

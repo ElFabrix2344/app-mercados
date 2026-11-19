@@ -84,6 +84,12 @@ El usuario: «intentemos desviarnos del aspecto juego del app, parece que nadie 
   - Una pestaña sin nada se esconde (`renderDetailTabs`). Los bloques de «Negocio», «Valor» y «Probar» se piden al abrirlos y en su pestaña se abren solos (`D_TAB_BLOCKS`).
   - **En el celular las seis no entran:** la barra se desplaza, la elegida queda a la vista (`revealTab`) y un degradé avisa de qué lado hay más (`tabEdges`). No achiques la letra para que entren.
   - **Si agregas un bloque a la ficha,** ponlo en el panel de su pestaña (`dp-…`) y, si se pide al abrirlo, en `D_TAB_BLOCKS`.
+- **Dentro del día: rangos «1D» y «5D» de la ficha** (19 nov; el usuario opera en días y pidió rangos de menos de un mes).
+  - No salen del historial de 5 años (cierres diarios): son velas de Twelve Data pedidas aparte por `/api/intraday` (`intraday` en `services/market.ts`), **1 crédito cada vez**. Acciones y ETF: velas de 5 minutos para una rueda y de 30 para cinco; divisas y cripto: 24 horas en velas de 15 minutos y 5 días en velas de 1 hora.
+  - **Vencen como un precio** (`quoteDue`): a los 9 minutos con la bolsa abierta; cerrada, recién con otra rueda. El panel las guarda 10 minutos (`intradayHistory`).
+  - Twelve Data las fecha con la hora de la bolsa: `parseIntraday` las pasa a UTC y el panel las muestra en hora de Lima.
+  - En el gráfico cada punto es un instante, no un día: usa `labels`, `xTicks` y `span` de `drawChart` (`intradayAxis`). Solo aplican velas y volumen; las medias, Bollinger, RSI y MACD son de cierres diarios y quedan apagados.
+  - Solo en la ficha (`D_RANGES`); comparar sigue con `RANGES`. Los amigos, con su clave (`op: 'intraday'` en `game/panel.ts`).
 - **La ficha al día** (9 nov, fase 1 del rumbo nuevo). Todo de la SEC y público:
   - **Resultados** (`#d-fin`, `financialsView`): arriba, los últimos 12 meses y el último trimestre; el gráfico y la tabla, por año o por trimestre (`finMode`, se recuerda en `mercados.sec-vista`).
   - **Lo más nuevo** (`latestOf` en `valuation-core.js`): los últimos 12 meses y el balance del último 10-Q (`fundamentals.latest`) si su fecha coincide con la de los resultados; si no, el año fiscal para todo. Úsalo siempre que mezcles resultados y balance, y di en el texto con qué periodo se calculó.

@@ -8,7 +8,7 @@ import { alignByDate, indicators, pearson, rebase, returnsOf, sliceIndicators, t
 import { lastSessionDate, usMarketOpen } from '../lib/market-hours';
 import { addDays, isoDate } from '../lib/num';
 import { seriesStats, type SeriesStats } from '../lib/stats';
-import { getDailySeries, getQuotes, type Quote } from '../lib/twelvedata';
+import { getDailySeries, getIntradaySeries, getQuotes, type IntradayBar, type Quote } from '../lib/twelvedata';
 
 export const DEFAULT_WATCHLIST = ['BAP', 'SCCO', 'BVN', 'SPY', 'USD/PEN', 'BTC/USD'];
 export const MAX_SYMBOLS = 8; // el plan gratis permite 8 créditos por minuto
@@ -724,3 +724,69 @@ export async function curve(d: Deps): Promise<Fresh<CurveData>> {
   });
 }
 export type { Quote };
+
+// ---------- dentro del día ----------
+// Los rangos «1D» y «5D» de la ficha (19 nov; el usuario opera en días y pidió rangos de menos de un mes). No salen del
+// historial de 5 años, que son cierres diarios: se piden aparte, 1 crédito cada vez, y se guardan como los precios
+// (unos 10 minutos con la bolsa abierta; con la bolsa cerrada, hasta la próxima rueda).
+
+export const INTRADAY_RANGES = ['1D', '5D'] as const;
+export type IntradayRange = (typeof INTRADAY_RANGES)[number];
+export const isIntradayRange = (v: unknown): v is IntradayRange => INTRADAY_RANGES.includes(v as IntradayRange);
+
+/**
+ * Qué velas se piden. Acciones y ETF: de 5 minutos para una rueda (78 velas) y de 30 para cinco (65), con algunas de
+ * más para tener el cierre anterior. Divisas y cripto no tienen rueda: 24 horas en velas de 15 minutos y 5 días en
+ * velas de 1 hora.
+ */
+const INTRADAY_PLAN: Record<'equity' | 'other', Record<IntradayRange, { interval: string; size: number }>> = {
+  equity: { '1D': { interval: '5min', size: 100 }, '5D': { interval: '30min', size: 80 } },
+  other: { '1D': { interval: '15min', size: 96 }, '5D': { interval: '1h', size: 120 } },
+};
+
+export interface IntradayData {
+  symbol: string;
+  range: IntradayRange;
+  /** Tamaño de cada vela, como lo nombra Twelve Data (5min, 15min, 30min, 1h). */
+  interval: string;
+  /** Cuándo se pidió (ISO): con esto se decide si toca renovar, con la misma regla que los precios. */
+  at: string;
+  /** [instante en que empieza la vela (ISO, UTC), cierre]. */
+  points: [string, number][];
+  bars: HistoryBars;
+  /** El cierre de la rueda anterior a la primera que se muestra (acciones y ETF); null si no se sabe. */
+  prevClose: number | null;
+}
+
+/** De las velas que llegaron, las de la última rueda (1D) o las de las últimas cinco (5D), y el cierre anterior. */
+export function shapeIntraday(symbol: string, range: IntradayRange, interval: string, bars: IntradayBar[], at: string): IntradayData {
+  let kept = bars;
+  let prevClose: number | null = null;
+  if (isUsEquity(symbol)) {
+    const days = [...new Set(bars.map((b) => b.day))].sort().slice(range === '1D' ? -1 : -5);
+    kept = bars.filter((b) => days.includes(b.day));
+    const first = bars.indexOf(kept[0]!);
+    prevClose = first > 0 ? bars[first - 1]!.close : null;
+  }
+  return {
+    symbol,
+    range,
+    interval,
+    at,
+    points: kept.map((b) => [b.t, b.close]),
+    bars: { open: kept.map((b) => b.open), high: kept.map((b) => b.high), low: kept.map((b) => b.low), volume: kept.map((b) => b.volume) },
+    prevClose,
+  };
+}
+
+export async function intraday(d: CacheDeps, symbol: string, range: IntradayRange): Promise<Fresh<IntradayData>> {
+  const { interval, size } = INTRADAY_PLAN[isUsEquity(symbol) ? 'equity' : 'other'][range];
+  return cached<IntradayData>(
+    d,
+    `intra:${symbol}:${range}`,
+    Infinity,
+    async () => shapeIntraday(symbol, range, interval, await getIntradaySeries(symbol, interval, size, needKey(d.twelveKey, 'TWELVE_DATA_API_KEY', 'twelvedata'), d.fetch), d.now.toISOString()),
+    // Vence como un precio: a los 9 minutos con la bolsa abierta; con la bolsa cerrada, cuando hubo otra rueda.
+    { credits: 1, valid: (x) => !quoteDue(x.at, symbol, d.now, false) },
+  );
+}

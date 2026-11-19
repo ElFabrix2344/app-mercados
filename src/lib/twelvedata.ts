@@ -1,6 +1,7 @@
 // Cliente mínimo de la API REST de Twelve Data (https://twelvedata.com/docs).
 // Cada símbolo cuesta 1 crédito en /quote y en /time_series; el plan gratis da 8/min y 800/día.
 
+import { zonedToUtc } from './calendar';
 import { ApiError } from './http';
 import { num } from './num';
 
@@ -169,4 +170,51 @@ export async function getDailySeries(symbol: string, start: string, end: string,
   const err = asError(body);
   if (err) throw new ApiError('upstream_error', 502, `Twelve Data (${symbol}): ${err.message}`, 'twelvedata');
   return parseSeries(body);
+}
+
+/** Una vela dentro del día. `t`: el instante en que empieza (ISO, UTC); `day`: su fecha en la hora de la bolsa. */
+export interface IntradayBar {
+  t: string;
+  day: string;
+  open: number | null;
+  high: number | null;
+  low: number | null;
+  close: number;
+  volume: number | null;
+}
+
+/**
+ * Las velas de una serie dentro del día, de la más vieja a la más nueva. Twelve Data las fecha con la hora de la bolsa
+ * («2026-11-19 15:55:00», en `meta.exchange_timezone`; las divisas y la cripto, en UTC): aquí pasan a UTC. El desfase
+ * se calcula una vez por día (el cambio de hora cae de madrugada, con la bolsa cerrada).
+ */
+export function parseIntraday(raw: unknown): IntradayBar[] {
+  const body = (raw ?? {}) as { values?: unknown; meta?: { exchange_timezone?: unknown } };
+  if (!Array.isArray(body.values)) throw new ApiError('bad_response', 502, 'Twelve Data: serie sin valores.', 'twelvedata');
+  const tz = typeof body.meta?.exchange_timezone === 'string' && body.meta.exchange_timezone ? body.meta.exchange_timezone : 'UTC';
+  const offsets = new Map<string, number>();
+  const offsetOf = (day: string): number => {
+    if (tz === 'UTC') return 0;
+    if (!offsets.has(day)) offsets.set(day, Date.parse(zonedToUtc(day, '12:00', tz)) - Date.parse(`${day}T12:00:00Z`));
+    return offsets.get(day)!;
+  };
+  const out: IntradayBar[] = [];
+  for (const v of body.values) {
+    const r = (v ?? {}) as Record<string, unknown>;
+    const m = /^(\d{4}-\d{2}-\d{2})[ T](\d{2}):(\d{2})/.exec(String(r.datetime ?? ''));
+    const close = num(r.close);
+    if (!m || close === null) continue;
+    const day = m[1]!;
+    const t = new Date(Date.parse(`${day}T${m[2]}:${m[3]}:00Z`) + offsetOf(day)).toISOString();
+    out.push({ t, day, open: num(r.open), high: num(r.high), low: num(r.low), close, volume: num(r.volume) });
+  }
+  return out.sort((a, b) => (a.t < b.t ? -1 : a.t > b.t ? 1 : 0));
+}
+
+/** Las últimas `outputsize` velas de `interval` (5min, 15min, 30min, 1h) de un símbolo: 1 crédito. */
+export async function getIntradaySeries(symbol: string, interval: string, outputsize: number, apiKey: string, f: Fetch = fetch): Promise<IntradayBar[]> {
+  const body = await call('/time_series', { symbol, interval, outputsize: String(outputsize) }, apiKey, f);
+  const err = asError(body);
+  if (err) throw new ApiError('upstream_error', 502, `Twelve Data (${symbol}): ${err.message}`, 'twelvedata');
+  return parseIntraday(body);
 }

@@ -9,7 +9,7 @@ import { CHOICES, questionsAt, readyToResolve, resolve, type ForecastValue } fro
 import { usMarketOpen } from './lib/market-hours';
 import { addDays, isoDate } from './lib/num';
 import type { Filing, SecMatch } from './lib/sec';
-import type { DailyPoint, Quote, QuoteBatch } from './lib/twelvedata';
+import type { DailyPoint, IntradayBar, Quote, QuoteBatch } from './lib/twelvedata';
 import type { CompanyResult } from './services/company';
 import { gradeFactors, type FactorsResult } from './services/factors';
 import { fiscalYear, SEC_QUARTERS, SEC_YEARS, sumQuarters, type FinancialPeriod, type FinancialsData, type FinancialYear } from './services/financials';
@@ -34,6 +34,9 @@ import {
   getWatchlist,
   shapeCompare,
   shapeHistory,
+  shapeIntraday,
+  type IntradayData,
+  type IntradayRange,
   summarize,
   type Bar,
   type CompareResult,
@@ -799,6 +802,8 @@ export async function seedDemoMinigames(store: GameStorage, minis: Minijuegos, n
 export const fakeTwelve: typeof fetch = async (input) => {
   const url = new URL(typeof input === 'string' ? input : input instanceof URL ? input.href : input.url);
   const symbols = (url.searchParams.get('symbol') ?? '').split(',').filter(Boolean);
+  const interval = url.searchParams.get('interval') ?? '1day';
+  if (url.pathname === '/time_series' && interval !== '1day') return fakeIntraday(symbols[0] ?? 'X', interval, Number(url.searchParams.get('outputsize') ?? 30));
   const priceOn = (symbol: string, date: string) => {
     const seed = seedOf(symbol);
     const day = Date.parse(`${date}T00:00:00Z`) / 86_400_000;
@@ -895,4 +900,78 @@ export function mockFinancials(symbol: string, now: Date): Fresh<FinancialsData>
     },
     now,
   );
+}
+
+// ---------- dentro del día (rangos 1D y 5D) ----------
+
+const STEP_MIN: Record<string, number> = { '5min': 5, '15min': 15, '30min': 30, '1h': 60 };
+
+/** Las velas de una rueda de prueba, de 9:30 a 16:00 de Nueva York (invierno: UTC−5): van de `from` a `to` con ruido. */
+function sessionBars(symbol: string, day: string, from: number, to: number, stepMin: number): IntradayBar[] {
+  const rand = rng(seedOf(`${symbol}:${day}:${stepMin}`));
+  const n = Math.ceil(390 / stepMin);
+  const out: IntradayBar[] = [];
+  let prev = from;
+  for (let i = 0; i < n; i++) {
+    const k = (i + 1) / n;
+    const drift = from + (to - from) * k;
+    const close = i === n - 1 ? to : Number((drift * (1 + (rand() - 0.5) * 0.008 * (1 - k * 0.5))).toPrecision(6));
+    const hi = Math.max(prev, close) * (1 + rand() * 0.0015);
+    const lo = Math.min(prev, close) * (1 - rand() * 0.0015);
+    const t = new Date(Date.parse(`${day}T14:30:00Z`) + i * stepMin * 60_000).toISOString();
+    // Más volumen al abrir y al cerrar.
+    const volume = Math.round((MOCK_VOLUME[symbol] ?? 1_000_000) / n * (0.6 + 1.6 * Math.abs(2 * k - 1)) * (0.7 + rand() * 0.6));
+    out.push({ t, day, open: Number(prev.toPrecision(6)), high: Number(hi.toPrecision(6)), low: Number(lo.toPrecision(6)), close, volume });
+    prev = close;
+  }
+  return out;
+}
+
+/** Velas de prueba para la ficha del dueño: las últimas ruedas de `walk` y la de hoy, que termina en el precio de la lista. */
+export function mockIntraday(symbol: string, now: Date, range: IntradayRange): Fresh<IntradayData> {
+  const equity = !symbol.includes('/');
+  const stepName = equity ? (range === '1D' ? '5min' : '30min') : range === '1D' ? '15min' : '1h';
+  const step = STEP_MIN[stepName]!;
+  const daily = walk(symbol, now).slice(-6);
+  const today = mockQuotes([symbol], now).data.quotes[0]!.price;
+  const closes = [...daily.map((p) => p.close), today];
+  const days = [...daily.map((p) => p.date), isoDate(now)];
+  let bars: IntradayBar[] = [];
+  for (let i = 1; i < days.length; i++) bars.push(...sessionBars(symbol, days[i]!, closes[i - 1]!, closes[i]!, step));
+  if (!equity) {
+    // Sin rueda: las últimas velas hasta ahora, una tras otra.
+    const n = range === '1D' ? 96 : 120;
+    const end = Math.floor(now.getTime() / (step * 60_000)) * step * 60_000;
+    bars = bars.slice(-n).map((b, i, all) => ({ ...b, t: new Date(end - (all.length - 1 - i) * step * 60_000).toISOString(), volume: symbol.endsWith('/PEN') ? null : b.volume }));
+  }
+  return fresh(shapeIntraday(symbol, range, stepName, bars, now.toISOString()), now);
+}
+
+/** Lo que respondería Twelve Data a un pedido de velas dentro del día (para la vista de un amigo y las pruebas). */
+function fakeIntraday(symbol: string, interval: string, outputsize: number): Response {
+  const step = STEP_MIN[interval] ?? 5;
+  const seed = seedOf(symbol);
+  const base = 20 + (seed % 480);
+  const bars: IntradayBar[] = [];
+  let prev = base;
+  for (let d = addDays(isoDate(new Date()), -9); d <= isoDate(new Date()); d = addDays(d, 1)) {
+    const wd = new Date(`${d}T12:00:00Z`).getUTCDay();
+    if (wd === 0 || wd === 6) continue;
+    const to = Number((base * (1 + 0.04 * Math.sin(Date.parse(`${d}T00:00:00Z`) / 86_400_000 + (seed % 7)))).toFixed(2));
+    bars.push(...sessionBars(symbol, d, prev, to, step));
+    prev = to;
+  }
+  // Como la API: de la más nueva a la más vieja, con la hora de la bolsa (Nueva York, UTC−5 en invierno).
+  const values = bars
+    .slice(-outputsize)
+    .reverse()
+    .map((b) => ({
+      datetime: new Date(Date.parse(b.t) - 5 * 3_600_000).toISOString().slice(0, 16).replace('T', ' ') + ':00',
+      open: String(b.open),
+      high: String(b.high),
+      low: String(b.low),
+      close: String(b.close),
+      volume: String(b.volume),
+    }));
+  return new Response(JSON.stringify({ meta: { symbol, interval, exchange_timezone: 'America/New_York' }, status: 'ok', values }), { headers: { 'Content-Type': 'application/json' } });
 }

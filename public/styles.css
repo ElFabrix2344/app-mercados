@@ -1126,8 +1126,9 @@ span.smv-co{color:var(--ink)}
 .d-px{font-size:2rem;font-weight:500;line-height:1.15}
 .d-cur{font-family:var(--f-sans);font-size:.9rem;color:var(--muted)}
 .d-chg{flex-basis:100%;font-size:.92rem}
-#d-ranges{display:flex;margin:0 0 10px}
-#d-ranges button{flex:1 1 0;justify-content:center}
+/* Nueve rangos (19 nov, con 1D y 5D): en una sola fila también en el celular, sin relleno a los lados. */
+#d-ranges{display:flex;flex-wrap:nowrap;margin:0 0 10px}
+#d-ranges button{flex:1 1 0;min-width:0;padding-left:0;padding-right:0;justify-content:center}
 #detail .d-tools{margin:10px 0 0}
 #detail .d-quick{margin:14px 0 0}
 .d-tabs{display:flex;gap:4px 20px;margin:18px 0 0;border-bottom:1px solid var(--hair);overflow-x:auto;scrollbar-width:none}

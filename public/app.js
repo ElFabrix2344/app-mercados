@@ -372,7 +372,18 @@
         label.textContent = tickFmt(t);
         svg.append(label);
       }
-      if (spec.xLabels !== false && spec.labels) {
+      if (spec.xLabels !== false && spec.xTicks) {
+        // Marcas propias (las horas en punto, dónde empieza cada día): se saltan las que quedarían pegadas a la anterior.
+        let lastX = -Infinity;
+        for (const tk of spec.xTicks) {
+          const x = X(tk.i);
+          if (x - lastX < 46) continue;
+          lastX = x;
+          const label = s('text', { class: 'tick', x, y: H - 6, 'text-anchor': x - pad.l < 18 ? 'start' : 'middle' });
+          label.textContent = tk.text;
+          svg.append(label);
+        }
+      } else if (spec.xLabels !== false && spec.labels) {
         // Etiquetas propias (plazos, años, trimestres): todas si caben; si no, una de cada dos o tres, contando desde
         // la última. Cuánto ocupa cada una depende de su largo: un año (4 letras) entra en 26 px; «set 26», en unos 50.
         const longest = Math.max(...spec.labels.map((t) => String(t).length));
@@ -508,7 +519,8 @@
     const d0 = spec.dates[a];
     const d1 = spec.dates[b];
     let span;
-    if (spec.monthly) {
+    if (spec.span) span = spec.span(a, b);
+    else if (spec.monthly) {
       const m = (Number(d1.slice(0, 4)) - Number(d0.slice(0, 4))) * 12 + Number(d1.slice(5, 7)) - Number(d0.slice(5, 7));
       span = `${m} ${m === 1 ? 'mes' : 'meses'}`;
     } else {
@@ -516,13 +528,15 @@
       span = `${days} ${days === 1 ? 'día' : 'días'}`;
     }
     const dateFmt = spec.dateFmt || fDayYear;
+    // Con textos propios (las horas de un gráfico dentro del día), los extremos se nombran con ellos.
+    const when = (iso, i) => (spec.span && spec.labels ? spec.labels[i] : dateFmt.format(day(iso)));
     const rows = (spec.measure === 'all' ? spec.series : spec.series.slice(0, 1))
       .filter((sr) => sr.values[a] != null && sr.values[b] != null)
       .map((sr) => ({ sr, v0: sr.values[a], v1: sr.values[b] }));
     if (spec.measure === 'all') rows.sort((x, y) => y.v1 / y.v0 - x.v1 / x.v0);
     const rowOf = spec.measureRow || measureRowDefault;
     return [
-      h('span', { class: 'tt-date' }, `${dateFmt.format(day(d0))} → ${dateFmt.format(day(d1))} · ${span}`),
+      h('span', { class: 'tt-date' }, `${when(d0, a)} → ${when(d1, b)} · ${span}`),
       ...rows.map(({ sr, v0, v1 }) => {
         const r = rowOf(sr, v0, v1, spec);
         return h('span', { class: `tt-row ${sr.cls || ''}` }, h('span', { class: 'key' }), h('strong', { class: trend(v1 - v0) }, r.value), r.label);
@@ -1345,13 +1359,23 @@
   }
 
   const RANGES = ['1M', '3M', '6M', 'YTD', '1A', '3A', '5A'];
-  const RANGE_NAMES = { '1M': 'el último mes', '3M': 'los últimos 3 meses', '6M': 'los últimos 6 meses', YTD: 'lo que va del año', '1A': 'el último año', '3A': 'los últimos 3 años', '5A': 'los últimos 5 años' };
+  // Dentro del día (19 nov; el usuario pidió rangos de menos de un mes): velas de Twelve Data que se piden aparte de
+  // los cierres diarios, 1 crédito cada vez. Solo en la ficha; comparar sigue con cierres diarios.
+  const INTRADAY = ['1D', '5D'];
+  const D_RANGES = [...INTRADAY, ...RANGES];
+  const isIntraday = (r) => INTRADAY.includes(r);
+  const INTERVAL_NAMES = { '5min': '5 minutos', '15min': '15 minutos', '30min': '30 minutos', '1h': '1 hora' };
+  /** El servidor guarda las velas unos 10 minutos: aquí, lo mismo. */
+  const INTRADAY_MS = 10 * 60_000;
+  const fWeekDay = fmt({ weekday: 'short', day: 'numeric', timeZone: TZ });
+  const RANGE_NAMES = { '1D': 'la última rueda', '5D': 'las últimas 5 ruedas', '1M': 'el último mes', '3M': 'los últimos 3 meses', '6M': 'los últimos 6 meses', YTD: 'lo que va del año', '1A': 'el último año', '3A': 'los últimos 3 años', '5A': 'los últimos 5 años' };
 
   /**
    * Historial de la ficha en el rango elegido, con indicadores (se piden una vez por rango; salen de la
    * caché del servidor, sin créditos). Mientras llegan, 1A se dibuja con lo que ya cargaron las filas.
    */
   function detailHistory(sym, range) {
+    if (isIntraday(range)) return intradayHistory(sym, range);
     const key = `${sym}|${range}`;
     const cached = state.rangeData.get(key);
     if (cached && cached !== 'cargando') return cached;
@@ -1385,8 +1409,67 @@
     return range === '1A' ? state.hist.get(sym) : undefined;
   }
 
-  function rangeButtons(current, onPick) {
-    return RANGES.map((r) => {
+  /**
+   * Las velas dentro del día de la ficha (rangos 1D y 5D). Cada pedido cuesta 1 crédito, así que se guardan 10 minutos;
+   * pasado ese tiempo se piden de nuevo y, mientras llegan, queda lo anterior a la vista. Un error se reintenta al minuto.
+   */
+  function intradayHistory(sym, range) {
+    const key = `${sym}|${range}`;
+    const cached = state.rangeData.get(key);
+    if (cached === 'cargando') return undefined;
+    const old = cached?.points ? cached : null;
+    const due = old ? Date.now() - old.at > INTRADAY_MS && !old.refreshing : cached?.error ? Date.now() - cached.at > 60_000 : !cached;
+    if (!due) return cached;
+    const gate = lookupGate(sym);
+    if (gate) return gate === 'cargando' ? undefined : gate;
+    if (old) old.refreshing = true;
+    else state.rangeData.set(key, 'cargando');
+    api(`/api/intraday?symbol=${encodeURIComponent(sym)}&range=${range}`)
+      .then((r) => {
+        const d = r.data;
+        state.rangeData.set(key, { points: d.points, bars: d.bars, intraday: { interval: d.interval, prevClose: d.prevClose, fetchedAt: r.fetchedAt, stale: r.stale, note: r.note }, at: Date.now() });
+      })
+      .catch((e) => {
+        // Si ya había velas, se quedan: se vuelve a intentar en otros 10 minutos.
+        if (old) return Object.assign(old, { refreshing: false, at: Date.now() });
+        if (!e.retryAfter) return state.rangeData.set(key, { error: e.message, at: Date.now() });
+        state.rangeData.set(
+          key,
+          waitMinute(e, () => {
+            if (state.rangeData.get(key)?.wait) state.rangeData.delete(key);
+            if (state.selected === sym) renderDetail();
+          }),
+        );
+      })
+      .finally(() => {
+        if (state.selected === sym && state.range === range) renderDetail();
+      });
+    return old ?? undefined;
+  }
+
+  /** Para un gráfico dentro del día: el texto de cada vela (día y hora de Lima), las marcas del eje y cuánto dura un tramo. */
+  function intradayAxis(dates, range) {
+    const labels = dates.map((t) => fClock.format(new Date(t)).replace(/\./g, ''));
+    const xTicks = [];
+    let lastDay = null;
+    dates.forEach((t, i) => {
+      const d = new Date(t);
+      const dayKey = limaDate(d);
+      // Una rueda: las horas en punto. Varios días: dónde empieza cada uno.
+      if (range === '1D') {
+        if (fTime.format(d).endsWith(':00')) xTicks.push({ i, text: fTime.format(d) });
+      } else if (dayKey !== lastDay) xTicks.push({ i, text: fWeekDay.format(d).replace(/\./g, '') });
+      lastDay = dayKey;
+    });
+    const span = (a, b) => {
+      const m = Math.round((Date.parse(dates[b]) - Date.parse(dates[a])) / 60_000);
+      return m < 120 ? `${m} min` : m < 48 * 60 ? `${nf(1).format(m / 60)} h` : `${nf(1).format(m / 1440)} días`;
+    };
+    return { labels, xTicks, span };
+  }
+
+  function rangeButtons(current, onPick, list = RANGES) {
+    return list.map((r) => {
       const b = h('button', { type: 'button', 'aria-pressed': String(current === r) }, r);
       b.addEventListener('click', () => onPick(r));
       return b;
@@ -1395,10 +1478,14 @@
 
   function renderRanges() {
     $('d-ranges').replaceChildren(
-      ...rangeButtons(state.range, (r) => {
-        state.range = r;
-        renderDetail();
-      }),
+      ...rangeButtons(
+        state.range,
+        (r) => {
+          state.range = r;
+          renderDetail();
+        },
+        D_RANGES,
+      ),
     );
   }
 
@@ -1414,10 +1501,11 @@
     { key: 'macd', label: 'MACD', cls: 's3', title: 'MACD (12, 26, 9): media exponencial de 12 días menos la de 26, con su señal de 9 días (panel debajo)' },
   ];
   /** Rangos con velas: en 3 y 5 años cada vela tendría menos de 1 px. */
-  const CANDLE_RANGES = new Set(['1M', '3M', '6M', 'YTD', '1A']);
+  const CANDLE_RANGES = new Set(['1D', '5D', '1M', '3M', '6M', 'YTD', '1A']);
 
   /** Por qué no se puede prender algo en este rango o símbolo (null si se puede). `bars`: undefined mientras llegan. */
   function unavailable(key, bars) {
+    if (isIntraday(state.range) && key !== 'candles' && key !== 'vol') return 'Las medias, Bollinger, el RSI y el MACD se calculan con cierres diarios: no aplican dentro del día.';
     if (key === 'candles') {
       if (!CANDLE_RANGES.has(state.range)) return 'Las velas se ven hasta 1 año: en 3 y 5 años serían demasiado finas.';
       if (bars === null) return 'Todavía no hay velas guardadas para este símbolo.';
@@ -1433,7 +1521,7 @@
     $('d-ind').replaceChildren(
       candlesOn
         ? h('span', { class: 'legend-item' }, h('span', { class: 'key candle' }), 'Velas: hueca sube, rellena baja')
-        : h('span', { class: 'legend-item s1' }, h('span', { class: 'key' }), 'Cierre'),
+        : h('span', { class: 'legend-item s1' }, h('span', { class: 'key' }), isIntraday(state.range) ? 'Precio' : 'Cierre'),
       ...INDICATORS.map((it) => {
         const off = unavailable(it.key, bars);
         const b = h(
@@ -1523,6 +1611,9 @@
     }
     stats.replaceChildren();
     tbody.replaceChildren();
+    // Dentro del día: velas con hora, sin indicadores ni tabla por mes.
+    const intra = hist.intraday ?? null;
+    $('d-table').closest('details').hidden = !!intra;
     if (hist.wait) {
       for (const host of [chart, rsiHost, volHost, macdHost]) charts.delete(host);
       rsiWrap.hidden = volWrap.hidden = macdWrap.hidden = true;
@@ -1539,17 +1630,19 @@
     }
     const dates = hist.points.map(([date]) => date);
     const pts = hist.points.map(([date, v]) => ({ date, v }));
+    const time = intra ? intradayAxis(dates, state.range) : null;
+    const prevLine = intra?.prevClose != null && state.range === '1D' ? intra.prevClose : null;
     const ind = hist.ind; // falta mientras llegan los indicadores
     chart.dataset.sym = sym; // de qué acción es lo que queda dibujado
     const on = (k) => !!(ind && state.ind[k]);
     const bars = hist.bars ?? null; // velas y volumen: llegan con los indicadores
     const candles = state.ind.candles && !unavailable('candles', hist.bars) && bars ? bars : null;
-    const series = [{ name: 'Cierre', values: pts.map((p) => p.v), cls: 's1' }];
+    const series = [{ name: intra ? 'Precio' : 'Cierre', values: pts.map((p) => p.v), cls: 's1' }];
     if (on('sma50')) series.push({ name: 'MM50', values: ind.sma50, cls: 's4' });
     if (on('sma200')) series.push({ name: 'MM200', values: ind.sma200, cls: 's2' });
     const extras = [on('sma50') && 'la media de 50 días', on('sma200') && 'la media de 200 días', on('bb') && 'las bandas de Bollinger'].filter(Boolean);
     // Tus operaciones de la cartera simulada en este rango (si cayeron en un día sin rueda, van al día hábil anterior).
-    const markers = (state.portfolio?.trades ?? [])
+    const markers = (intra ? [] : (state.portfolio?.trades ?? []))
       .filter((t) => t.symbol === sym && t.date >= dates[0] && t.date <= dates[dates.length - 1])
       .map((t) => {
         let i = dates.length - 1;
@@ -1570,7 +1663,11 @@
       interactive: true,
       fmt: fmtPrice,
       axisDateFmt: short ? fDay : fAxisMonth,
-      aria: `Cierre diario de ${sym} en ${RANGE_NAMES[state.range]}${extras.length ? `, con ${listJoin(extras)}` : ''}`,
+      // Dentro del día: la hora de cada vela, las horas en el eje y, en una rueda, la línea del cierre anterior.
+      ...(time ? { labels: time.labels, xTicks: time.xTicks, span: time.span, refs: prevLine != null ? [prevLine] : [] } : {}),
+      aria: intra
+        ? `Precio de ${sym} en ${RANGE_NAMES[state.range]}, en velas de ${INTERVAL_NAMES[intra.interval] ?? intra.interval}`
+        : `Cierre diario de ${sym} en ${RANGE_NAMES[state.range]}${extras.length ? `, con ${listJoin(extras)}` : ''}`,
       endLabel: (sr, v) => (sr.cls === 's1' ? fmtPrice(v) : sr.name),
       markers,
       inset: true,
@@ -1594,6 +1691,7 @@
           : null,
     });
     if (markers.length) $('d-ind').append(h('span', { class: 'legend-item' }, '▲▼ tus operaciones'));
+    if (prevLine != null) $('d-ind').append(h('span', { class: 'legend-item' }, `Línea gris: cierre anterior (${fmtPrice(prevLine)})`));
     rsiWrap.hidden = !on('rsi');
     if (on('rsi')) {
       drawChart(rsiHost, {
@@ -1619,9 +1717,14 @@
     volWrap.hidden = !showVol;
     if (showVol) {
       // Acciones: el consolidado de las bolsas de EE. UU. (verificado contra Nasdaq); cripto: el del exchange que da el precio.
-      $('d-vol-hint').textContent = sym.includes('/') ? 'Volumen diario (del exchange que da el precio)' : 'Volumen diario (acciones negociadas en todas las bolsas de EE. UU.)';
+      $('d-vol-hint').textContent = intra
+        ? `Volumen de cada vela de ${INTERVAL_NAMES[intra.interval] ?? intra.interval}`
+        : sym.includes('/')
+          ? 'Volumen diario (del exchange que da el precio)'
+          : 'Volumen diario (acciones negociadas en todas las bolsas de EE. UU.)';
       drawChart(volHost, {
         dates,
+        ...(time ? { labels: time.labels } : {}),
         series: [{ name: 'Volumen', values: bars.volume, cls: 'vol', kind: 'bars' }],
         height: 90,
         axis: true,
@@ -1659,7 +1762,7 @@
       charts.delete(macdHost);
     }
     csvBtn.onclick = () => {
-      const header = ['fecha', 'cierre', 'rendimiento_diario'];
+      const header = intra ? ['fecha_hora_utc', 'cierre', 'variacion'] : ['fecha', 'cierre', 'rendimiento_diario'];
       if (bars) header.push('apertura', 'maximo', 'minimo', 'volumen');
       if (ind) header.push('mm50', 'mm200', 'bollinger_sup', 'bollinger_inf', 'rsi14', 'macd', 'macd_senal', 'macd_histograma');
       const rows = hist.points.map(([date, close], i) => {
@@ -1687,6 +1790,29 @@
         stat('Cierre mínimo', fmtPrice(st.minClose.value), fDayYear.format(day(st.minClose.date))),
       );
     }
+    if (intra) {
+      // Dentro del día: cuánto se movió frente al cierre anterior (o desde la primera vela), y entre qué precios.
+      const last = pts.at(-1).v;
+      const equity = !sym.includes('/');
+      const base = intra.prevClose ?? bars?.open[0] ?? pts[0].v;
+      const chg = last / base - 1;
+      const what = state.range === '1D' ? (equity ? 'Variación en la rueda' : 'Variación en 24 horas') : equity ? 'Variación en 5 ruedas' : 'Variación en 5 días';
+      const highs = pts.map((p, i) => bars?.high[i] ?? p.v);
+      const lows = pts.map((p, i) => bars?.low[i] ?? p.v);
+      const hi = highs.indexOf(Math.max(...highs));
+      const lo = lows.indexOf(Math.min(...lows));
+      const volume = (bars?.volume ?? []).reduce((a, v) => a + (v ?? 0), 0);
+      const size = INTERVAL_NAMES[intra.interval] ?? intra.interval;
+      stats.append(
+        ...[
+          stat(what, h('span', { class: trend(chg) }, `${arrowOf(chg)} ${pctFrac(chg, 2)}`), intra.prevClose != null ? `Frente al cierre anterior, ${fmtPrice(intra.prevClose)}` : `Desde ${time.labels[0]}`),
+          stat('Máximo', fmtPrice(highs[hi]), time.labels[hi]),
+          stat('Mínimo', fmtPrice(lows[lo]), time.labels[lo]),
+          volume > 0 ? stat('Volumen', compact.format(volume), `En ${pts.length} velas`) : null,
+          stat('Velas', `De ${size}`, `Pedidas ${ago(intra.fetchedAt)}. Horas de Lima. ${equity ? 'Con la bolsa abierta se renuevan cada 10 minutos.' : 'Se renuevan cada 10 minutos.'}${intra.stale && intra.note ? ` ${intra.note}` : ''}`),
+        ].filter(Boolean),
+      );
+    }
     // Lectura técnica del último cierre (la misma en cualquier rango).
     if (ind) {
       const last = pts.at(-1).v;
@@ -1697,9 +1823,9 @@
       }
       if (mm200 != null) stats.append(stat('Cierre frente a la MM200', pctFrac(last / mm200 - 1), `Media de 200 días: ${fmtPrice(mm200)}`));
     }
-    // Tabla: último cierre de cada mes y su variación frente al mes anterior.
+    // Tabla: último cierre de cada mes y su variación frente al mes anterior (dentro del día no hay: está oculta).
     const byMonth = new Map();
-    for (const p of pts) byMonth.set(p.date.slice(0, 7), p);
+    for (const p of intra ? [] : pts) byMonth.set(p.date.slice(0, 7), p);
     let prev = null;
     for (const p of byMonth.values()) {
       tbody.append(

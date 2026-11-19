@@ -501,6 +501,14 @@ Eligió empezar por la fase 1 y apartar el juego. Las cuatro fases:
 - Las que presentan 20-F en NIIF (BVN, Credicorp, IFS) siguen anuales, y la SEC todavía no suma sus informes de 2025.
 - El conector de Claude todavía no trae los trimestres, la calidad ni los reportes.
 
+## 8k. Rangos dentro del día — 19 de noviembre
+
+El usuario preguntó si la ficha podía mostrar rangos de menos de un mes. Entre repetir los cierres diarios de una semana (gratis, 5 puntos) y pedir velas dentro del día (1 crédito por pedido), eligió lo segundo.
+
+- [x] **«1D» y «5D» en la ficha:** velas de 5 y 30 minutos (15 minutos y 1 hora para divisas y cripto), con volumen, horas de Lima y, en «1D», la línea del cierre anterior.
+- [x] Para los amigos con su clave, igual.
+- **Para después:** horario extendido (antes de la apertura y después del cierre), que Twelve Data cobra aparte; y avisar en la lista cuando una acción se mueve fuerte dentro del día.
+
 ## 8j. Claude dentro de Rueda, con la API — 17 de noviembre
 
 El usuario pidió «ver otras maneras de integrar claude api». Antes de elegir se aclaró:

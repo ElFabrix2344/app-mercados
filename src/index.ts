@@ -23,6 +23,7 @@ import {
   mockQuality,
   fakeFinnhub,
   mockHistory,
+  mockIntraday,
   mockLookupQuote,
   mockNews,
   mockPeru,
@@ -78,6 +79,8 @@ import {
   curve,
   getWatchlist,
   history,
+  intraday,
+  isIntradayRange,
   isUsEquity,
   isRange,
   peru,
@@ -169,12 +172,12 @@ export default {
 } satisfies ExportedHandler<Env>;
 
 /** Precios de Twelve Data: su licencia gratis no permite mostrar los de la clave de Rueda a otras personas. */
-const OWNER_ONLY = new Set(['/api/watchlist', '/api/eod', '/api/quotes', '/api/history', '/api/compare', '/api/portfolio', '/api/portfolio/xray', '/api/news/symbol', '/api/company', '/api/company/factors', '/api/thermometer', '/api/lookup']);
+const OWNER_ONLY = new Set(['/api/watchlist', '/api/eod', '/api/quotes', '/api/history', '/api/intraday', '/api/compare', '/api/portfolio', '/api/portfolio/xray', '/api/news/symbol', '/api/company', '/api/company/factors', '/api/thermometer', '/api/lookup']);
 /**
  * Lo que un amigo sí ve con su propia clave de Twelve Data (la de la liga): su lista, sus precios, sus gráficos,
  * comparar, el termómetro y los titulares por acción. Lo atiende el Durable Object del juego, con su caché aparte.
  */
-const FRIEND_KEYED = new Set(['/api/watchlist', '/api/quotes', '/api/history', '/api/compare', '/api/thermometer', '/api/news/symbol', '/api/lookup']);
+const FRIEND_KEYED = new Set(['/api/watchlist', '/api/quotes', '/api/history', '/api/intraday', '/api/compare', '/api/thermometer', '/api/news/symbol', '/api/lookup']);
 
 async function route(req: Request, env: Env, url: URL, role: Role, email: string | null, ctx: ExecutionContext): Promise<Response | null> {
   const p = url.pathname;
@@ -265,6 +268,14 @@ async function route(req: Request, env: Env, url: URL, role: Role, email: string
         const r = mock ? mockHistory(symbol, now, range) : await history(deps, symbol, range);
         // Indicadores, velas y volumen pesan más que los cierres: van solo si se piden (la ficha sí, los minigráficos no).
         return json(url.searchParams.get('ind') === '1' ? r : { ...r, indicators: undefined, bars: undefined });
+      }
+
+      // Velas dentro del día para los rangos «1D» y «5D» de la ficha: 1 crédito por pedido, guardado como los precios.
+      case '/api/intraday': {
+        const symbol = await listedOrLooked(env.CACHE, url, now, 'gráficos del día');
+        const range = url.searchParams.get('range');
+        if (!isIntradayRange(range)) throw new ApiError('bad_request', 400, 'Rango no válido. Usa 1D o 5D.');
+        return json(mock ? mockIntraday(symbol, now, range) : await intraday(deps, symbol, range));
       }
 
       case '/api/compare': {
@@ -699,6 +710,7 @@ async function friendPanel(req: Request, juego: NonNullable<Env['JUEGO']>, url: 
     if (p === '/api/watchlist') op = { op: 'watchlist' };
     else if (p === '/api/quotes') op = { op: 'quotes', refresh: q.get('refresh') === '1' };
     else if (p === '/api/history') op = { op: 'history', symbol: q.get('symbol') ?? '', range: q.get('range') ?? DEFAULT_RANGE, ind: q.get('ind') === '1' };
+    else if (p === '/api/intraday') op = { op: 'intraday', symbol: q.get('symbol') ?? '', range: q.get('range') ?? '' };
     else if (p === '/api/compare') op = { op: 'compare', symbols: (q.get('symbols') ?? '').split(','), range: q.get('range') ?? DEFAULT_RANGE };
     else if (p === '/api/thermometer') op = { op: 'thermometer' };
     else if (p === '/api/news/symbol') op = { op: 'news', symbol: q.get('symbol') ?? '' };
